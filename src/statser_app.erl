@@ -10,23 +10,23 @@
 %% Application callbacks
 -export([start/2, stop/1, server_loop/3]).
 
+-define(NUM_LISTENERS, 20).
+-define(PORT, 3000).
+
 %%====================================================================
 %% API
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    NumListeners = 5,
-    Port = 3000,
-
     % TODO: doesn't belong in here
     % initialize ets table
     % TODO: investigate into 'read_concurrency'
     ets:new(metrics, [set, named_table, public]),
 
-    ok = case gen_tcp:listen(Port, [{active, false}, binary, {packet, line}]) of
+    ok = case gen_tcp:listen(?PORT, [{active, false}, binary, {packet, line}]) of
         {ok, ListenSock} ->
             Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
-            start_servers(Pattern, NumListeners, ListenSock);
+            start_servers(Pattern, ?NUM_LISTENERS, ListenSock);
         Error -> Error
     end,
 
