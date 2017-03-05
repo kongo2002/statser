@@ -8,7 +8,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1, server_loop/2]).
+-export([start/2, stop/1, server_loop/3]).
 
 %%====================================================================
 %% API
@@ -17,6 +17,11 @@
 start(_StartType, _StartArgs) ->
     NumListeners = 5,
     Port = 3000,
+
+    % TODO: doesn't belong in here
+    % initialize ets table
+    % TODO: investigate into 'read_concurrency'
+    ets:new(metrics, [set, named_table, public]),
 
     ok = case gen_tcp:listen(Port, [{active, false}, binary, {packet, line}]) of
         {ok, ListenSock} ->
@@ -39,27 +44,28 @@ start_servers(_Pattern, 0, _) ->
     ok;
 
 start_servers(Pattern, Num, Listen) ->
-    spawn(?MODULE, server_loop, [Pattern, Listen]),
+    {ok, Router} = gen_server:start_link(statser_router, [], []),
+    spawn_link(?MODULE, server_loop, [Pattern, Listen, Router]),
     start_servers(Pattern, Num - 1, Listen).
 
-server_loop(Pattern, Port) ->
+server_loop(Pattern, Port, Router) ->
     % accept loop
     case gen_tcp:accept(Port) of
         {ok, Sock} ->
             io:format("starting server loop at ~w~n", [self()]),
-            loop(Pattern, Sock),
-            server_loop(Pattern, Port);
+            loop(Pattern, Sock, Router),
+            server_loop(Pattern, Port, Router);
         Other ->
             io:format("accept returned ~w - goodbye!~n",[Other]),
             ok
     end.
 
-loop(Pattern, Sock) ->
+loop(Pattern, Sock, Router) ->
     inet:setopts(Sock,[{active, once}]),
     receive
         {tcp, Sock, Data} ->
-            ok = process_line(Pattern, Data),
-            loop(Pattern, Sock);
+            Router ! process_line(Pattern, Data),
+            loop(Pattern, Sock, Router);
         {tcp_closed, Sock} ->
             io:format("Socket ~w closed [~w]~n", [Sock, self()]),
             ok
@@ -70,11 +76,12 @@ process_line(Pattern, Data) ->
         [Path, ValueBS, TimeStampBS] ->
             {ok, Value} = to_number(ValueBS),
             {ok, TimeStamp} = to_epoch(TimeStampBS),
-            io:format("received ~w: ~w at ~w~n", [Path, Value, TimeStamp]);
+            io:format("received ~w: ~w at ~w~n", [Path, Value, TimeStamp]),
+            {line, Path, Value, TimeStamp};
         _Otherwise ->
-            io:format("invalid input received: ~w~n", [Data])
-    end,
-    ok.
+            io:format("invalid input received: ~w~n", [Data]),
+            error
+    end.
 
 to_epoch(Binary) ->
     List = binary_to_list(Binary),
