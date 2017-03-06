@@ -86,6 +86,10 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({line, _, _, _} = Line, State) ->
+    io:format("got line ~w~n", [Line]),
+    {noreply, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -99,10 +103,6 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({line, _, _, _} = Line, State) ->
-    io:format("got line ~w~n", [Line]),
-    {noreply, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 

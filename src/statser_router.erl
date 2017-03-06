@@ -137,4 +137,4 @@ dispatch({line, Path, _, _} = Line) ->
         [{Path, Pid}] ->
             Pid
     end,
-    Target ! Line.
+    gen_server:cast(Target, Line).
