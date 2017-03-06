@@ -29,7 +29,7 @@ init([]) ->
     NumListeners = application:get_env(listeners, statser, 20),
     Port = application:get_env(port, statser, 3000),
 
-    io:format("start listening on port ~w~n", [Port]),
+    lager:info("start listening on port ~w~n", [Port]),
 
     % open listening socket
     ListenParams = [{active, false}, binary, {packet, line}],

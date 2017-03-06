@@ -15,6 +15,8 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
+    lager:start(),
+
     % initialize ets table
     % TODO: does this belong in here?
     % TODO: investigate into 'read_concurrency'

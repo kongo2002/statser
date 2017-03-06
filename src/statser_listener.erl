@@ -118,7 +118,7 @@ handle_info({tcp, _Sock, Data}, State) ->
     {noreply, State};
 
 handle_info({tcp_closed, Sock}, State) ->
-    io:format("socket ~w closed [~w]~n", [Sock, self()]),
+    lager:debug("socket ~w closed [~w]~n", [Sock, self()]),
 
     statser_sup:start_listener(),
     {stop, normal, State};
@@ -163,10 +163,10 @@ process_line(Pattern, Data) ->
         [Path, ValueBS, TimeStampBS] ->
             {ok, Value} = to_number(ValueBS),
             {ok, TimeStamp} = to_epoch(TimeStampBS),
-            io:format("received ~w: ~w at ~w~n", [Path, Value, TimeStamp]),
+            lager:debug("received ~w: ~w at ~w~n", [Path, Value, TimeStamp]),
             {line, Path, Value, TimeStamp};
         _Otherwise ->
-            io:format("invalid input received: ~w~n", [Data]),
+            lager:warn("invalid input received: ~w~n", [Data]),
             error
     end.
 

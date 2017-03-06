@@ -1,5 +1,5 @@
 {application, statser,
- [{description, "An OTP application"},
+ [{description, "A distributed metrics application"},
   {vsn, "0.1.0"},
   {registered, []},
   {mod, { statser_app, []}},

@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {path}).
+-record(state, {path, dirs, file, fspath}).
 
 %%%===================================================================
 %%% API
@@ -45,17 +45,18 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([Path]) ->
-    io:format("initializing metric handler for path ~w [~w]~n", [Path, self()]),
+    lager:info("initializing metric handler for path ~p [~w]~n", [Path, self()]),
 
     % let's try to register ourselves
     case ets:insert_new(metrics, {Path, self()}) of
         true ->
             % we could register ourself, let's continue
+            gen_server:cast(self(), prepare),
             {ok, #state{path=Path}};
         false ->
             % there is a metric handler already for this path
             % let's shut down now
-            {stop, "already registered"}
+            {stop, normal}
     end.
 
 %%--------------------------------------------------------------------
@@ -86,8 +87,14 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(prepare, State) ->
+    {ok, Dirs, File} = get_directory(State#state.path),
+    Path = prepare_file(Dirs, File),
+    lager:debug("preparing path: ~p~n", [Path]),
+    {noreply, State#state{dirs=Dirs, file=File, fspath=Path}};
+
 handle_cast({line, _, _, _} = Line, State) ->
-    io:format("got line ~w~n", [Line]),
+    lager:debug("got line ~w~n", [Line]),
     {noreply, State};
 
 handle_cast(_Msg, State) ->
@@ -134,3 +141,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_directory(Path) ->
+    case binary:split(Path, <<".">>, [global, trim_all]) of
+        [] -> error;
+        Parts ->
+            File0 = lists:last(Parts),
+            Suffix = <<".wsp">>,
+            File = <<File0/binary, Suffix/binary>>,
+            Dirs = lists:droplast(Parts),
+            {ok, Dirs, File}
+    end.
+
+to_file(Parts) ->
+    F = fun(A, <<>>) -> <<A/binary>>;
+           (A, B) -> <<A/binary, "/", B/binary>>
+        end,
+    lists:foldr(F, <<>>, Parts).
+
+prepare_file(Dirs, File) ->
+    Path = to_file(Dirs ++ [File]),
+    ok = filelib:ensure_dir(Path),
+    Path.
