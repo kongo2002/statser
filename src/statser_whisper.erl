@@ -59,9 +59,10 @@ read_metadata_inner(IO) ->
     end.
 
 read_archive_info(IO, Archives) ->
+    ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
     case read_archive_info(IO, [], Archives) of
         error -> error;
-        As -> lists:reverse(As)
+        As -> lists:sort(ByOffset, As)
     end.
 
 read_archive_info(_IO, As, 0) -> As;
