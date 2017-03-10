@@ -2,7 +2,8 @@
 
 -export([read_metadata/1,
          aggregation_type/1,
-         aggregation_value/1]).
+         aggregation_value/1,
+         update_point/3]).
 
 
 % 16 bytes = 4 metadata fields x 4 bytes
@@ -42,6 +43,7 @@ read_metadata(File) ->
         after file:close(IO)
     end.
 
+
 read_metadata_inner(IO) ->
     {ok, Header} = file:read(IO, ?METADATA_HEADER_SIZE),
     case read_header(Header) of
@@ -57,6 +59,7 @@ read_metadata_inner(IO) ->
             end;
         error -> error
     end.
+
 
 read_archive_info(IO, Archives) ->
     ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
@@ -78,6 +81,7 @@ read_archive_info(IO, As, Archives) ->
         _Error -> error
     end.
 
+
 read_header(<<AggType:32/unsigned-integer-big,
               MaxRetention:32/unsigned-integer-big,
               XFF:32/float-big,
@@ -96,3 +100,70 @@ write_header(AggType, MaxRetention, XFF, NumArchives) ->
       MaxRetention:32/unsigned-integer-big,
       XFF:32/float-big,
       NumArchives:32/integer-unsigned-big>>.
+
+
+highest_precision_archive(TimeDiff, [#archive_header{retention=Ret} | As]) when Ret < TimeDiff ->
+    highest_precision_archive(TimeDiff, As);
+highest_precision_archive(_TimeDiff, [A | As]) -> {A, As};
+highest_precision_archive(_TimeDiff, []) -> error.
+
+
+data_point(#archive_header{seconds=S}, TimeStamp, Value) ->
+    Interval = TimeStamp - (TimeStamp rem S),
+    <<Interval:32/integer-unsigned-big, Value:64/float-big>>.
+
+
+read_point(IO) ->
+    case file:read(IO, ?POINT_SIZE) of
+        {ok, <<Interval:32/integer-unsigned-big, Value:64/float-big>>} ->
+            {Interval, Value};
+        Unexpected ->
+            lager:error("read unexpected data point: ~p", [Unexpected]),
+            error
+    end.
+
+
+write_point_from_base(IO, Archive, Interval, Value, 0) ->
+    % this is the file's first update
+    Offset = Archive#archive_header.offset,
+    {ok, _Pos} = file:position(IO, {bof, Offset}),
+    file:write(IO, data_point(Archive, Interval, Value));
+
+write_point_from_base(IO, Archive, Interval, Value, BaseInterval) ->
+    % all subsequent updates
+    Distance = Interval - BaseInterval,
+    PointDistance = Distance div Archive#archive_header.seconds,
+    ByteDistance = PointDistance * ?POINT_SIZE,
+    Position = Archive#archive_header.offset + (ByteDistance rem Archive#archive_header.size),
+    {ok, _Pos} = file:position(IO, {bof, Position}),
+    file:write(IO, data_point(Archive, Interval, Value)).
+
+
+update_point(File, Value, TimeStamp) ->
+    {ok, IO} = file:open(File, [write, read, binary]),
+    try do_update(IO, Value, TimeStamp)
+        after file:close(IO)
+    end.
+
+
+do_update(IO, Value, TimeStamp) ->
+    {ok, Metadata} = read_metadata_inner(IO),
+    write_point(IO, Metadata, Value, TimeStamp).
+
+
+write_point(IO, Header, Value, TimeStamp) ->
+    Now = erlang:system_time(second),
+    TimeDiff = Now - TimeStamp,
+    MaxRetention = Header#metadata.retention,
+    if
+        TimeDiff >= MaxRetention, TimeDiff < 0 ->
+            lager:error("timestamp ~p is not covered by any archive of ~p", [TimeStamp, Header]),
+            error;
+        true ->
+            % find highest precision archive
+            {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#metadata.archives),
+            % seek and read first data point
+            {ok, _Pos} = file:position(IO, {bof, Archive#archive_header.offset}),
+            {BaseInterval, _Value} = read_point(IO),
+            write_point_from_base(IO, Archive, TimeStamp, Value, BaseInterval)
+    end.
