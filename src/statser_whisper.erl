@@ -1,5 +1,8 @@
 -module(statser_whisper).
 
+-include_lib("eunit/include/eunit.hrl").
+
+
 -export([read_metadata/1,
          aggregation_type/1,
          aggregation_value/1,
@@ -61,6 +64,14 @@ read_metadata_inner(IO) ->
     end.
 
 
+make_archive_header(Offset, Seconds, Points) ->
+    #archive_header{offset=Offset,
+                   seconds=Seconds,
+                   points=Points,
+                   retention=Seconds * Points,
+                   size=Points * ?POINT_SIZE}.
+
+
 read_archive_info(IO, Archives) ->
     ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
     case read_archive_info(IO, [], Archives) of
@@ -72,11 +83,7 @@ read_archive_info(_IO, As, 0) -> As;
 read_archive_info(IO, As, Archives) ->
     case file:read(IO, ?METADATA_ARCHIVE_HEADER_SIZE) of
         {ok, <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>} ->
-            Archive = #archive_header{offset=Offset,
-                                     seconds=Secs,
-                                     points=Points,
-                                     retention=Secs*Points,
-                                     size=Points*?POINT_SIZE},
+            Archive = make_archive_header(Offset, Secs, Points),
             read_archive_info(IO, [Archive | As], Archives - 1);
         _Error -> error
     end.
@@ -123,20 +130,13 @@ read_point(IO) ->
     end.
 
 
-write_point_from_base(IO, Archive, Interval, Value, 0) ->
-    % this is the file's first update
-    Offset = Archive#archive_header.offset,
-    {ok, _Pos} = file:position(IO, {bof, Offset}),
-    file:write(IO, data_point(Archive, Interval, Value));
-
-write_point_from_base(IO, Archive, Interval, Value, BaseInterval) ->
-    % all subsequent updates
+get_data_point_offset(Archive, Interval, 0) ->
+    Archive#archive_header.offset;
+get_data_point_offset(Archive, Interval, BaseInterval) ->
     Distance = Interval - BaseInterval,
     PointDistance = Distance div Archive#archive_header.seconds,
     ByteDistance = PointDistance * ?POINT_SIZE,
-    Position = Archive#archive_header.offset + (ByteDistance rem Archive#archive_header.size),
-    {ok, _Pos} = file:position(IO, {bof, Position}),
-    file:write(IO, data_point(Archive, Interval, Value)).
+    Archive#archive_header.offset + (ByteDistance rem Archive#archive_header.size).
 
 
 update_point(File, Value, TimeStamp) ->
@@ -164,13 +164,41 @@ write_point(IO, Header, Value, TimeStamp) ->
             {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#metadata.archives),
 
             % seek first data point
-            {ok, _Pos} = file:position(IO, {bof, Archive#archive_header.offset}),
+            {ok, _} = file:position(IO, {bof, Archive#archive_header.offset}),
 
             % read base data point
             {BaseInterval, _Value} = read_point(IO),
+            Position = get_data_point_offset(Archive, TimeStamp, BaseInterval),
 
             % write data point based on initial data point
-            write_point_from_base(IO, Archive, TimeStamp, Value, BaseInterval)
+            {ok, _} = file:position(IO, {bof, Position}),
+            file:write(IO, data_point(Archive, TimeStamp, Value))
 
             % TODO: update lower archives
     end.
+
+%%
+%% TESTS
+%%
+
+highest_precision_archive_test_() ->
+    Archive = make_archive_header(28, 60, 1440),
+    Archive2 = make_archive_header(28, 300, 1000),
+
+    [?_assert(highest_precision_archive(100, []) =:= error),
+     ?_assert(highest_precision_archive(100, [Archive]) =:= {Archive, []}),
+     ?_assert(highest_precision_archive(86400, [Archive]) =:= {Archive, []}),
+     ?_assert(highest_precision_archive(100, [Archive, Archive2]) =:= {Archive, [Archive2]}),
+     ?_assert(highest_precision_archive(86400, [Archive, Archive2]) =:= {Archive, [Archive2]}),
+     ?_assert(highest_precision_archive(86401, [Archive, Archive2]) =:= {Archive2, []}),
+     ?_assert(highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]) =:= error)].
+
+get_data_point_offset_test_() ->
+    Now = erlang:system_time(second),
+    Offset = 28,
+    Archive = make_archive_header(Offset, 60, 1440),
+
+    [?_assert(get_data_point_offset(Archive, Now, 0) =:= Offset),
+     ?_assert(get_data_point_offset(Archive, Now+60, Now) =:= Offset + ?POINT_SIZE),
+     ?_assert(get_data_point_offset(Archive, Now+119, Now) =:= Offset + ?POINT_SIZE),
+     ?_assert(get_data_point_offset(Archive, Now+120, Now) =:= Offset + ?POINT_SIZE + ?POINT_SIZE)].
