@@ -160,10 +160,17 @@ write_point(IO, Header, Value, TimeStamp) ->
             lager:error("timestamp ~p is not covered by any archive of ~p", [TimeStamp, Header]),
             error;
         true ->
-            % find highest precision archive
+            % find highest precision and lower archives to update
             {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#metadata.archives),
-            % seek and read first data point
+
+            % seek first data point
             {ok, _Pos} = file:position(IO, {bof, Archive#archive_header.offset}),
+
+            % read base data point
             {BaseInterval, _Value} = read_point(IO),
+
+            % write data point based on initial data point
             write_point_from_base(IO, Archive, TimeStamp, Value, BaseInterval)
+
+            % TODO: update lower archives
     end.
