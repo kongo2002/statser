@@ -1,6 +1,8 @@
 -module(statser_whisper).
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 
 -export([read_metadata/1,
@@ -130,7 +132,7 @@ read_point(IO) ->
     end.
 
 
-get_data_point_offset(Archive, Interval, 0) ->
+get_data_point_offset(Archive, _Interval, 0) ->
     Archive#archive_header.offset;
 get_data_point_offset(Archive, Interval, BaseInterval) ->
     Distance = Interval - BaseInterval,
@@ -181,24 +183,28 @@ write_point(IO, Header, Value, TimeStamp) ->
 %% TESTS
 %%
 
+-ifdef(TEST).
+
 highest_precision_archive_test_() ->
     Archive = make_archive_header(28, 60, 1440),
     Archive2 = make_archive_header(28, 300, 1000),
 
-    [?_assert(highest_precision_archive(100, []) =:= error),
-     ?_assert(highest_precision_archive(100, [Archive]) =:= {Archive, []}),
-     ?_assert(highest_precision_archive(86400, [Archive]) =:= {Archive, []}),
-     ?_assert(highest_precision_archive(100, [Archive, Archive2]) =:= {Archive, [Archive2]}),
-     ?_assert(highest_precision_archive(86400, [Archive, Archive2]) =:= {Archive, [Archive2]}),
-     ?_assert(highest_precision_archive(86401, [Archive, Archive2]) =:= {Archive2, []}),
-     ?_assert(highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]) =:= error)].
+    [?_assertEqual(highest_precision_archive(100, []), error),
+     ?_assertEqual(highest_precision_archive(100, [Archive]), {Archive, []}),
+     ?_assertEqual(highest_precision_archive(86400, [Archive]), {Archive, []}),
+     ?_assertEqual(highest_precision_archive(100, [Archive, Archive2]), {Archive, [Archive2]}),
+     ?_assertEqual(highest_precision_archive(86400, [Archive, Archive2]), {Archive, [Archive2]}),
+     ?_assertEqual(highest_precision_archive(86401, [Archive, Archive2]), {Archive2, []}),
+     ?_assertEqual(highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]), error)].
 
 get_data_point_offset_test_() ->
     Now = erlang:system_time(second),
     Offset = 28,
     Archive = make_archive_header(Offset, 60, 1440),
 
-    [?_assert(get_data_point_offset(Archive, Now, 0) =:= Offset),
-     ?_assert(get_data_point_offset(Archive, Now+60, Now) =:= Offset + ?POINT_SIZE),
-     ?_assert(get_data_point_offset(Archive, Now+119, Now) =:= Offset + ?POINT_SIZE),
-     ?_assert(get_data_point_offset(Archive, Now+120, Now) =:= Offset + ?POINT_SIZE + ?POINT_SIZE)].
+    [?_assertEqual(get_data_point_offset(Archive, Now, 0), Offset),
+     ?_assertEqual(get_data_point_offset(Archive, Now+60, Now), Offset + ?POINT_SIZE),
+     ?_assertEqual(get_data_point_offset(Archive, Now+119, Now), Offset + ?POINT_SIZE),
+     ?_assertEqual(get_data_point_offset(Archive, Now+120, Now), Offset + ?POINT_SIZE + ?POINT_SIZE)].
+
+-endif. % TEST
