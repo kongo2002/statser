@@ -117,8 +117,7 @@ highest_precision_archive(_TimeDiff, [A | As]) -> {A, As};
 highest_precision_archive(_TimeDiff, []) -> error.
 
 
-data_point(#archive_header{seconds=S}, TimeStamp, Value) ->
-    Interval = TimeStamp - (TimeStamp rem S),
+data_point(Interval, Value) ->
     <<Interval:32/integer-unsigned-big, Value:64/float-big>>.
 
 
@@ -132,13 +131,17 @@ read_point(IO) ->
     end.
 
 
+mod(A, B) when A < 0 -> erlang:abs(A) rem B;
+mod(A, B) -> A rem B.
+
+
 get_data_point_offset(Archive, _Interval, 0) ->
     Archive#archive_header.offset;
 get_data_point_offset(Archive, Interval, BaseInterval) ->
     Distance = Interval - BaseInterval,
     PointDistance = Distance div Archive#archive_header.seconds,
     ByteDistance = PointDistance * ?POINT_SIZE,
-    Archive#archive_header.offset + (ByteDistance rem Archive#archive_header.size).
+    Archive#archive_header.offset + (mod(ByteDistance, Archive#archive_header.size)).
 
 
 update_point(File, Value, TimeStamp) ->
@@ -151,6 +154,76 @@ update_point(File, Value, TimeStamp) ->
 do_update(IO, Value, TimeStamp) ->
     {ok, Metadata} = read_metadata_inner(IO),
     write_point(IO, Metadata, Value, TimeStamp).
+
+
+interval_start(Archive, TimeStamp) ->
+    TimeStamp - (TimeStamp rem Archive#archive_header.seconds).
+
+
+collect_series_values(#archive_header{seconds=Step}, Interval, Values) ->
+    collect_series_values(Step, Interval, Values, []).
+
+collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc) ->
+    if
+        Interval == TS ->
+            collect_series_values(Step, Interval + Step, Rst, [Value | Acc]);
+        true ->
+            collect_series_values(Step, Interval + Step, Rst, Acc)
+    end;
+collect_series_values(_Step, _Interval, <<>>, Res) -> Res.
+
+
+propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
+    AggMthd = Header#metadata.aggregation,
+    XFF = Header#metadata.xff,
+
+    LowerSeconds = Lower#archive_header.seconds,
+    LowerStart = interval_start(Lower, TimeStamp),
+
+    % read higher point
+    % XXX: might be passed in already?
+    HighOffset = Higher#archive_header.offset,
+    file:position(IO, HighOffset),
+    {HighInterval, _} = read_point(IO),
+    HighFirstOffset = get_data_point_offset(Higher, LowerStart, HighInterval),
+
+    HigherSeconds = Higher#archive_header.seconds,
+    HigherPoints = LowerSeconds div HigherSeconds,
+    HigherSize = HigherPoints * ?POINT_SIZE,
+    RelativeFirstOffset = HighFirstOffset - HighOffset,
+    RelativeLastOffset = mod(RelativeFirstOffset + HigherSize, Higher#archive_header.size),
+    HigherLastOffset = RelativeLastOffset + HighOffset,
+
+    {ok, _} = file:position(IO, {bof, HighFirstOffset}),
+
+    {ok, Series} =
+    if
+        % the amount of higher points that make up one lower point (HigherPoints)
+        % do fit into the higher archive (starting from the current interval/timestamp).
+        % this means we can read all required points straight up
+        HighFirstOffset < HigherLastOffset ->
+            file:read(IO, HigherLastOffset - HighFirstOffset);
+        % otherwise we are now basically at the end of the higher archive so that we
+        % cannot read the required aggregate points (HigherPoints) without exceeding
+        % the archive's size.
+        % that's why we read until the end of the archive first, followed by the
+        % remaining number of required aggregate points from the beginning of the archive
+        true ->
+            HigherEnd = HighOffset + Higher#archive_header.size,
+            {ok, FstSeries} = file:read(IO, HigherEnd - HighFirstOffset),
+            {ok, _} = file:position(IO, {bof, HighOffset}),
+            {ok, LstSeries} = file:read(HigherLastOffset - HighOffset),
+            {ok, <<FstSeries, LstSeries>>}
+    end,
+
+    CollectedValues = collect_series_values(Higher, LowerStart, Series),
+
+    lager:info("read series: ~p", [CollectedValues]),
+
+    % TODO: update collected values
+
+    ok;
+propagate_lower_archives(_, _, _, _, []) -> ok.
 
 
 write_point(IO, Header, Value, TimeStamp) ->
@@ -174,9 +247,10 @@ write_point(IO, Header, Value, TimeStamp) ->
 
             % write data point based on initial data point
             {ok, _} = file:position(IO, {bof, Position}),
-            file:write(IO, data_point(Archive, TimeStamp, Value))
+            Interval = interval_start(Archive, TimeStamp),
+            file:write(IO, data_point(Interval, Value)),
 
-            % TODO: update lower archives
+            propagate_lower_archives(IO, Header, Interval, Archive, LowerArchives)
     end.
 
 %%
