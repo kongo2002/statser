@@ -161,22 +161,19 @@ interval_start(Archive, TimeStamp) ->
 
 
 collect_series_values(#archive_header{seconds=Step}, Interval, Values) ->
-    collect_series_values(Step, Interval, Values, []).
+    collect_series_values(Step, Interval, Values, [], 0).
 
-collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc) ->
+collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc, Seen) ->
     if
         Interval == TS ->
-            collect_series_values(Step, Interval + Step, Rst, [Value | Acc]);
+            collect_series_values(Step, Interval + Step, Rst, [Value | Acc], Seen + 1);
         true ->
-            collect_series_values(Step, Interval + Step, Rst, Acc)
+            collect_series_values(Step, Interval + Step, Rst, Acc, Seen + 1)
     end;
-collect_series_values(_Step, _Interval, <<>>, Res) -> Res.
+collect_series_values(_Step, _Interval, <<>>, Res, Seen) -> {Res, Seen}.
 
 
 propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
-    AggMthd = Header#metadata.aggregation,
-    XFF = Header#metadata.xff,
-
     LowerSeconds = Lower#archive_header.seconds,
     LowerStart = interval_start(Lower, TimeStamp),
 
@@ -212,18 +209,51 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
             HigherEnd = HighOffset + Higher#archive_header.size,
             {ok, FstSeries} = file:read(IO, HigherEnd - HighFirstOffset),
             {ok, _} = file:position(IO, {bof, HighOffset}),
-            {ok, LstSeries} = file:read(HigherLastOffset - HighOffset),
-            {ok, <<FstSeries, LstSeries>>}
+            {ok, LstSeries} = file:read(IO, HigherLastOffset - HighOffset),
+            {ok, <<FstSeries/binary, LstSeries/binary>>}
     end,
 
-    CollectedValues = collect_series_values(Higher, LowerStart, Series),
+    {CollectedValues, NumPoints} = collect_series_values(Higher, LowerStart, Series),
 
-    lager:info("read series: ~p", [CollectedValues]),
+    lager:info("read series: ~p [~p points]", [CollectedValues, NumPoints]),
 
-    % TODO: update collected values
-
-    ok;
+    WroteAggregate = write_propagated_values(IO, Header, Lower, LowerStart, CollectedValues, NumPoints),
+    if
+        WroteAggregate == true ->
+            propagate_lower_archives(IO, Header, TimeStamp, Lower, Ls);
+        true ->
+            ok
+    end;
 propagate_lower_archives(_, _, _, _, []) -> ok.
+
+
+write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
+    AggType = Header#metadata.aggregation,
+    XFF = Header#metadata.xff,
+    KnownPercentage = length(Values) / NumPoints,
+    if
+        % we do have enough data points to calculate an aggregation
+        KnownPercentage >= XFF ->
+            AggValue = aggregate(AggType, Values, NumPoints),
+            lager:info("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
+            Point = data_point(LowerInterval, AggValue),
+            {ok, _} = file:position(IO, {bof, Lower#archive_header.offset}),
+            {BaseInterval, _} = read_point(IO),
+            Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
+            {ok, _} = file:position(IO, {bof, Offset}),
+            ok = file:write(IO, Point),
+            true;
+        true ->
+            false
+    end.
+
+
+aggregate(average, Values, _) -> lists:sum(Values) / length(Values);
+aggregate(sum, Values, _) -> lists:sum(Values);
+aggregate(last, Values, _) -> lists:last(Values);
+aggregate(max, Values, _) -> lists:max(Values);
+aggregate(min, Values, _) -> lists:min(Values);
+aggregate(average_zero, Values, NumPoints) -> lists:sum(Values) / NumPoints.
 
 
 write_point(IO, Header, Value, TimeStamp) ->
