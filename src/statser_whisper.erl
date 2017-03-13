@@ -66,6 +66,79 @@ read_metadata_inner(IO) ->
     end.
 
 
+create(File, Archives, Aggregation, XFF) ->
+    {ok, IO} = file:open(File, [write, binary]),
+    try create_inner(IO, Archives, Aggregation, XFF)
+        after file:close(IO)
+    end.
+
+
+create_inner(IO, Archives, Aggregation, XFF) ->
+    GetDefault = fun([], Def) -> Def;
+                    (Val, _) -> Val end,
+    AggValue = GetDefault(Aggregation, average),
+    XFFValue = GetDefault(XFF, 0.5),
+
+    % TODO: actual archive/file creation
+    ok.
+
+
+% validate specified archives against the following rules:
+%
+% - at least one archive required
+% - no duplicate archives (precision)
+% - higher precision archives' precision must evenly divide all lower precision archives' precisions
+% - lower precision archives must cover larger time intervals than higher precision archives
+% - each archive must have at least enough points to consolidate to the next lower archive
+validate_archives(Archives) ->
+    case validate_archives(Archives, []) of
+        error -> error;
+        [] ->
+            lager:error("invalid archives: no valid archive format found"),
+            error;
+        As ->
+            ByPrecision = fun(A, B) -> A#archive_header.seconds =< B#archive_header.seconds end,
+            [S | Ss] = Sorted = lists:sort(ByPrecision, As),
+            case validate(S, Ss) of
+                true -> {ok, Sorted};
+                false -> error
+            end
+    end.
+
+validate(Higher, [Lower | Ls]) ->
+    EvenlyDivide = Lower#archive_header.seconds rem Higher#archive_header.seconds == 0,
+
+    HighRetention = Higher#archive_header.retention,
+    LowerRetention = Lower#archive_header.retention,
+    RetentionIsCovered = LowerRetention > HighRetention,
+
+    PointsPerConsolidation = Lower#archive_header.seconds div Higher#archive_header.seconds,
+    EnoughPointsToConsolidate = Higher#archive_header.points >= PointsPerConsolidation,
+
+    case EvenlyDivide and RetentionIsCovered and EnoughPointsToConsolidate of
+        true -> validate(Lower, Ls);
+        false -> false
+    end;
+validate(_, []) -> true.
+
+
+validate_archives([{Seconds, Points} | As], Res) when Seconds > 0 andalso Points > 0 ->
+    Archive = make_archive_header(0, Seconds, Points),
+    PrecisionExists = fun(A) -> A#archive_header.seconds == Seconds end,
+    case lists:any(PrecisionExists, Res) of
+        true ->
+            lager:error("invalid archive: archive with precision of ~p seconds already exists", [Seconds]),
+            error;
+        false ->
+            validate_archives(As, [Archive | Res])
+    end;
+validate_archives([], Res) -> Res;
+validate_archives(_, _) ->
+    lager:error("invalid archive format: interval and points must be greater than 0"),
+    error.
+
+
+
 make_archive_header(Offset, Seconds, Points) ->
     #archive_header{offset=Offset,
                    seconds=Seconds,
@@ -310,22 +383,44 @@ highest_precision_archive_test_() ->
     Archive = make_archive_header(28, 60, 1440),
     Archive2 = make_archive_header(28, 300, 1000),
 
-    [?_assertEqual(highest_precision_archive(100, []), error),
-     ?_assertEqual(highest_precision_archive(100, [Archive]), {Archive, []}),
-     ?_assertEqual(highest_precision_archive(86400, [Archive]), {Archive, []}),
-     ?_assertEqual(highest_precision_archive(100, [Archive, Archive2]), {Archive, [Archive2]}),
-     ?_assertEqual(highest_precision_archive(86400, [Archive, Archive2]), {Archive, [Archive2]}),
-     ?_assertEqual(highest_precision_archive(86401, [Archive, Archive2]), {Archive2, []}),
-     ?_assertEqual(highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]), error)].
+    [?_assertEqual(error, highest_precision_archive(100, [])),
+     ?_assertEqual({Archive, []}, highest_precision_archive(100, [Archive])),
+     ?_assertEqual({Archive, []}, highest_precision_archive(86400, [Archive])),
+     ?_assertEqual({Archive, [Archive2]}, highest_precision_archive(100, [Archive, Archive2])),
+     ?_assertEqual({Archive, [Archive2]}, highest_precision_archive(86400, [Archive, Archive2])),
+     ?_assertEqual({Archive2, []}, highest_precision_archive(86401, [Archive, Archive2])),
+     ?_assertEqual(error, highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]))
+    ].
 
 get_data_point_offset_test_() ->
     Now = erlang:system_time(second),
     Offset = 28,
     Archive = make_archive_header(Offset, 60, 1440),
 
-    [?_assertEqual(get_data_point_offset(Archive, Now, 0), Offset),
-     ?_assertEqual(get_data_point_offset(Archive, Now+60, Now), Offset + ?POINT_SIZE),
-     ?_assertEqual(get_data_point_offset(Archive, Now+119, Now), Offset + ?POINT_SIZE),
-     ?_assertEqual(get_data_point_offset(Archive, Now+120, Now), Offset + ?POINT_SIZE + ?POINT_SIZE)].
+    [?_assertEqual(Offset, get_data_point_offset(Archive, Now, 0)),
+     ?_assertEqual(Offset + ?POINT_SIZE, get_data_point_offset(Archive, Now+60, Now)),
+     ?_assertEqual(Offset + ?POINT_SIZE, get_data_point_offset(Archive, Now+119, Now)),
+     ?_assertEqual(Offset + ?POINT_SIZE + ?POINT_SIZE, get_data_point_offset(Archive, Now+120, Now))
+    ].
+
+validate_archives_test_() ->
+    Archive0 = {60, 1440},
+    ArchiveHeader0 = make_archive_header(0, 60, 1440),
+    Archive1 = {10, 360},
+    ArchiveHeader1 = make_archive_header(0, 10, 360),
+
+    [?_assertEqual(error, validate_archives([])),
+     ?_assertEqual({ok, [ArchiveHeader0]}, validate_archives([Archive0])),
+     ?_assertEqual({ok, [ArchiveHeader1, ArchiveHeader0]}, validate_archives([Archive0, Archive1])),
+     ?_assertEqual(error, validate_archives([Archive0, Archive0])),
+     ?_assertEqual(error, validate_archives([Archive0, {60, 3600}])),
+     % unevenly divisible precisions
+     ?_assertEqual(error, validate_archives([{60, 3600}, {61, 3600}])),
+     % lower precision archive with lesser retention
+     ?_assertEqual(error, validate_archives([{60, 3600}, {120, 100}])),
+     ?_assertEqual(error, validate_archives([{120, 100}, {60, 3600}])),
+     % not enough points for consolidation
+     ?_assertEqual(error, validate_archives([{10, 5}, {60, 3600}]))
+    ].
 
 -endif. % TEST
