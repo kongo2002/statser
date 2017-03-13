@@ -131,6 +131,11 @@ read_point(IO) ->
     end.
 
 
+point_at(IO, Offset) ->
+    {ok, _Position} = file:position(IO, {bof, Offset}),
+    read_point(IO).
+
+
 mod(A, B) when A < 0 -> erlang:abs(A) rem B;
 mod(A, B) -> A rem B.
 
@@ -180,8 +185,7 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
     % read higher point
     % XXX: might be passed in already?
     HighOffset = Higher#archive_header.offset,
-    file:position(IO, HighOffset),
-    {HighInterval, _} = read_point(IO),
+    {HighInterval, _} = point_at(IO, HighOffset),
     HighFirstOffset = get_data_point_offset(Higher, LowerStart, HighInterval),
 
     HigherSeconds = Higher#archive_header.seconds,
@@ -237,8 +241,7 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
             AggValue = aggregate(AggType, Values, NumPoints),
             lager:info("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
             Point = data_point(LowerInterval, AggValue),
-            {ok, _} = file:position(IO, {bof, Lower#archive_header.offset}),
-            {BaseInterval, _} = read_point(IO),
+            {BaseInterval, _} = point_at(IO, Lower#archive_header.offset),
             Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
             {ok, _} = file:position(IO, {bof, Offset}),
             ok = file:write(IO, Point),
@@ -268,11 +271,8 @@ write_point(IO, Header, Value, TimeStamp) ->
             % find highest precision and lower archives to update
             {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#metadata.archives),
 
-            % seek first data point
-            {ok, _} = file:position(IO, {bof, Archive#archive_header.offset}),
-
             % read base data point
-            {BaseInterval, _Value} = read_point(IO),
+            {BaseInterval, _Value} = point_at(IO, Archive#archive_header.offset),
             Position = get_data_point_offset(Archive, TimeStamp, BaseInterval),
 
             % write data point based on initial data point
