@@ -136,13 +136,24 @@ point_at(IO, Offset) ->
     read_point(IO).
 
 
+write_at(IO, Point, Offset) ->
+    {ok, _Position} = file:position(IO, {bof, Offset}),
+    file:write(IO, Point).
+
+
 mod(A, B) when A < 0 -> erlang:abs(A) rem B;
 mod(A, B) -> A rem B.
 
 
+% this method determines the offset where a data point with the
+% given timestamp (Interval) is supposed to start at
 get_data_point_offset(Archive, _Interval, 0) ->
+    % no data point was written to this archive yet
+    % start at the initial offset for that reason
     Archive#archive_header.offset;
 get_data_point_offset(Archive, Interval, BaseInterval) ->
+    % the archive contains data already, that's why we
+    % calculate the relative offset/distance to this 'BaseInterval'
     Distance = Interval - BaseInterval,
     PointDistance = Distance div Archive#archive_header.seconds,
     ByteDistance = PointDistance * ?POINT_SIZE,
@@ -170,6 +181,10 @@ collect_series_values(#archive_header{seconds=Step}, Interval, Values) ->
 
 collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc, Seen) ->
     if
+        % we compare the timestamp of the data point we just read (TS) with
+        % the timestamp value we are expecting (Interval)
+        % only if these timestamps match up we consider that data point a valid one
+        % NOTE: this is *not* an error - the archive may very well contain sparse values
         Interval == TS ->
             collect_series_values(Step, Interval + Step, Rst, [Value | Acc], Seen + 1);
         true ->
@@ -189,8 +204,8 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
     HighFirstOffset = get_data_point_offset(Higher, LowerStart, HighInterval),
 
     HigherSeconds = Higher#archive_header.seconds,
-    HigherPoints = LowerSeconds div HigherSeconds,
-    HigherSize = HigherPoints * ?POINT_SIZE,
+    HigherPointsPerLower = LowerSeconds div HigherSeconds,
+    HigherSize = HigherPointsPerLower * ?POINT_SIZE,
     RelativeFirstOffset = HighFirstOffset - HighOffset,
     RelativeLastOffset = mod(RelativeFirstOffset + HigherSize, Higher#archive_header.size),
     HigherLastOffset = RelativeLastOffset + HighOffset,
@@ -199,13 +214,13 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
 
     {ok, Series} =
     if
-        % the amount of higher points that make up one lower point (HigherPoints)
+        % the amount of higher points that make up one lower point (HigherPointsPerLower)
         % do fit into the higher archive (starting from the current interval/timestamp).
         % this means we can read all required points straight up
         HighFirstOffset < HigherLastOffset ->
             file:read(IO, HigherLastOffset - HighFirstOffset);
         % otherwise we are now basically at the end of the higher archive so that we
-        % cannot read the required aggregate points (HigherPoints) without exceeding
+        % cannot read the required aggregate points (HigherPointsPerLower) without exceeding
         % the archive's size.
         % that's why we read until the end of the archive first, followed by the
         % remaining number of required aggregate points from the beginning of the archive
@@ -223,6 +238,8 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
 
     WroteAggregate = write_propagated_values(IO, Header, Lower, LowerStart, CollectedValues, NumPoints),
     if
+        % continue to write into even lower archives only if we actually
+        % wrote an aggregate value in this archive
         WroteAggregate == true ->
             propagate_lower_archives(IO, Header, TimeStamp, Lower, Ls);
         true ->
@@ -234,29 +251,29 @@ propagate_lower_archives(_, _, _, _, []) -> ok.
 write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
     AggType = Header#metadata.aggregation,
     XFF = Header#metadata.xff,
-    KnownPercentage = length(Values) / NumPoints,
+    NumValues = length(Values),
+    KnownPercentage = NumValues / NumPoints,
     if
         % we do have enough data points to calculate an aggregation
         KnownPercentage >= XFF ->
-            AggValue = aggregate(AggType, Values, NumPoints),
+            AggValue = aggregate(AggType, Values, NumValues, NumPoints),
             lager:info("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
             Point = data_point(LowerInterval, AggValue),
             {BaseInterval, _} = point_at(IO, Lower#archive_header.offset),
             Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
-            {ok, _} = file:position(IO, {bof, Offset}),
-            ok = file:write(IO, Point),
+            ok = write_at(IO, Point, Offset),
             true;
         true ->
             false
     end.
 
 
-aggregate(average, Values, _) -> lists:sum(Values) / length(Values);
-aggregate(sum, Values, _) -> lists:sum(Values);
-aggregate(last, Values, _) -> lists:last(Values);
-aggregate(max, Values, _) -> lists:max(Values);
-aggregate(min, Values, _) -> lists:min(Values);
-aggregate(average_zero, Values, NumPoints) -> lists:sum(Values) / NumPoints.
+aggregate(average, Values, NumValues, _) -> lists:sum(Values) / NumValues;
+aggregate(sum, Values, _, _) -> lists:sum(Values);
+aggregate(last, Values, _, _) -> lists:last(Values);
+aggregate(max, Values, _, _) -> lists:max(Values);
+aggregate(min, Values, _, _) -> lists:min(Values);
+aggregate(average_zero, Values, _, NumPoints) -> lists:sum(Values) / NumPoints.
 
 
 write_point(IO, Header, Value, TimeStamp) ->
@@ -276,9 +293,9 @@ write_point(IO, Header, Value, TimeStamp) ->
             Position = get_data_point_offset(Archive, TimeStamp, BaseInterval),
 
             % write data point based on initial data point
-            {ok, _} = file:position(IO, {bof, Position}),
             Interval = interval_start(Archive, TimeStamp),
-            file:write(IO, data_point(Interval, Value)),
+            Point = data_point(Interval, Value),
+            ok = write_at(IO, Point, Position),
 
             propagate_lower_archives(IO, Header, Interval, Archive, LowerArchives)
     end.
