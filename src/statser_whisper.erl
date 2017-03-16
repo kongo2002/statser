@@ -46,9 +46,12 @@ aggregation_value(average_zero) -> 6.
 
 
 read_metadata(File) ->
-    {ok, IO} = file:open(File, [read, binary]),
-    try read_metadata_inner(IO)
-        after file:close(IO)
+    case file:open(File, [read, binary]) of
+        {ok, IO} ->
+            try read_metadata_inner(IO)
+                after file:close(IO)
+            end;
+        Error -> Error
     end.
 
 
@@ -91,7 +94,12 @@ create_inner(IO, Archives, Aggregation, XFF) ->
             MaxRetention = max_retention_archive(UpdArchives),
             ok = file:write(IO, write_header(AggValue, MaxRetention, XFFValue, NumArchives)),
             ok = write_archive_info(IO, UpdArchives),
-            write_empty_archives(IO, LastOffset - InitialOffset);
+            ok = write_empty_archives(IO, LastOffset - InitialOffset),
+
+            {ok, #metadata{aggregation=AggValue,
+                           retention=MaxRetention,
+                           xff=XFFValue,
+                           archives=UpdArchives}};
         error -> error
     end.
 
@@ -465,20 +473,27 @@ validate_archives_test_() ->
 create_and_read_test_() ->
     RunTest = fun(As) ->
                       Fun = fun(File) ->
-                                    ok = create(File, As, average, 0.5),
-                                    read_metadata(File)
+                                    {ok, M1} = create(File, As, average, 0.5),
+                                    {ok, M2} = read_metadata(File),
+                                    {ok, M1, M2}
                             end,
-                      {ok, Metadata} = with_tempfile(Fun),
-                      Archives = lists:map(fun(A) ->
-                                                   {A#archive_header.seconds, A#archive_header.points}
-                                           end, Metadata#metadata.archives),
-                      ?_assertEqual(As, Archives)
+                      {ok, CreateM, ReadM} = with_tempfile(Fun),
+                      Extract = fun(A) ->
+                                        {A#archive_header.seconds, A#archive_header.points}
+                                end,
+                      CArchives = lists:map(Extract, CreateM#metadata.archives),
+                      RArchives = lists:map(Extract, ReadM#metadata.archives),
+
+                      [?_assertEqual(As, CArchives),
+                       ?_assertEqual(As, RArchives),
+                       ?_assertEqual(CreateM, ReadM)
+                      ]
               end,
 
-    [RunTest([{10, 60}]),
+    lists:flatten([RunTest([{10, 60}]),
      RunTest([{10, 60}, {60, 600}]),
      RunTest([{10, 60}, {60, 600}, {3600, 168}])
-    ].
+    ]).
 
 with_tempfile(Fun) ->
     TempFile = lib:nonl(os:cmd("mktemp")),

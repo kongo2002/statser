@@ -17,7 +17,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {path, dirs, file, fspath}).
+-record(state, {path, dirs, file, fspath, metadata}).
 
 %%%===================================================================
 %%% API
@@ -92,13 +92,30 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(prepare, State) ->
+    % first we have to determine the proper path and file to use
     {ok, Dirs, File} = get_directory(State#state.path),
     Path = prepare_file(Dirs, File),
-    lager:debug("preparing path: ~p~n", [Path]),
-    {noreply, State#state{dirs=Dirs, file=File, fspath=Path}};
+    lager:info("prepared path: ~p", [Path]),
+
+    % now we make sure the file is created if not already
+    % TODO: read configuration regarding 'archives', 'aggregation' and 'xff'
+    Archives = [{10, 360}, {60, 1440}],
+    Aggregation = average,
+    XFF = 0.5,
+
+    Metadata = case statser_whisper:read_metadata(Path) of
+        {ok, M} -> M;
+        {error, enoent} ->
+            % TODO: rate limit archive creation
+            lager:info("no archive existing for ~p - creating now", [State#state.path]),
+            statser_whisper:create(Path, Archives, Aggregation, XFF)
+    end,
+
+    {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
 
 handle_cast({line, _, _, _} = Line, State) ->
-    lager:debug("got line ~w~n", [Line]),
+    lager:debug("got line: ~w", [Line]),
+
     {noreply, State};
 
 handle_cast(_Msg, State) ->
