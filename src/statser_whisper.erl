@@ -4,7 +4,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-
 -export([create/4,
          read_metadata/1,
          aggregation_type/1,

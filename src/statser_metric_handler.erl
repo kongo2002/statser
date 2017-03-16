@@ -1,5 +1,9 @@
 -module(statser_metric_handler).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -behaviour(gen_server).
 
 %% API
@@ -163,3 +167,29 @@ prepare_file(Dirs, File) ->
     Path = to_file(Dirs ++ [File]),
     ok = filelib:ensure_dir(Path),
     Path.
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+get_directory_test_() ->
+    [?_assertEqual(error, get_directory(<<>>)),
+     ?_assertEqual(error, get_directory(<<"">>)),
+     ?_assertEqual({ok, [], <<"foo.wsp">>}, get_directory(<<"foo">>)),
+     ?_assertEqual({ok, [<<"foo">>], <<"bar.wsp">>}, get_directory(<<"foo.bar">>)),
+     ?_assertEqual({ok, [<<"foo">>, <<"bar">>], <<"test.wsp">>}, get_directory(<<"foo.bar.test">>))
+    ].
+
+to_file_test_() ->
+    Test = fun(X) ->
+                   {ok, Dirs, File} = get_directory(X),
+                   to_file(Dirs ++ [File])
+           end,
+
+    [?_assertEqual(<<"foo/bar/test.wsp">>, Test(<<"foo.bar.test">>)),
+     ?_assertEqual(<<"foo.wsp">>, Test(<<"foo">>))
+    ].
+
+-endif. % TEST
