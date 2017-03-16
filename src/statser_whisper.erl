@@ -5,7 +5,8 @@
 -endif.
 
 
--export([read_metadata/1,
+-export([create/4,
+         read_metadata/1,
          aggregation_type/1,
          aggregation_value/1,
          update_point/3]).
@@ -19,6 +20,9 @@
 
 % 12 bytes = 4 bytes (timestamp) + 8 bytes (value)
 -define(POINT_SIZE, 12).
+
+% default write chunk size of 4kb
+-define(WRITE_CHUNK_SIZE, 4096).
 
 
 -record(metadata, {aggregation, retention, xff, archives}).
@@ -79,8 +83,38 @@ create_inner(IO, Archives, Aggregation, XFF) ->
     AggValue = GetDefault(Aggregation, average),
     XFFValue = GetDefault(XFF, 0.5),
 
-    % TODO: actual archive/file creation
-    ok.
+    case validate_archives(Archives) of
+        {ok, ValidArchives} ->
+            % archives are valid; write the header now
+            NumArchives = length(ValidArchives),
+            InitialOffset = NumArchives * ?METADATA_ARCHIVE_HEADER_SIZE + ?METADATA_HEADER_SIZE,
+            {LastOffset, UpdArchives} = with_offsets(InitialOffset, ValidArchives),
+            MaxRetention = max_retention_archive(UpdArchives),
+            ok = file:write(IO, write_header(AggValue, MaxRetention, XFFValue, NumArchives)),
+            ok = write_archive_info(IO, UpdArchives),
+            write_empty_archives(IO, LastOffset - InitialOffset);
+        error -> error
+    end.
+
+
+write_empty_archives(_IO, 0) -> ok;
+write_empty_archives(IO, Bytes) ->
+    WriteBytes = min(Bytes, ?WRITE_CHUNK_SIZE),
+    WriteBits = WriteBytes * 8,
+    ok = file:write(IO, <<0:WriteBits>>),
+    write_empty_archives(IO, Bytes - WriteBytes).
+
+
+with_offsets(Offset, Archives) -> with_offsets(Offset, Archives, []).
+
+with_offsets(Offset, [], Res) -> {Offset, lists:reverse(Res)};
+with_offsets(Offset, [A | As], Res) ->
+    NewOffset = Offset + A#archive_header.size,
+    with_offsets(NewOffset, As, [A#archive_header{offset=Offset} | Res]).
+
+
+max_retention_archive(Archives) ->
+    lists:max(lists:map(fun(A) -> A#archive_header.retention end, Archives)).
 
 
 % validate specified archives against the following rules:
@@ -138,7 +172,6 @@ validate_archives(_, _) ->
     error.
 
 
-
 make_archive_header(Offset, Seconds, Points) ->
     #archive_header{offset=Offset,
                    seconds=Seconds,
@@ -162,6 +195,13 @@ read_archive_info(IO, As, Archives) ->
             read_archive_info(IO, [Archive | As], Archives - 1);
         _Error -> error
     end.
+
+
+write_archive_info(_IO, []) -> ok;
+write_archive_info(IO, [#archive_header{offset=Offset,seconds=Secs,points=Points} | As]) ->
+    Bytes = <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>,
+    ok = file:write(IO, Bytes),
+    write_archive_info(IO, As).
 
 
 read_header(<<AggType:32/unsigned-integer-big,
@@ -422,5 +462,29 @@ validate_archives_test_() ->
      % not enough points for consolidation
      ?_assertEqual(error, validate_archives([{10, 5}, {60, 3600}]))
     ].
+
+create_and_read_test_() ->
+    RunTest = fun(As) ->
+                      Fun = fun(File) ->
+                                    ok = create(File, As, average, 0.5),
+                                    read_metadata(File)
+                            end,
+                      {ok, Metadata} = with_tempfile(Fun),
+                      Archives = lists:map(fun(A) ->
+                                                   {A#archive_header.seconds, A#archive_header.points}
+                                           end, Metadata#metadata.archives),
+                      ?_assertEqual(As, Archives)
+              end,
+
+    [RunTest([{10, 60}]),
+     RunTest([{10, 60}, {60, 600}]),
+     RunTest([{10, 60}, {60, 600}, {3600, 168}])
+    ].
+
+with_tempfile(Fun) ->
+    TempFile = lib:nonl(os:cmd("mktemp")),
+    try Fun(TempFile)
+        after file:delete(TempFile)
+    end.
 
 -endif. % TEST
