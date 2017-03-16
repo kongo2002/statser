@@ -281,9 +281,12 @@ get_data_point_offset(Archive, Interval, BaseInterval) ->
 
 
 update_point(File, Value, TimeStamp) ->
-    {ok, IO} = file:open(File, [write, read, binary]),
-    try do_update(IO, Value, TimeStamp)
-        after file:close(IO)
+    case file:open(File, [write, read, binary]) of
+        {ok, IO} ->
+            try do_update(IO, Value, TimeStamp)
+                after file:close(IO)
+            end;
+        Error -> Error
     end.
 
 
