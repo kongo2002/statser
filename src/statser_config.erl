@@ -20,7 +20,8 @@ load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
 load_config(ConfigFile) ->
     try
         Docs = yamerl_constr:file(ConfigFile),
-        load_documents(Docs)
+        {_Storages, _Aggregations} = load_documents(Docs),
+        ok
     catch
         _ -> error
     end.
@@ -32,7 +33,7 @@ load_config(ConfigFile) ->
 
 
 load_documents([Document]) -> load_document(Document);
-load_documents([]) -> ok.
+load_documents([]) -> {[], []}.
 
 
 load_document(Doc) ->
@@ -41,7 +42,8 @@ load_document(Doc) ->
 
     Aggregations = load_aggregation(proplists:get_value("aggregation", Doc, [])),
     lager:info("loaded ~w aggregation definitions", [length(Aggregations)]),
-    ok.
+
+    {Storages, Aggregations}.
 
 
 load_storage(Ss) -> load_storage(Ss, []).
@@ -55,21 +57,23 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
 
     case {Pattern, Retentions} of
         {undefined, _} ->
-            lager:warning("skipping invalid storage definition '~w'", [Name]),
+            lager:warning("skipping invalid storage definition ~p", [Name]),
             load_storage(Ss, Acc);
         {_, []} ->
-            lager:warning("skipping invalid storage definition '~w'", [Name]),
+            lager:warning("skipping invalid storage definition ~p", [Name]),
             load_storage(Ss, Acc);
         {P, Rs} ->
             case re:compile(P, [no_auto_capture]) of
                 {ok, Regex} ->
+                    % TODO: parse and use retentions
                     New = #storage_definition{name=Name, pattern=Regex, retentions=[]},
                     load_storage(Ss, [New | Acc]);
                 {error, Err} ->
                     lager:warning("skipping invalid storage definition '~w': ~p", [Name, Err]),
                     load_storage(Ss, Acc)
             end
-    end.
+    end;
+load_storage(_Invalid, Acc) -> Acc.
 
 
 load_aggregation(As) -> load_aggregation(As, []).
@@ -99,7 +103,8 @@ load_aggregation([{Name, Elements} = Aggregation| As], Acc) ->
                     lager:warning("skipping invalid aggregation definition '~w': ~p", [Name, Err]),
                     load_aggregation(As, Acc)
             end
-    end.
+    end;
+load_aggregation(_Invalid, Acc) -> Acc.
 
 
 load_mapping(Key, Content, Default) when is_list(Content) ->
@@ -130,21 +135,23 @@ setup() ->
 
 
 load_from_string(Str, Func) ->
-    case yamerl_constr:string(Str) of
-        [] -> [];
-        [Doc] -> Func(Doc)
-    end.
+    Docs = yamerl_constr:string(Str),
+    Func(load_documents(Docs)).
 
 
 load_aggregation_from_string_test_() ->
+    GetAggregation = fun({_Storage, Aggs}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
-      ?_assertEqual([], load_from_string("", fun load_aggregation/1)),
-      ?_assertEqual([], load_from_string("storage:", fun load_aggregation/1)),
-      ?_assertEqual([], load_from_string("aggregation:", fun load_aggregation/1)),
-      ?_assertEqual([], load_from_string("foo:", fun load_aggregation/1)),
-      ?_assertEqual([], load_from_string("storage: invalid", fun load_aggregation/1)),
-      ?_assertEqual([], load_from_string("storage: 0", fun load_aggregation/1))
+      ?_assertEqual([], load_from_string("", GetAggregation)),
+      ?_assertEqual([], load_from_string("storage:", GetAggregation)),
+      ?_assertEqual([], load_from_string("aggregation:", GetAggregation)),
+      ?_assertEqual([], load_from_string("foo:", GetAggregation)),
+      ?_assertEqual([], load_from_string("storage: invalid", GetAggregation)),
+      ?_assertEqual([], load_from_string("storage: 0", GetAggregation)),
+      % simple aggregation definition(s)
+      ?_assertEqual(1, length(load_from_string(
+                                "aggregation:\n test:\n  pattern: sum$\n  aggregation: sum", GetAggregation)))
      ]}.
 
 
@@ -157,14 +164,18 @@ load_aggregate_from_file_test_() ->
 
 
 load_storage_from_string_test_() ->
+    GetStorage = fun({Storage, _Aggs}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
-      ?_assertEqual([], load_from_string("", fun load_storage/1)),
-      ?_assertEqual([], load_from_string("storage:", fun load_storage/1)),
-      ?_assertEqual([], load_from_string("aggregation:", fun load_storage/1)),
-      ?_assertEqual([], load_from_string("foo:", fun load_storage/1)),
-      ?_assertEqual([], load_from_string("storage: invalid", fun load_storage/1)),
-      ?_assertEqual([], load_from_string("storage: 0", fun load_storage/1))
+      ?_assertEqual([], load_from_string("", GetStorage)),
+      ?_assertEqual([], load_from_string("storage:", GetStorage)),
+      ?_assertEqual([], load_from_string("aggregation:", GetStorage)),
+      ?_assertEqual([], load_from_string("foo:", GetStorage)),
+      ?_assertEqual([], load_from_string("storage: invalid", GetStorage)),
+      ?_assertEqual([], load_from_string("storage: 0", GetStorage)),
+      % simple storage definition(s)
+      ?_assertEqual(1, length(load_from_string(
+                                "storage:\n test:\n  pattern: ^stats\n  retentions: ['10:60']", GetStorage)))
      ]}.
 
 
