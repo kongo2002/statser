@@ -12,13 +12,7 @@
 -define(WRITE_CHUNK_SIZE, 4096).
 
 
--record(metadata, {
-          aggregation :: average | sum | last | max | min | average_zero,
-          retention :: integer(),
-          xff :: float(),
-          archives :: [archive_header]
-         }).
-
+-type aggregation() :: average | sum | last | max | min | average_zero.
 
 -record(archive_header, {
           offset :: integer(),
@@ -26,3 +20,10 @@
           points :: integer(),
           retention :: integer(),
           size :: integer()}).
+
+-record(metadata, {
+          aggregation :: aggregation(),
+          retention :: integer(),
+          xff :: float(),
+          archives :: [#archive_header{}]
+         }).

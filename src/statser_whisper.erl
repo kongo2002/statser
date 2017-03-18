@@ -14,6 +14,7 @@
          update_point/3]).
 
 
+-spec aggregation_type(integer()) -> aggregation().
 aggregation_type(1) -> average;
 aggregation_type(2) -> sum;
 aggregation_type(3) -> last;
@@ -22,6 +23,7 @@ aggregation_type(5) -> min;
 aggregation_type(6) -> average_zero.
 
 
+-spec aggregation_value(aggregation()) -> integer().
 aggregation_value(average) -> 1;
 aggregation_value(sum) -> 2;
 aggregation_value(last) -> 3;
@@ -30,6 +32,7 @@ aggregation_value(min) -> 5;
 aggregation_value(average_zero) -> 6.
 
 
+-spec read_metadata(binary()) -> tuple().
 read_metadata(File) ->
     case file:open(File, [read, binary]) of
         {ok, IO} ->
@@ -60,11 +63,13 @@ read_metadata_inner(IO) ->
     end.
 
 
+-spec create(binary(), #metadata{}) -> {ok, #metadata{}}.
 create(File, #metadata{archives=As, aggregation=Agg, xff=XFF}) ->
-    Archives = lists:map(fun(A) -> {A#archive_header.seconds, A#archive_header.points} end),
+    Archives = lists:map(fun(A) -> {A#archive_header.seconds, A#archive_header.points} end, As),
     create(File, Archives, Agg, XFF).
 
 
+-spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #metadata{}}.
 create(File, Archives, Aggregation, XFF) ->
     {ok, IO} = file:open(File, [write, binary]),
     try create_inner(IO, Archives, Aggregation, XFF)
@@ -273,6 +278,7 @@ get_data_point_offset(Archive, Interval, BaseInterval) ->
     Archive#archive_header.offset + (mod(ByteDistance, Archive#archive_header.size)).
 
 
+-spec update_point(binary(), number(), integer()) -> tuple().
 update_point(File, Value, TimeStamp) ->
     case file:open(File, [write, read, binary]) of
         {ok, IO} ->
