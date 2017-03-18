@@ -19,6 +19,8 @@
          terminate/2,
          code_change/3]).
 
+-define(EPOCH_SECONDS_2000, 946681200).
+
 -record(state, {path, dirs, file, fspath, metadata}).
 
 %%%===================================================================
@@ -117,12 +119,15 @@ handle_cast(prepare, State) ->
 
     {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
 
+handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
+    lager:warning("received value ~w for '~p' for pre year 2000 - skipping value",
+                 [Value, State#state.path]),
+    {noreply, State};
+
 handle_cast({line, _, Value, TS} = Line, State) ->
     File = State#state.fspath,
 
     lager:debug("got line: ~w", [Line]),
-
-    % TODO: maybe check timestamp on 'potential' validity..?
 
     case statser_whisper:update_point(File, Value, TS) of
         {error, enoent} ->
