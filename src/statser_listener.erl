@@ -120,7 +120,7 @@ handle_info({tcp, _Sock, Data}, State) ->
     {noreply, State};
 
 handle_info({tcp_closed, Sock}, State) ->
-    lager:debug("socket ~w closed [~w]~n", [Sock, self()]),
+    lager:debug("socket ~w closed [~w]", [Sock, self()]),
 
     statser_sup:start_listener(),
     {stop, normal, State};

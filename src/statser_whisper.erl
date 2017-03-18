@@ -44,22 +44,44 @@ read_metadata(File) ->
 
 
 read_metadata_inner(IO) ->
-    case file:read(IO, ?METADATA_HEADER_SIZE) of
-        {ok, Header} ->
-            case read_header(Header) of
-                {ok, AggType, MaxRet, XFF, Archives} ->
-                    case read_archive_info(IO, Archives) of
-                        error -> error;
-                        As ->
-                            Metadata = #metadata{aggregation=AggType,
-                                                retention=MaxRet,
-                                                xff=XFF,
-                                                archives=As},
-                            {ok, Metadata}
-                    end;
-                error -> error
+    Read = file:read(IO, ?METADATA_HEADER_SIZE),
+    case read_header(Read) of
+        {ok, AggType, MaxRet, XFF, Archives} ->
+            case read_archive_info(IO, Archives) of
+                error -> error;
+                As -> {ok, #metadata{aggregation=AggType,
+                                     retention=MaxRet,
+                                     xff=XFF,
+                                     archives=As}}
             end;
-        Error -> Error
+        error -> error
+    end.
+
+
+read_header({ok, <<AggType:32/unsigned-integer-big,
+                   MaxRetention:32/unsigned-integer-big,
+                   XFF:32/float-big,
+                   NumArchives:32/integer-unsigned-big>>}) ->
+    {ok, aggregation_type(AggType), MaxRetention, XFF, NumArchives};
+read_header(_) -> error.
+
+
+read_archive_info(IO, Archives) ->
+    ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
+    case read_archive_info(IO, [], Archives) of
+        error -> error;
+        As -> lists:sort(ByOffset, As)
+    end.
+
+read_archive_info(_IO, As, 0) -> As;
+read_archive_info(IO, As, Archives) ->
+    case file:read(IO, ?METADATA_ARCHIVE_HEADER_SIZE) of
+        {ok, <<Offset:32/integer-unsigned-big,
+               Secs:32/integer-unsigned-big,
+               Points:32/integer-unsigned-big>>} ->
+            Archive = make_archive_header(Offset, Secs, Points),
+            read_archive_info(IO, [Archive | As], Archives - 1);
+        _Error -> error
     end.
 
 
@@ -185,36 +207,11 @@ make_archive_header(Offset, Seconds, Points) ->
                    size=Points * ?POINT_SIZE}.
 
 
-read_archive_info(IO, Archives) ->
-    ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
-    case read_archive_info(IO, [], Archives) of
-        error -> error;
-        As -> lists:sort(ByOffset, As)
-    end.
-
-read_archive_info(_IO, As, 0) -> As;
-read_archive_info(IO, As, Archives) ->
-    case file:read(IO, ?METADATA_ARCHIVE_HEADER_SIZE) of
-        {ok, <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>} ->
-            Archive = make_archive_header(Offset, Secs, Points),
-            read_archive_info(IO, [Archive | As], Archives - 1);
-        _Error -> error
-    end.
-
-
 write_archive_info(_IO, []) -> ok;
 write_archive_info(IO, [#archive_header{offset=Offset,seconds=Secs,points=Points} | As]) ->
     Bytes = <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>,
     ok = file:write(IO, Bytes),
     write_archive_info(IO, As).
-
-
-read_header(<<AggType:32/unsigned-integer-big,
-              MaxRetention:32/unsigned-integer-big,
-              XFF:32/float-big,
-              NumArchives:32/integer-unsigned-big>>) ->
-    {ok, aggregation_type(AggType), MaxRetention, XFF, NumArchives};
-read_header(_) -> error.
 
 
 write_header(AggType, MaxRetention, XFF, NumArchives) ->
@@ -356,7 +353,7 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
 
     {CollectedValues, NumPoints} = collect_series_values(Higher, LowerStart, Series),
 
-    lager:info("read series: ~p [~p points]", [CollectedValues, NumPoints]),
+    lager:debug("read series: ~p [~p points]", [CollectedValues, NumPoints]),
 
     WroteAggregate = write_propagated_values(IO, Header, Lower, LowerStart, CollectedValues, NumPoints),
     if
@@ -379,7 +376,7 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
         % we do have enough data points to calculate an aggregation
         KnownPercentage >= XFF ->
             AggValue = aggregate(AggType, Values, NumValues, NumPoints),
-            lager:info("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
+            lager:debug("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
             Point = data_point(LowerInterval, AggValue),
             {BaseInterval, _} = point_at(IO, Lower#archive_header.offset),
             Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),

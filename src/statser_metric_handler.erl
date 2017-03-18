@@ -51,7 +51,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([Path]) ->
-    lager:info("initializing metric handler for path ~p [~w]~n", [Path, self()]),
+    lager:info("initializing metric handler for path ~p [~w]", [Path, self()]),
 
     % let's try to register ourselves
     case ets:insert_new(metrics, {Path, self()}) of
