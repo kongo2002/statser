@@ -4,6 +4,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("statser.hrl").
+
 -behaviour(gen_server).
 
 %% API
@@ -98,22 +100,19 @@ handle_cast(prepare, State) ->
     lager:info("prepared path: ~p", [Path]),
 
     % now we make sure the file is created if not already
-    % TODO: read configuration regarding 'archives', 'aggregation' and 'xff'
-    Archives = [{10, 360}, {60, 1440}],
-    Aggregation = average,
-    XFF = 0.5,
-
     Metadata = case statser_whisper:read_metadata(Path) of
         {ok, M} -> M;
         {error, enoent} ->
             % TODO: rate limit archive creation
             lager:info("no archive existing for ~p - creating now", [State#state.path]),
-            statser_whisper:create(Path, Archives, Aggregation, XFF);
+            Config = load_initial_metadata(State#state.path),
+            statser_whisper:create(Path, Config);
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
             % TODO: rate limit archive creation
             lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
-            statser_whisper:create(Path, Archives, Aggregation, XFF)
+            Config = load_initial_metadata(State#state.path),
+            statser_whisper:create(Path, Config)
     end,
 
     {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
@@ -196,16 +195,27 @@ get_directory(Path) ->
             {ok, Dirs, File}
     end.
 
+
 to_file(Parts) ->
     F = fun(A, <<>>) -> <<A/binary>>;
            (A, B) -> <<A/binary, "/", B/binary>>
         end,
     lists:foldr(F, <<>>, Parts).
 
+
 prepare_file(Dirs, File) ->
     Path = to_file(Dirs ++ [File]),
     ok = filelib:ensure_dir(Path),
     Path.
+
+
+load_initial_metadata(_Path) ->
+    % TODO: read configuration regarding 'archives', 'aggregation' and 'xff'
+    Archives = [{10, 360}, {60, 1440}],
+    Aggregation = average,
+    XFF = 0.5,
+    #metadata{archives=Archives, aggregation=Aggregation, xff=XFF}.
+
 
 %%
 %% TESTS

@@ -4,30 +4,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("statser.hrl").
+
 -export([create/2,
          create/4,
          read_metadata/1,
          aggregation_type/1,
          aggregation_value/1,
          update_point/3]).
-
-
-% 16 bytes = 4 metadata fields x 4 bytes
--define(METADATA_HEADER_SIZE, 16).
-
-% 12 bytes = 3 archive header fields x 4 bytes
--define(METADATA_ARCHIVE_HEADER_SIZE, 12).
-
-% 12 bytes = 4 bytes (timestamp) + 8 bytes (value)
--define(POINT_SIZE, 12).
-
-% default write chunk size of 4kb
--define(WRITE_CHUNK_SIZE, 4096).
-
-
--record(metadata, {aggregation, retention, xff, archives}).
-
--record(archive_header, {offset, seconds, points, retention, size}).
 
 
 aggregation_type(1) -> average;
