@@ -159,7 +159,10 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    Path = State#state.path,
+    ets:delete(metrics, Path),
+    lager:info("terminating metric handler of '~p'", [Path]),
     ok.
 
 %%--------------------------------------------------------------------

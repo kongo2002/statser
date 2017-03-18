@@ -45,6 +45,8 @@ start_link(Socket) ->
 %% @end
 %%--------------------------------------------------------------------
 init(Socket) ->
+    lager:debug("starting new listener instance [~w]", [self()]),
+
     Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
 
     gen_server:cast(self(), accept),
