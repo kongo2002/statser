@@ -57,19 +57,22 @@ read_metadata(File) ->
 
 
 read_metadata_inner(IO) ->
-    {ok, Header} = file:read(IO, ?METADATA_HEADER_SIZE),
-    case read_header(Header) of
-        {ok, AggType, MaxRet, XFF, Archives} ->
-            case read_archive_info(IO, Archives) of
-                error -> error;
-                As ->
-                    Metadata = #metadata{aggregation=AggType,
-                                        retention=MaxRet,
-                                        xff=XFF,
-                                        archives=As},
-                    {ok, Metadata}
+    case file:read(IO, ?METADATA_HEADER_SIZE) of
+        {ok, Header} ->
+            case read_header(Header) of
+                {ok, AggType, MaxRet, XFF, Archives} ->
+                    case read_archive_info(IO, Archives) of
+                        error -> error;
+                        As ->
+                            Metadata = #metadata{aggregation=AggType,
+                                                retention=MaxRet,
+                                                xff=XFF,
+                                                archives=As},
+                            {ok, Metadata}
+                    end;
+                error -> error
             end;
-        error -> error
+        Error -> Error
     end.
 
 

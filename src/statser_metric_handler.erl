@@ -108,6 +108,11 @@ handle_cast(prepare, State) ->
         {error, enoent} ->
             % TODO: rate limit archive creation
             lager:info("no archive existing for ~p - creating now", [State#state.path]),
+            statser_whisper:create(Path, Archives, Aggregation, XFF);
+        UnexpectedError ->
+            lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
+            % TODO: rate limit archive creation
+            lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
             statser_whisper:create(Path, Archives, Aggregation, XFF)
     end,
 
