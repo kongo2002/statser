@@ -113,8 +113,22 @@ handle_cast(prepare, State) ->
 
     {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
 
-handle_cast({line, _, _, _} = Line, State) ->
+handle_cast({line, _, Value, TS} = Line, State) ->
+    File = State#state.fspath,
+
     lager:debug("got line: ~w", [Line]),
+
+    % TODO: maybe check timestamp on 'potential' validity..?
+
+    case statser_whisper:update_point(File, Value, TS) of
+        {error, enoent} ->
+            % TODO: rate limit archive creation
+            lager:info("no archive existing for ~p - creating now", [State#state.path]),
+
+            {ok, _M} = statser_whisper:create(File, State#state.metadata),
+            ok = statser_whisper:update_point(File, Value, TS);
+        ok -> ok
+    end,
 
     {noreply, State};
 

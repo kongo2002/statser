@@ -4,7 +4,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([create/4,
+-export([create/2,
+         create/4,
          read_metadata/1,
          aggregation_type/1,
          aggregation_value/1,
@@ -70,6 +71,11 @@ read_metadata_inner(IO) ->
             end;
         error -> error
     end.
+
+
+create(File, #metadata{archives=As, aggregation=Agg, xff=XFF}) ->
+    Archives = lists:map(fun(A) -> {A#archive_header.seconds, A#archive_header.points} end),
+    create(File, Archives, Agg, XFF).
 
 
 create(File, Archives, Aggregation, XFF) ->

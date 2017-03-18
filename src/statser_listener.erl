@@ -160,13 +160,22 @@ listen(Socket) ->
 
 process_line(Pattern, Data) ->
     case binary:split(Data, Pattern, [global, trim_all]) of
+        % usual graphite format: 'path value timestamp'
         [Path, ValueBS, TimeStampBS] ->
             {ok, Value} = to_number(ValueBS),
             {ok, TimeStamp} = to_epoch(TimeStampBS),
-            lager:debug("received ~w: ~w at ~w~n", [Path, Value, TimeStamp]),
+            lager:debug("received ~w: ~w at ~w", [Path, Value, TimeStamp]),
             {line, Path, Value, TimeStamp};
+
+        % graphite format w/o timestamp: 'path value'
+        [Path, ValueBS] ->
+            {ok, Value} = to_number(ValueBS),
+            TimeStamp = erlang:system_time(second),
+            lager:debug("received ~w: ~w at ~w (generated)", [Path, Value, TimeStamp]),
+            {line, Path, Value, TimeStamp};
+
         _Otherwise ->
-            lager:warn("invalid input received: ~w~n", [Data]),
+            lager:warn("invalid input received: ~w", [Data]),
             error
     end.
 
