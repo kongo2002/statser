@@ -15,7 +15,12 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
+    % logging
     lager:start(),
+
+    % yaml parsing
+    ok = application:ensure_started(yamerl),
+    ok = statser_config:load_config(),
 
     % initialize ets table
     % TODO: does this belong in here?
@@ -26,6 +31,7 @@ start(_StartType, _StartArgs) ->
 
 %%--------------------------------------------------------------------
 stop(_State) ->
+    lager:info("stopping statser application"),
     ok.
 
 %%====================================================================

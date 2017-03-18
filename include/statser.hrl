@@ -27,3 +27,22 @@
           xff :: float(),
           archives :: [#archive_header{}]
          }).
+
+-record(retention_definition, {
+          raw :: string(),
+          seconds :: integer(),
+          points :: integer()
+         }).
+
+-record(storage_definition, {
+          name :: nonempty_string(),
+          pattern :: tuple(),
+          retentions :: [#retention_definition{},...]
+         }).
+
+-record(aggregation_definition, {
+          name :: nonempty_string(),
+          pattern :: tuple(),
+          aggregation :: aggregation(),
+          factor :: float()
+         }).
