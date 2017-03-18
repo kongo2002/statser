@@ -6,14 +6,19 @@
 
 -include("statser.hrl").
 
--export([load_config/0]).
+-export([load_config/0,
+         load_config/1]).
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
 
 
 -spec load_config() -> ok | error.
-load_config() ->
-    Docs = yamerl_constr:file(?STATSER_DEFAULT_CONFIG),
+load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
+
+
+-spec load_config(string()) -> ok | error.
+load_config(ConfigFile) ->
+    Docs = yamerl_constr:file(ConfigFile),
     load_documents(Docs).
 
 
