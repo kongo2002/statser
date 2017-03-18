@@ -46,16 +46,20 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
 
     case {Pattern, Retentions} of
         {undefined, _} ->
-            lager:warning("skipping invalid storage definition '~p'", [Name]),
+            lager:warning("skipping invalid storage definition '~w'", [Name]),
             load_storage(Ss, Acc);
         {_, []} ->
-            lager:warning("skipping invalid storage definition '~p'", [Name]),
+            lager:warning("skipping invalid storage definition '~w'", [Name]),
             load_storage(Ss, Acc);
         {P, Rs} ->
-            % FIXME: cope with broken regex
-            {ok, Regex} = re:compile(P),
-            New = #storage_definition{name=Name, pattern=Regex, retentions=[]},
-            load_storage(Ss, [New | Acc])
+            case re:compile(P, [no_auto_capture]) of
+                {ok, Regex} ->
+                    New = #storage_definition{name=Name, pattern=Regex, retentions=[]},
+                    load_storage(Ss, [New | Acc]);
+                {error, Err} ->
+                    lager:warning("skipping invalid storage definition '~w': ~p", [Name, Err]),
+                    load_storage(Ss, Acc)
+            end
     end.
 
 
@@ -71,17 +75,21 @@ load_aggregation([{Name, Elements} = Aggregation| As], Acc) ->
 
     case Pattern of
         undefined ->
-            lager:warning("skipping invalid aggregation definition '~p'", [Name]),
+            lager:warning("skipping invalid aggregation definition '~w'", [Name]),
             load_aggregation(As, Acc);
         P ->
-            % FIXME: cope with broken regex
-            {ok, Regex} = re:compile(P),
-            ParsedAgg = parse_aggregation(Agg),
-            New = #aggregation_definition{name=Name,
-                                          pattern=Regex,
-                                          aggregation=ParsedAgg,
-                                          factor=Factor},
-            load_aggregation(As, [New | Acc])
+            case re:compile(P, [no_auto_capture]) of
+                {ok, Regex} ->
+                    ParsedAgg = parse_aggregation(Agg),
+                    New = #aggregation_definition{name=Name,
+                                                  pattern=Regex,
+                                                  aggregation=ParsedAgg,
+                                                  factor=Factor},
+                    load_aggregation(As, [New | Acc]);
+                {error, Err} ->
+                    lager:warning("skipping invalid aggregation definition '~w': ~p", [Name, Err]),
+                    load_aggregation(As, Acc)
+            end
     end.
 
 
