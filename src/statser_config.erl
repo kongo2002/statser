@@ -18,8 +18,12 @@ load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
 
 -spec load_config(string()) -> ok | error.
 load_config(ConfigFile) ->
-    Docs = yamerl_constr:file(ConfigFile),
-    load_documents(Docs).
+    try
+        Docs = yamerl_constr:file(ConfigFile),
+        load_documents(Docs)
+    catch
+        _ -> error
+    end.
 
 
 %%%===================================================================
@@ -28,7 +32,7 @@ load_config(ConfigFile) ->
 
 
 load_documents([Document]) -> load_document(Document);
-load_documents(_) -> error.
+load_documents([]) -> ok.
 
 
 load_document(Doc) ->
@@ -46,8 +50,8 @@ load_storage([], Acc) -> lists:reverse(Acc);
 load_storage([{Name, Elements} = Storage | Ss], Acc) ->
     lager:debug("found storage definition: ~p", [Storage]),
 
-    Pattern = proplists:get_value("pattern", Elements, undefined),
-    Retentions = proplists:get_value("retentions", Elements, []),
+    Pattern = load_mapping("pattern", Elements, undefined),
+    Retentions = load_mapping("retentions", Elements, []),
 
     case {Pattern, Retentions} of
         {undefined, _} ->
@@ -74,9 +78,9 @@ load_aggregation([], Acc) -> lists:reverse(Acc);
 load_aggregation([{Name, Elements} = Aggregation| As], Acc) ->
     lager:debug("found aggregation definition: ~p", [Aggregation]),
 
-    Pattern = proplists:get_value("pattern", Elements, undefined),
-    Agg = proplists:get_value("aggregation", Elements, []),
-    Factor = proplists:get_value("factor", Elements, 0.5),
+    Pattern = load_mapping("pattern", Elements, undefined),
+    Agg = load_mapping("aggregation", Elements, []),
+    Factor = load_mapping("factor", Elements, 0.5),
 
     case Pattern of
         undefined ->
@@ -98,6 +102,11 @@ load_aggregation([{Name, Elements} = Aggregation| As], Acc) ->
     end.
 
 
+load_mapping(Key, Content, Default) when is_list(Content) ->
+    proplists:get_value(Key, Content, Default);
+load_mapping(_Key, _Content, Default) -> Default.
+
+
 -spec parse_aggregation(string()) -> aggregation().
 parse_aggregation("average") -> average;
 parse_aggregation("sum") -> sum;
@@ -115,5 +124,56 @@ parse_aggregation(Unknown) ->
 %%%===================================================================
 
 -ifdef(TEST).
+
+setup() ->
+    application:start(yamerl).
+
+
+load_from_string(Str, Func) ->
+    case yamerl_constr:string(Str) of
+        [] -> [];
+        [Doc] -> Func(Doc)
+    end.
+
+
+load_aggregation_from_string_test_() ->
+    {setup, fun setup/0,
+     [% empty or stub configurations
+      ?_assertEqual([], load_from_string("", fun load_aggregation/1)),
+      ?_assertEqual([], load_from_string("storage:", fun load_aggregation/1)),
+      ?_assertEqual([], load_from_string("aggregation:", fun load_aggregation/1)),
+      ?_assertEqual([], load_from_string("foo:", fun load_aggregation/1)),
+      ?_assertEqual([], load_from_string("storage: invalid", fun load_aggregation/1)),
+      ?_assertEqual([], load_from_string("storage: 0", fun load_aggregation/1))
+     ]}.
+
+
+load_aggregate_from_file_test_() ->
+    {setup, fun setup/0,
+     [?_assertEqual(ok, load_config("test/examples/aggregation1.yaml")),
+      ?_assertEqual(ok, load_config("test/examples/aggregation2.yaml")),
+      ?_assertEqual(ok, load_config("test/examples/aggregation3.yaml"))
+     ]}.
+
+
+load_storage_from_string_test_() ->
+    {setup, fun setup/0,
+     [% empty or stub configurations
+      ?_assertEqual([], load_from_string("", fun load_storage/1)),
+      ?_assertEqual([], load_from_string("storage:", fun load_storage/1)),
+      ?_assertEqual([], load_from_string("aggregation:", fun load_storage/1)),
+      ?_assertEqual([], load_from_string("foo:", fun load_storage/1)),
+      ?_assertEqual([], load_from_string("storage: invalid", fun load_storage/1)),
+      ?_assertEqual([], load_from_string("storage: 0", fun load_storage/1))
+     ]}.
+
+
+load_storage_from_file_test_() ->
+    {setup, fun setup/0,
+     [?_assertEqual(ok, load_config("test/examples/storage1.yaml")),
+      ?_assertEqual(ok, load_config("test/examples/storage2.yaml")),
+      ?_assertEqual(ok, load_config("test/examples/storage3.yaml")),
+      ?_assertEqual(error, load_config("test/examples/does_not_exist.yaml"))
+     ]}.
 
 -endif. % TEST

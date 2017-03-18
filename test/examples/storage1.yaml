@@ -1,0 +1,14 @@
+storage:
+
+  stats:
+    pattern: ^stats\.
+    retentions:
+      - 10:1m
+      - 60:1d
+
+  carbon:
+    pattern: ^carbon\.
+    retentions:
+      - 60:30d
+
+# vim:set et sw=2 sts=2:

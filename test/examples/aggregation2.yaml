@@ -1,0 +1,5 @@
+aggregation:
+  min:
+    pattern: \.min$
+
+# vim:set et sw=2 sts=2:

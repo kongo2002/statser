@@ -1,0 +1,7 @@
+aggregation:
+
+  max:
+    pattern: \.max$
+    factor: 0.1
+
+# vim:set et sw=2 sts=2:

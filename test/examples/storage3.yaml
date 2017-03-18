@@ -1,0 +1,9 @@
+storage:
+
+  stats:
+    pattern: ^stats\.
+    retentions:
+      - 100
+      - something
+
+# vim:set et sw=2 sts=2:
