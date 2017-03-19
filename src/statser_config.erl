@@ -54,8 +54,9 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
 
     Pattern = load_mapping("pattern", Elements, undefined),
     Retentions = load_mapping("retentions", Elements, []),
+    ParsedRetentions = parse_retentions(Retentions),
 
-    case {Pattern, Retentions} of
+    case {Pattern, ParsedRetentions} of
         {undefined, _} ->
             lager:warning("skipping invalid storage definition ~p", [Name]),
             load_storage(Ss, Acc);
@@ -65,8 +66,7 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
         {P, Rs} ->
             case re:compile(P, [no_auto_capture]) of
                 {ok, Regex} ->
-                    % TODO: parse and use retentions
-                    New = #storage_definition{name=Name, pattern=Regex, retentions=[]},
+                    New = #storage_definition{name=Name, pattern=Regex, retentions=Rs},
                     load_storage(Ss, [New | Acc]);
                 {error, Err} ->
                     lager:warning("skipping invalid storage definition '~w': ~p", [Name, Err]),
@@ -74,6 +74,69 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
             end
     end;
 load_storage(_Invalid, Acc) -> Acc.
+
+
+parse_retentions(Rs) when is_list(Rs) -> parse_retentions(Rs, []);
+parse_retentions(_) -> [].
+
+parse_retentions([], Acc) -> Acc;
+parse_retentions([RawRetention | Rs], Acc) when is_list(RawRetention) ->
+    case string:tokens(RawRetention, ":") of
+        [SecStr, PointStr] ->
+            Duration = parse_duration(SecStr),
+            Retention = parse_duration(PointStr),
+
+            case {Duration, Retention} of
+                {{ok, D, DU}, {ok, R, default}} ->
+                    Definition = #retention_definition{raw=RawRetention, seconds=unit_to_seconds(D, DU), points=R},
+                    parse_retentions(Rs, [Definition | Acc]);
+                {{ok, D, DU}, {ok, R, RU}} ->
+                    Precision = unit_to_seconds(D, DU),
+                    RetPoints = unit_to_seconds(R, RU) div Precision,
+                    Definition = #retention_definition{raw=RawRetention, seconds=Precision, points=RetPoints},
+                    parse_retentions(Rs, [Definition | Acc]);
+                _Otherwise ->
+                    parse_retentions(Rs, Acc)
+            end;
+        Invalid ->
+            lager:warning("invalid retention string found ~p - expecting format '<precision>:<duration>'", [Invalid]),
+            parse_retentions(Rs, Acc)
+    end;
+parse_retentions([RawRetention | Rs], Acc) -> parse_retentions(Rs, Acc).
+
+
+parse_duration(Str) ->
+    case string:to_integer(Str) of
+        {error, _Reason} -> error;
+        {Value, Unit} when Value > 0 -> parse_unit(Value, Unit);
+        _Otherwise -> error
+    end.
+
+
+parse_unit(Value, []) -> {ok, Value, default};
+parse_unit(Value, [$s | _]) -> {ok, Value, seconds};
+parse_unit(Value, [$S | _]) -> {ok, Value, seconds};
+parse_unit(Value, [$m | _]) -> {ok, Value, minutes};
+parse_unit(Value, [$M | _]) -> {ok, Value, minutes};
+parse_unit(Value, [$h | _]) -> {ok, Value, hours};
+parse_unit(Value, [$H | _]) -> {ok, Value, hours};
+parse_unit(Value, [$d | _]) -> {ok, Value, days};
+parse_unit(Value, [$D | _]) -> {ok, Value, days };
+parse_unit(Value, [$w | _]) -> {ok, Value, weeks};
+parse_unit(Value, [$W | _]) -> {ok, Value, weeks};
+parse_unit(Value, [$y | _]) -> {ok, Value, years};
+parse_unit(Value, [$Y | _]) -> {ok, Value, years};
+parse_unit(_, _) -> error.
+
+
+-spec unit_to_seconds(integer(), duration_unit()) -> integer().
+unit_to_seconds(Value, default) -> Value;
+unit_to_seconds(Value, seconds) -> Value;
+unit_to_seconds(Value, minutes) -> Value * 60;
+unit_to_seconds(Value, hours) -> Value * 3600;
+unit_to_seconds(Value, days) -> Value * 86400;
+unit_to_seconds(Value, weeks) -> Value * 86400 * 7;
+unit_to_seconds(Value, years) -> Value * 86400 * 365.
 
 
 load_aggregation(As) -> load_aggregation(As, []).
@@ -186,5 +249,48 @@ load_storage_from_file_test_() ->
       ?_assertEqual(ok, load_config("test/examples/storage3.yaml")),
       ?_assertEqual(error, load_config("test/examples/does_not_exist.yaml"))
      ]}.
+
+
+parse_duration_test_() ->
+    [?_assertEqual({ok, 100, default}, parse_duration("100")),
+     ?_assertEqual({ok, 60, seconds}, parse_duration("60s")),
+     ?_assertEqual({ok, 1, minutes}, parse_duration("1m")),
+     ?_assertEqual({ok, 3, minutes}, parse_duration("3M")),
+     ?_assertEqual({ok, 2, hours}, parse_duration("2h")),
+     ?_assertEqual({ok, 1, hours}, parse_duration("1H")),
+     ?_assertEqual({ok, 1, days}, parse_duration("1d")),
+     ?_assertEqual({ok, 4, days}, parse_duration("4D")),
+     ?_assertEqual({ok, 2, minutes}, parse_duration("2m ")),
+     ?_assertEqual(error, parse_duration("")),
+     ?_assertEqual(error, parse_duration("foo")),
+     ?_assertEqual(error, parse_duration("0")),
+     ?_assertEqual(error, parse_duration("2345.4")),
+     ?_assertEqual(error, parse_duration("-3420")),
+     ?_assertEqual(error, parse_duration("-1d"))
+    ].
+
+
+parse_retentions_test_() ->
+    [?_assertEqual([#retention_definition{
+                       raw="10:600",
+                       seconds=10,
+                       points=600
+                      }], parse_retentions(["10:600"])),
+     ?_assertEqual([#retention_definition{
+                       raw="1m:1w",
+                       seconds=60,
+                       points=10080
+                      }], parse_retentions(["1m:1w"])),
+     ?_assertEqual([#retention_definition{
+                       raw="60:7D",
+                       seconds=60,
+                       points=10080
+                      }], parse_retentions(["60:7D"])),
+     ?_assertEqual([#retention_definition{
+                       raw="1h:1y",
+                       seconds=3600,
+                       points=8760
+                      }], parse_retentions(["1h:1y"]))
+    ].
 
 -endif. % TEST

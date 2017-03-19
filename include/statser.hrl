@@ -14,6 +14,8 @@
 
 -type aggregation() :: average | sum | last | max | min | average_zero.
 
+-type duration_unit() :: default | seconds | minutes | hours | days | weeks | years.
+
 -record(archive_header, {
           offset :: integer(),
           seconds :: integer(),
