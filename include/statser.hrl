@@ -23,7 +23,7 @@
           retention :: integer(),
           size :: integer()}).
 
--record(metadata, {
+-record(whisper_metadata, {
           aggregation :: aggregation(),
           retention :: integer(),
           xff :: float(),

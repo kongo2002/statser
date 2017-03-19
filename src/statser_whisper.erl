@@ -49,7 +49,7 @@ read_metadata_inner(IO) ->
         {ok, AggType, MaxRet, XFF, Archives} ->
             case read_archive_info(IO, Archives) of
                 error -> error;
-                As -> {ok, #metadata{aggregation=AggType,
+                As -> {ok, #whisper_metadata{aggregation=AggType,
                                      retention=MaxRet,
                                      xff=XFF,
                                      archives=As}}
@@ -85,13 +85,13 @@ read_archive_info(IO, As, Archives) ->
     end.
 
 
--spec create(binary(), #metadata{}) -> {ok, #metadata{}}.
-create(File, #metadata{archives=As, aggregation=Agg, xff=XFF}) ->
+-spec create(binary(), #whisper_metadata{}) -> {ok, #whisper_metadata{}}.
+create(File, #whisper_metadata{archives=As, aggregation=Agg, xff=XFF}) ->
     Archives = lists:map(fun(A) -> {A#archive_header.seconds, A#archive_header.points} end, As),
     create(File, Archives, Agg, XFF).
 
 
--spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #metadata{}}.
+-spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
 create(File, Archives, Aggregation, XFF) ->
     {ok, IO} = file:open(File, [write, binary]),
     try create_inner(IO, Archives, Aggregation, XFF)
@@ -116,7 +116,7 @@ create_inner(IO, Archives, Aggregation, XFF) ->
             ok = write_archive_info(IO, UpdArchives),
             ok = write_empty_archives(IO, LastOffset - InitialOffset),
 
-            {ok, #metadata{aggregation=AggValue,
+            {ok, #whisper_metadata{aggregation=AggValue,
                            retention=MaxRetention,
                            xff=XFFValue,
                            archives=UpdArchives}};
@@ -368,8 +368,8 @@ propagate_lower_archives(_, _, _, _, []) -> ok.
 
 
 write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
-    AggType = Header#metadata.aggregation,
-    XFF = Header#metadata.xff,
+    AggType = Header#whisper_metadata.aggregation,
+    XFF = Header#whisper_metadata.xff,
     NumValues = length(Values),
     KnownPercentage = NumValues / NumPoints,
     if
@@ -398,14 +398,14 @@ aggregate(average_zero, Values, _, NumPoints) -> lists:sum(Values) / NumPoints.
 write_point(IO, Header, Value, TimeStamp) ->
     Now = erlang:system_time(second),
     TimeDiff = Now - TimeStamp,
-    MaxRetention = Header#metadata.retention,
+    MaxRetention = Header#whisper_metadata.retention,
     if
         TimeDiff >= MaxRetention, TimeDiff < 0 ->
             lager:error("timestamp ~p is not covered by any archive of ~p", [TimeStamp, Header]),
             error;
         true ->
             % find highest precision and lower archives to update
-            {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#metadata.archives),
+            {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#whisper_metadata.archives),
 
             % read base data point
             {BaseInterval, _Value} = point_at(IO, Archive#archive_header.offset),
@@ -480,8 +480,8 @@ create_and_read_test_() ->
                       Extract = fun(A) ->
                                         {A#archive_header.seconds, A#archive_header.points}
                                 end,
-                      CArchives = lists:map(Extract, CreateM#metadata.archives),
-                      RArchives = lists:map(Extract, ReadM#metadata.archives),
+                      CArchives = lists:map(Extract, CreateM#whisper_metadata.archives),
+                      RArchives = lists:map(Extract, ReadM#whisper_metadata.archives),
 
                       [?_assertEqual(As, CArchives),
                        ?_assertEqual(As, RArchives),
