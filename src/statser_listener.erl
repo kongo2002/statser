@@ -91,7 +91,7 @@ handle_cast(accept, State) ->
     {ok, Router} = gen_server:start_link(statser_router, [], []),
 
     % trigger new listener
-    statser_sup:start_listener(),
+    statser_listeners_sup:start_listener(),
 
     {noreply, State#state{socket=Socket, router=Router}};
 
@@ -122,7 +122,7 @@ handle_info({tcp, _Sock, Data}, State) ->
 handle_info({tcp_closed, Sock}, State) ->
     lager:debug("socket ~w closed [~w]", [Sock, self()]),
 
-    statser_sup:start_listener(),
+    statser_listeners_sup:start_listener(),
     {stop, normal, State};
 
 handle_info(_Info, State) ->
