@@ -9,7 +9,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -34,8 +34,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Path) ->
+    gen_server:start_link(?MODULE, Path, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -52,7 +52,7 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Path]) ->
+init(Path) ->
     lager:info("initializing metric handler for path ~p [~w]", [Path, self()]),
 
     % let's try to register ourselves

@@ -128,10 +128,11 @@ code_change(_OldVsn, State, _Extra) ->
 dispatch({line, Path, _, _} = Line) ->
     Target = case ets:lookup(metrics, Path) of
         [] ->
-            case gen_server:start_link(statser_metric_handler, [Path], []) of
+            case statser_metrics_sup:start_handler(Path) of
                 {ok, Pid} ->
                     Pid;
-                {error, _Reason} ->
+                {error, Reason} ->
+                    lager:error("failed to start metric handler: ~p", [Reason]),
                     [{Path, Pid}] = ets:lookup(metrics, Path),
                     Pid
             end;

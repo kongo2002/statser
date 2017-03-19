@@ -1,21 +1,18 @@
 %%%-------------------------------------------------------------------
-%% @doc statser top level supervisor.
+%% @doc statser metrics handler supervisor.
 %% @end
 %%%-------------------------------------------------------------------
 
--module(statser_sup).
+-module(statser_metrics_sup).
 
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, start_handler/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
--define(CHILD(Id, Mod, Type, Args),
-        {Id, {Mod, start_link, Args},
-         permanent, 5000, Type, [Mod]}).
 
 %%%===================================================================
 %%% API functions
@@ -30,6 +27,11 @@
 %%--------------------------------------------------------------------
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+
+start_handler(Path) ->
+    supervisor:start_child(?MODULE, [Path]).
+
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -49,13 +51,10 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    lager:info("initial load of configuration"),
-    ok = statser_config:load_config(),
-
-    {ok, {{one_for_one, 5, 10},
-          [?CHILD(listeners, statser_listeners_sup, supervisor, []),
-           ?CHILD(metrics, statser_metrics_sup, supervisor, []),
-           ?CHILD(router, statser_router, worker, [])
+    {ok, {{simple_one_for_one, 60, 3600},
+          [{handler,
+           {statser_metric_handler, start_link, []},
+           temporary, 1000, worker, [statser_metric_handler]}
           ]}}.
 
 %%%===================================================================
