@@ -20,7 +20,6 @@ start(_StartType, _StartArgs) ->
 
     % yaml parsing
     ok = application:ensure_started(yamerl),
-    ok = statser_config:load_config(),
 
     % initialize ets table
     % TODO: does this belong in here?

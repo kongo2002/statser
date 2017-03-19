@@ -19,8 +19,15 @@ load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
 -spec load_config(string()) -> ok | error.
 load_config(ConfigFile) ->
     try
+        % load yaml
         Docs = yamerl_constr:file(ConfigFile),
-        {_Storages, _Aggregations} = load_documents(Docs),
+
+        % parse contents
+        {Storages, Aggregations} = load_documents(Docs),
+
+        % store into application environment
+        application:set_env(statser, storages, Storages),
+        application:set_env(statser, aggregations, Aggregations),
         ok
     catch
         _ -> error
@@ -106,7 +113,7 @@ parse_retentions([RawRetention | Rs], Acc) when is_list(RawRetention) ->
             lager:warning("invalid retention string found ~p - expecting format '<precision>:<duration>'", [Invalid]),
             parse_retentions(Rs, Acc)
     end;
-parse_retentions([RawRetention | Rs], Acc) ->
+parse_retentions([_RawRetention | Rs], Acc) ->
     lager:warning("retentions are expected to be a list"),
     parse_retentions(Rs, Acc).
 

@@ -29,6 +29,9 @@ init([]) ->
     NumListeners = application:get_env(listeners, statser, 20),
     Port = application:get_env(port, statser, 3000),
 
+    lager:info("initial load of configuration"),
+    ok = statser_config:load_config(),
+
     lager:info("start listening on port ~w", [Port]),
 
     % open listening socket
