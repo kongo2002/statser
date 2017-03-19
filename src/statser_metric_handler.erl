@@ -107,13 +107,13 @@ handle_cast(prepare, State) ->
         {error, enoent} ->
             % TODO: rate limit archive creation
             lager:info("no archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = load_initial_metadata(State#state.path),
+            {As, A, XFF} = statser_config:get_metadata(State#state.path),
             statser_whisper:create(Path, As, A, XFF);
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
             % TODO: rate limit archive creation
             lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = load_initial_metadata(State#state.path),
+            {As, A, XFF} = statser_config:get_metadata(State#state.path),
             statser_whisper:create(Path, As, A, XFF)
     end,
 
@@ -212,14 +212,6 @@ prepare_file(Dirs, File) ->
     Path = to_file(Dirs ++ [File]),
     ok = filelib:ensure_dir(Path),
     Path.
-
-
-load_initial_metadata(_Path) ->
-    % TODO: read configuration regarding 'archives', 'aggregation' and 'xff'
-    Archives = [{10, 360}, {60, 1440}],
-    Aggregation = average,
-    XFF = 0.5,
-    {Archives, Aggregation, XFF}.
 
 
 %%

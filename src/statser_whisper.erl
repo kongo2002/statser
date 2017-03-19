@@ -50,9 +50,9 @@ read_metadata_inner(IO) ->
             case read_archive_info(IO, Archives) of
                 error -> error;
                 As -> {ok, #whisper_metadata{aggregation=AggType,
-                                     retention=MaxRet,
-                                     xff=XFF,
-                                     archives=As}}
+                                             retention=MaxRet,
+                                             xff=XFF,
+                                             archives=As}}
             end;
         error -> error
     end.
@@ -117,9 +117,9 @@ create_inner(IO, Archives, Aggregation, XFF) ->
             ok = write_empty_archives(IO, LastOffset - InitialOffset),
 
             {ok, #whisper_metadata{aggregation=AggValue,
-                           retention=MaxRetention,
-                           xff=XFFValue,
-                           archives=UpdArchives}};
+                                   retention=MaxRetention,
+                                   xff=XFFValue,
+                                   archives=UpdArchives}};
         error -> error
     end.
 

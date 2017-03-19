@@ -7,9 +7,20 @@
 -include("statser.hrl").
 
 -export([load_config/0,
-         load_config/1]).
+         load_config/1,
+         get_metadata/1]).
+
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
+
+-define(FALLBACK_RETENTIONS, [#retention_definition{raw="1m:1d",
+                                                    seconds=60,
+                                                    points=1440}]).
+
+-define(FALLBACK_STORAGE, #storage_definition{retentions=?FALLBACK_RETENTIONS}).
+
+-define(FALLBACK_AGGREGATION, #aggregation_definition{aggregation=average,
+                                                      factor=0.5}).
 
 
 -spec load_config() -> ok | error.
@@ -30,9 +41,46 @@ load_config(ConfigFile) ->
     end.
 
 
+get_metadata(Path) ->
+    Storages = application:get_env(statser, storages, []),
+    StorDefinition = first_storage(Path, Storages),
+
+    Aggregations = application:get_env(statser, aggregations, []),
+    AggDefinition = first_aggregation(Path, Aggregations),
+
+    Retentions = lists:map(fun (#retention_definition{seconds=S, points=P}) -> {S, P} end,
+                           StorDefinition#storage_definition.retentions),
+
+    Aggregation = AggDefinition#aggregation_definition.aggregation,
+    XFF = AggDefinition#aggregation_definition.factor,
+
+    % not sure if we should return the whole 'definition' structures instead
+    {Retentions, Aggregation, XFF}.
+
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+first_or_fallback(_GetPattern, Fallback, _Path, []) -> Fallback;
+first_or_fallback(GetPattern, Fallback, Path, [C | Cs]) ->
+    Pattern = GetPattern(C),
+    case re:run(Path, Pattern) of
+        match -> C;
+        {match, _} -> C;
+        _Otherwise -> first_or_fallback(GetPattern, Fallback, Path, Cs)
+    end.
+
+
+first_storage(Path, Candidates) ->
+    GetPattern = fun (S) -> S#storage_definition.pattern end,
+    first_or_fallback(GetPattern, ?FALLBACK_STORAGE, Path, Candidates).
+
+
+first_aggregation(Path, Candidates) ->
+    GetPattern = fun (S) -> S#aggregation_definition.pattern end,
+    first_or_fallback(GetPattern, ?FALLBACK_AGGREGATION, Path, Candidates).
+
 
 -ifdef(TEST).
 
