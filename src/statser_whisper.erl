@@ -67,7 +67,7 @@ read_header(_) -> error.
 
 
 read_archive_info(IO, Archives) ->
-    ByOffset = fun(A, B) -> A#archive_header.offset =< B#archive_header.offset end,
+    ByOffset = fun(A, B) -> A#whisper_archive.offset =< B#whisper_archive.offset end,
     case read_archive_info(IO, [], Archives) of
         error -> error;
         As -> lists:sort(ByOffset, As)
@@ -87,7 +87,7 @@ read_archive_info(IO, As, Archives) ->
 
 -spec create(binary(), #whisper_metadata{}) -> {ok, #whisper_metadata{}}.
 create(File, #whisper_metadata{archives=As, aggregation=Agg, xff=XFF}) ->
-    Archives = lists:map(fun(A) -> {A#archive_header.seconds, A#archive_header.points} end, As),
+    Archives = lists:map(fun(A) -> {A#whisper_archive.seconds, A#whisper_archive.points} end, As),
     create(File, Archives, Agg, XFF).
 
 
@@ -136,12 +136,12 @@ with_offsets(Offset, Archives) -> with_offsets(Offset, Archives, []).
 
 with_offsets(Offset, [], Res) -> {Offset, lists:reverse(Res)};
 with_offsets(Offset, [A | As], Res) ->
-    NewOffset = Offset + A#archive_header.size,
-    with_offsets(NewOffset, As, [A#archive_header{offset=Offset} | Res]).
+    NewOffset = Offset + A#whisper_archive.size,
+    with_offsets(NewOffset, As, [A#whisper_archive{offset=Offset} | Res]).
 
 
 max_retention_archive(Archives) ->
-    lists:max(lists:map(fun(A) -> A#archive_header.retention end, Archives)).
+    lists:max(lists:map(fun(A) -> A#whisper_archive.retention end, Archives)).
 
 
 % validate specified archives against the following rules:
@@ -158,7 +158,7 @@ validate_archives(Archives) ->
             lager:error("invalid archives: no valid archive format found"),
             error;
         As ->
-            ByPrecision = fun(A, B) -> A#archive_header.seconds =< B#archive_header.seconds end,
+            ByPrecision = fun(A, B) -> A#whisper_archive.seconds =< B#whisper_archive.seconds end,
             [S | Ss] = Sorted = lists:sort(ByPrecision, As),
             case validate(S, Ss) of
                 true -> {ok, Sorted};
@@ -167,14 +167,14 @@ validate_archives(Archives) ->
     end.
 
 validate(Higher, [Lower | Ls]) ->
-    EvenlyDivide = Lower#archive_header.seconds rem Higher#archive_header.seconds == 0,
+    EvenlyDivide = Lower#whisper_archive.seconds rem Higher#whisper_archive.seconds == 0,
 
-    HighRetention = Higher#archive_header.retention,
-    LowerRetention = Lower#archive_header.retention,
+    HighRetention = Higher#whisper_archive.retention,
+    LowerRetention = Lower#whisper_archive.retention,
     RetentionIsCovered = LowerRetention > HighRetention,
 
-    PointsPerConsolidation = Lower#archive_header.seconds div Higher#archive_header.seconds,
-    EnoughPointsToConsolidate = Higher#archive_header.points >= PointsPerConsolidation,
+    PointsPerConsolidation = Lower#whisper_archive.seconds div Higher#whisper_archive.seconds,
+    EnoughPointsToConsolidate = Higher#whisper_archive.points >= PointsPerConsolidation,
 
     case EvenlyDivide and RetentionIsCovered and EnoughPointsToConsolidate of
         true -> validate(Lower, Ls);
@@ -185,7 +185,7 @@ validate(_, []) -> true.
 
 validate_archives([{Seconds, Points} | As], Res) when Seconds > 0 andalso Points > 0 ->
     Archive = make_archive_header(0, Seconds, Points),
-    PrecisionExists = fun(A) -> A#archive_header.seconds == Seconds end,
+    PrecisionExists = fun(A) -> A#whisper_archive.seconds == Seconds end,
     case lists:any(PrecisionExists, Res) of
         true ->
             lager:error("invalid archive: archive with precision of ~p seconds already exists", [Seconds]),
@@ -200,15 +200,15 @@ validate_archives(_, _) ->
 
 
 make_archive_header(Offset, Seconds, Points) ->
-    #archive_header{offset=Offset,
-                   seconds=Seconds,
-                   points=Points,
-                   retention=Seconds * Points,
-                   size=Points * ?POINT_SIZE}.
+    #whisper_archive{offset=Offset,
+                     seconds=Seconds,
+                     points=Points,
+                     retention=Seconds * Points,
+                     size=Points * ?POINT_SIZE}.
 
 
 write_archive_info(_IO, []) -> ok;
-write_archive_info(IO, [#archive_header{offset=Offset,seconds=Secs,points=Points} | As]) ->
+write_archive_info(IO, [#whisper_archive{offset=Offset,seconds=Secs,points=Points} | As]) ->
     Bytes = <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>,
     ok = file:write(IO, Bytes),
     write_archive_info(IO, As).
@@ -226,7 +226,7 @@ write_header(AggType, MaxRetention, XFF, NumArchives) ->
       NumArchives:32/integer-unsigned-big>>.
 
 
-highest_precision_archive(TimeDiff, [#archive_header{retention=Ret} | As]) when Ret < TimeDiff ->
+highest_precision_archive(TimeDiff, [#whisper_archive{retention=Ret} | As]) when Ret < TimeDiff ->
     highest_precision_archive(TimeDiff, As);
 highest_precision_archive(_TimeDiff, [A | As]) -> {A, As};
 highest_precision_archive(_TimeDiff, []) -> error.
@@ -265,14 +265,14 @@ mod(A, B) -> A rem B.
 get_data_point_offset(Archive, _Interval, 0) ->
     % no data point was written to this archive yet
     % start at the initial offset for that reason
-    Archive#archive_header.offset;
+    Archive#whisper_archive.offset;
 get_data_point_offset(Archive, Interval, BaseInterval) ->
     % the archive contains data already, that's why we
     % calculate the relative offset/distance to this 'BaseInterval'
     Distance = Interval - BaseInterval,
-    PointDistance = Distance div Archive#archive_header.seconds,
+    PointDistance = Distance div Archive#whisper_archive.seconds,
     ByteDistance = PointDistance * ?POINT_SIZE,
-    Archive#archive_header.offset + (mod(ByteDistance, Archive#archive_header.size)).
+    Archive#whisper_archive.offset + (mod(ByteDistance, Archive#whisper_archive.size)).
 
 
 -spec update_point(binary(), number(), integer()) -> tuple().
@@ -292,10 +292,10 @@ do_update(IO, Value, TimeStamp) ->
 
 
 interval_start(Archive, TimeStamp) ->
-    TimeStamp - (TimeStamp rem Archive#archive_header.seconds).
+    TimeStamp - (TimeStamp rem Archive#whisper_archive.seconds).
 
 
-collect_series_values(#archive_header{seconds=Step}, Interval, Values) ->
+collect_series_values(#whisper_archive{seconds=Step}, Interval, Values) ->
     collect_series_values(Step, Interval, Values, [], 0).
 
 collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc, Seen) ->
@@ -313,20 +313,20 @@ collect_series_values(_Step, _Interval, <<>>, Res, Seen) -> {Res, Seen}.
 
 
 propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
-    LowerSeconds = Lower#archive_header.seconds,
+    LowerSeconds = Lower#whisper_archive.seconds,
     LowerStart = interval_start(Lower, TimeStamp),
 
     % read higher point
     % XXX: might be passed in already?
-    HighOffset = Higher#archive_header.offset,
+    HighOffset = Higher#whisper_archive.offset,
     {HighInterval, _} = point_at(IO, HighOffset),
     HighFirstOffset = get_data_point_offset(Higher, LowerStart, HighInterval),
 
-    HigherSeconds = Higher#archive_header.seconds,
+    HigherSeconds = Higher#whisper_archive.seconds,
     HigherPointsPerLower = LowerSeconds div HigherSeconds,
     HigherSize = HigherPointsPerLower * ?POINT_SIZE,
     RelativeFirstOffset = HighFirstOffset - HighOffset,
-    RelativeLastOffset = mod(RelativeFirstOffset + HigherSize, Higher#archive_header.size),
+    RelativeLastOffset = mod(RelativeFirstOffset + HigherSize, Higher#whisper_archive.size),
     HigherLastOffset = RelativeLastOffset + HighOffset,
 
     {ok, _} = file:position(IO, {bof, HighFirstOffset}),
@@ -344,7 +344,7 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
         % that's why we read until the end of the archive first, followed by the
         % remaining number of required aggregate points from the beginning of the archive
         true ->
-            HigherEnd = HighOffset + Higher#archive_header.size,
+            HigherEnd = HighOffset + Higher#whisper_archive.size,
             {ok, FstSeries} = file:read(IO, HigherEnd - HighFirstOffset),
             {ok, _} = file:position(IO, {bof, HighOffset}),
             {ok, LstSeries} = file:read(IO, HigherLastOffset - HighOffset),
@@ -378,7 +378,7 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
             AggValue = aggregate(AggType, Values, NumValues, NumPoints),
             lager:debug("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
             Point = data_point(LowerInterval, AggValue),
-            {BaseInterval, _} = point_at(IO, Lower#archive_header.offset),
+            {BaseInterval, _} = point_at(IO, Lower#whisper_archive.offset),
             Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
             ok = write_at(IO, Point, Offset),
             true;
@@ -408,7 +408,7 @@ write_point(IO, Header, Value, TimeStamp) ->
             {Archive, LowerArchives} = highest_precision_archive(TimeDiff, Header#whisper_metadata.archives),
 
             % read base data point
-            {BaseInterval, _Value} = point_at(IO, Archive#archive_header.offset),
+            {BaseInterval, _Value} = point_at(IO, Archive#whisper_archive.offset),
             Position = get_data_point_offset(Archive, TimeStamp, BaseInterval),
 
             % write data point based on initial data point
@@ -478,7 +478,7 @@ create_and_read_test_() ->
                             end,
                       {ok, CreateM, ReadM} = with_tempfile(Fun),
                       Extract = fun(A) ->
-                                        {A#archive_header.seconds, A#archive_header.points}
+                                        {A#whisper_archive.seconds, A#whisper_archive.points}
                                 end,
                       CArchives = lists:map(Extract, CreateM#whisper_metadata.archives),
                       RArchives = lists:map(Extract, ReadM#whisper_metadata.archives),

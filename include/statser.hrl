@@ -16,7 +16,7 @@
 
 -type duration_unit() :: default | seconds | minutes | hours | days | weeks | years.
 
--record(archive_header, {
+-record(whisper_archive, {
           offset :: integer(),
           seconds :: integer(),
           points :: integer(),
@@ -27,7 +27,7 @@
           aggregation :: aggregation(),
           retention :: integer(),
           xff :: float(),
-          archives :: [#archive_header{}]
+          archives :: [#whisper_archive{}]
          }).
 
 -record(retention_definition, {
