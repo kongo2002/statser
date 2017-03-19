@@ -87,22 +87,28 @@ parse_retentions([RawRetention | Rs], Acc) when is_list(RawRetention) ->
             Retention = parse_duration(PointStr),
 
             case {Duration, Retention} of
+                % here the retention is specified as 'number of data points'
                 {{ok, D, DU}, {ok, R, default}} ->
                     Definition = #retention_definition{raw=RawRetention, seconds=unit_to_seconds(D, DU), points=R},
                     parse_retentions(Rs, [Definition | Acc]);
+                % whereas in here it's given in a duration format (i.e. '7d')
+                % that's why we have to calculate towards the number of data points
                 {{ok, D, DU}, {ok, R, RU}} ->
                     Precision = unit_to_seconds(D, DU),
                     RetPoints = unit_to_seconds(R, RU) div Precision,
                     Definition = #retention_definition{raw=RawRetention, seconds=Precision, points=RetPoints},
                     parse_retentions(Rs, [Definition | Acc]);
                 _Otherwise ->
+                    lager:warning("skipping invalid retention definition: ~p", [RawRetention]),
                     parse_retentions(Rs, Acc)
             end;
         Invalid ->
             lager:warning("invalid retention string found ~p - expecting format '<precision>:<duration>'", [Invalid]),
             parse_retentions(Rs, Acc)
     end;
-parse_retentions([RawRetention | Rs], Acc) -> parse_retentions(Rs, Acc).
+parse_retentions([RawRetention | Rs], Acc) ->
+    lager:warning("retentions are expected to be a list"),
+    parse_retentions(Rs, Acc).
 
 
 parse_duration(Str) ->
