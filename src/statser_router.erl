@@ -46,6 +46,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     lager:debug("starting router instance ~p", [self()]),
+
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -76,6 +77,10 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({line, _Path, _Val, _TS} = Line, State) ->
+    dispatch(Line),
+    {noreply, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -89,10 +94,6 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({line, _Path, _Val, _TS} = Line, State) ->
-    dispatch(Line),
-    {noreply, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 

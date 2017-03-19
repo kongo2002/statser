@@ -24,11 +24,7 @@ load_config(ConfigFile) ->
 
         % parse contents
         {Storages, Aggregations} = load_documents(Docs),
-
-        % store into application environment
-        application:set_env(statser, storages, Storages),
-        application:set_env(statser, aggregations, Aggregations),
-        ok
+        update(Storages, Aggregations)
     catch
         _ -> error
     end.
@@ -37,6 +33,20 @@ load_config(ConfigFile) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-ifdef(TEST).
+
+update(_Storages, _Aggregations) -> ok.
+
+-else.
+
+update(Storages, Aggregations) ->
+    % store into application environment
+    application:set_env(statser, storages, Storages),
+    application:set_env(statser, aggregations, Aggregations),
+    ok.
+
+-endif. % TEST
 
 
 load_documents([Document]) -> load_document(Document);

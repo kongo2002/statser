@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {socket, pattern, router}).
+-record(state, {socket, pattern}).
 
 %%%===================================================================
 %%% API
@@ -87,13 +87,10 @@ handle_cast(accept, State) ->
 
     listen(Socket),
 
-    % start router instance for this connection
-    {ok, Router} = gen_server:start_link(statser_router, [], []),
-
     % trigger new listener
     statser_listeners_sup:start_listener(),
 
-    {noreply, State#state{socket=Socket, router=Router}};
+    {noreply, State#state{socket=Socket}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -110,10 +107,8 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({tcp, _Sock, Data}, State) ->
     case process_line(State#state.pattern, Data) of
-        error ->
-            ok;
-        Line ->
-            State#state.router ! Line
+        error -> ok;
+        Line -> gen_server:cast(statser_router, Line)
     end,
 
     listen(State#state.socket),

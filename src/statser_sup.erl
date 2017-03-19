@@ -52,6 +52,11 @@ init([]) ->
     lager:info("initial load of configuration"),
     ok = statser_config:load_config(),
 
+    % initialize ets table
+    % TODO: does this belong in here?
+    % TODO: investigate into 'read_concurrency'
+    ets:new(metrics, [set, named_table, public]),
+
     {ok, {{one_for_one, 5, 10},
           [?CHILD(listeners, statser_listeners_sup, supervisor, []),
            ?CHILD(metrics, statser_metrics_sup, supervisor, []),

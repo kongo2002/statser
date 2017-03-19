@@ -21,11 +21,6 @@ start(_StartType, _StartArgs) ->
     % yaml parsing
     ok = application:ensure_started(yamerl),
 
-    % initialize ets table
-    % TODO: does this belong in here?
-    % TODO: investigate into 'read_concurrency'
-    ets:new(metrics, [set, named_table, public]),
-
     statser_sup:start_link().
 
 %%--------------------------------------------------------------------
