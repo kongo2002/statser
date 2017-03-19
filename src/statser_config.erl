@@ -17,9 +17,11 @@
                                                     seconds=60,
                                                     points=1440}]).
 
--define(FALLBACK_STORAGE, #storage_definition{retentions=?FALLBACK_RETENTIONS}).
+-define(FALLBACK_STORAGE, #storage_definition{name="fallback",
+                                              retentions=?FALLBACK_RETENTIONS}).
 
--define(FALLBACK_AGGREGATION, #aggregation_definition{aggregation=average,
+-define(FALLBACK_AGGREGATION, #aggregation_definition{name="fallback",
+                                                      aggregation=average,
                                                       factor=0.5}).
 
 
@@ -48,14 +50,7 @@ get_metadata(Path) ->
     Aggregations = application:get_env(statser, aggregations, []),
     AggDefinition = first_aggregation(Path, Aggregations),
 
-    Retentions = lists:map(fun (#retention_definition{seconds=S, points=P}) -> {S, P} end,
-                           StorDefinition#storage_definition.retentions),
-
-    Aggregation = AggDefinition#aggregation_definition.aggregation,
-    XFF = AggDefinition#aggregation_definition.factor,
-
-    % not sure if we should return the whole 'definition' structures instead
-    {Retentions, Aggregation, XFF}.
+    {StorDefinition, AggDefinition}.
 
 
 %%%===================================================================
