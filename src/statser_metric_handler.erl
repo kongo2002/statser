@@ -108,13 +108,15 @@ handle_cast(prepare, State) ->
             % TODO: rate limit archive creation
             lager:info("no archive existing for ~p - creating now", [State#state.path]),
             {As, A, XFF} = get_creation_metadata(State#state.path),
-            statser_whisper:create(Path, As, A, XFF);
+            {ok, _M} = statser_whisper:create(Path, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>);
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
             % TODO: rate limit archive creation
             lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
             {As, A, XFF} = get_creation_metadata(State#state.path),
-            statser_whisper:create(Path, As, A, XFF)
+            {ok, _M} = statser_whisper:create(Path, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>)
     end,
 
     {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
@@ -135,8 +137,11 @@ handle_cast({line, _, Value, TS} = Line, State) ->
             lager:info("no archive existing for ~p - creating now", [State#state.path]),
 
             {ok, _M} = statser_whisper:create(File, State#state.metadata),
-            ok = statser_whisper:update_point(File, Value, TS);
-        ok -> ok
+            statser_instrumentation:increment(<<"creates">>),
+            ok = statser_whisper:update_point(File, Value, TS),
+            statser_instrumentation:increment(<<"committed-points">>);
+        ok ->
+            statser_instrumentation:increment(<<"committed-points">>)
     end,
 
     {noreply, State};

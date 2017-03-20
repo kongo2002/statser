@@ -127,7 +127,8 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(update_metrics, State) ->
-    lager:debug("instrumentation: handle metrics update"),
+    Metrics = State#state.metrics,
+    lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
     {noreply, State};
 

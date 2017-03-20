@@ -108,7 +108,9 @@ handle_cast(_Msg, State) ->
 handle_info({tcp, _Sock, Data}, State) ->
     case process_line(State#state.pattern, Data) of
         error -> ok;
-        Line -> gen_server:cast(statser_router, Line)
+        Line ->
+            gen_server:cast(statser_router, Line),
+            statser_instrumentation:increment(<<"metrics-received">>)
     end,
 
     listen(State#state.socket),
