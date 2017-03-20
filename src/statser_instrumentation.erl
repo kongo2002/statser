@@ -20,7 +20,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, timer}).
+-record(state, {metrics, path, timer}).
 
 %%%===================================================================
 %%% API
@@ -97,13 +97,18 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(prepare, State) ->
+    % TODO: sanitize hostname
+    {ok, Hostname} = inet:gethostname(),
+    HostnameBS = list_to_binary(Hostname),
+    Path = <<"statser.instrumentation.", HostnameBS/binary, ".">>,
+
     % TODO: determine interval from configuration
     Interval = 60 * 1000,
 
     lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),
 
     {ok, Timer} = timer:send_interval(Interval, update_metrics),
-    {noreply, State#state{timer=Timer}};
+    {noreply, State#state{path=Path, timer=Timer}};
 
 handle_cast({increment, Key, Amount}, State) ->
     Map = increment_metrics(Key, Amount, State#state.metrics),
@@ -127,8 +132,15 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(update_metrics, State) ->
+    Now = erlang:system_time(second),
+    Path = State#state.path,
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
+
+    % TODO: handle list values as well
+    lists:foreach(fun ({K, V}) when is_number(V) -> publish(K, V, Now, Path);
+                      (_) -> ok
+                  end, maps:to_list(Metrics)),
 
     {noreply, State};
 
@@ -166,6 +178,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+publish(Key, Value, TS, Path) ->
+    Metric = <<Path/binary, Key/binary>>,
+    gen_server:cast(statser_router, {line, Metric, Value, TS}).
+
 
 increment_metrics(Key, Amount, Map) when is_number(Amount) ->
     Update = fun(Value) when is_number(Value) -> Value + Amount;
