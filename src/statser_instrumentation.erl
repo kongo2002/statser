@@ -1,9 +1,16 @@
--module(statser_router).
+-module(statser_instrumentation).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         increment/1,
+         increment/2,
+         append/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -13,7 +20,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
+-record(state, {metrics, timer}).
 
 %%%===================================================================
 %%% API
@@ -28,6 +35,17 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+
+increment(Key) -> increment(Key, 1).
+
+increment(Key, Amount) ->
+    gen_server:cast(?MODULE, {increment, Key, Amount}).
+
+
+append(Key, Value) ->
+    gen_server:cast(?MODULE, {append, Key, Value}).
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -45,9 +63,10 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    lager:debug("starting router instance at ~p", [self()]),
+    lager:info("starting instrumentation service at ~p", [self()]),
+    gen_server:cast(self(), prepare),
 
-    {ok, #state{}}.
+    {ok, #state{metrics=maps:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -77,9 +96,22 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({line, _Path, _Val, _TS} = Line, State) ->
-    dispatch(Line),
-    {noreply, State};
+handle_cast(prepare, State) ->
+    % TODO: determine interval from configuration
+    Interval = 60 * 1000,
+
+    lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),
+
+    {ok, Timer} = timer:send_interval(Interval, update_metrics),
+    {noreply, State#state{timer=Timer}};
+
+handle_cast({increment, Key, Amount}, State) ->
+    Map = increment_metrics(Key, Amount, State#state.metrics),
+    {noreply, State#state{metrics=Map}};
+
+handle_cast({append, Key, Value}, State) ->
+    Map = append_metrics(Key, Value, State#state.metrics),
+    {noreply, State#state{metrics=Map}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -94,7 +126,13 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info(update_metrics, State) ->
+    lager:debug("instrumentation: handle metrics update"),
+
+    {noreply, State};
+
+handle_info(Info, State) ->
+    lager:warning("instrumentation: unhandled message ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -108,7 +146,9 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{timer=Timer}) ->
+    lager:info("terminating instrumentation service"),
+    timer:cancel(Timer),
     ok.
 
 %%--------------------------------------------------------------------
@@ -126,18 +166,40 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-dispatch({line, Path, _, _} = Line) ->
-    Target = case ets:lookup(metrics, Path) of
-        [] ->
-            case statser_metrics_sup:start_handler(Path) of
-                {ok, Pid} ->
-                    Pid;
-                {error, Reason} ->
-                    lager:error("failed to start metric handler: ~p", [Reason]),
-                    [{Path, Pid}] = ets:lookup(metrics, Path),
-                    Pid
-            end;
-        [{Path, Pid}] ->
-            Pid
-    end,
-    gen_server:cast(Target, Line).
+increment_metrics(Key, Amount, Map) when is_number(Amount) ->
+    Update = fun(Value) when is_number(Value) -> Value + Amount;
+                (Value) -> Value end,
+    maps:update_with(Key, Update, Amount, Map);
+increment_metrics(_Key, _Amount, Map) -> Map.
+
+
+append_metrics(Key, Value, Map) when is_number(Value) ->
+    Update = fun(Values) when is_list(Values) -> [Value | Values];
+                (Values) -> Values end,
+    maps:update_with(Key, Update, [Value], Map);
+append_metrics(_Key, _Value, Map) -> Map.
+
+
+%%%===================================================================
+%%% Tests
+%%%===================================================================
+
+-ifdef(TEST).
+
+increment_metrics_test_() ->
+    [?_assertEqual(#{"foo" => 1}, increment_metrics("foo", 1, #{})),
+     ?_assertEqual(#{"foo" => 36}, increment_metrics("foo", 2, #{"foo" => 34})),
+     ?_assertEqual(#{"foo" => 20, "bar" => 25}, increment_metrics("foo", 10, #{"bar" => 25, "foo" => 10})),
+     ?_assertEqual(#{"bar" => 25}, increment_metrics("foo", none, #{"bar" => 25}))
+    ].
+
+
+append_metrics_test_() ->
+    [?_assertEqual(#{"foo" => [1]}, append_metrics("foo", 1, #{})),
+     ?_assertEqual(#{"foo" => [2, 1]}, append_metrics("foo", 2, #{"foo" => [1]})),
+     ?_assertEqual(#{"foo" => [8, 1], "bar" => 34}, append_metrics("foo", 8, #{"foo" => [1], "bar" => 34})),
+     ?_assertEqual(#{"foo" => 9}, append_metrics("foo", 9, #{"foo" => 9}))
+    ].
+
+
+-endif. % TEST

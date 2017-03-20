@@ -60,7 +60,8 @@ init([]) ->
     {ok, {{one_for_one, 5, 10},
           [?CHILD(listeners, statser_listeners_sup, supervisor, []),
            ?CHILD(metrics, statser_metrics_sup, supervisor, []),
-           ?CHILD(router, statser_router, worker, [])
+           ?CHILD(router, statser_router, worker, []),
+           ?CHILD(instrumentation, statser_instrumentation, worker, [])
           ]}}.
 
 %%%===================================================================
