@@ -21,7 +21,7 @@
 
 -define(EPOCH_SECONDS_2000, 946681200).
 
--record(state, {path, dirs, file, fspath, metadata}).
+-record(state, {path, dirs, file, fspath, metadata, cache=[]}).
 
 %%%===================================================================
 %%% API
@@ -110,21 +110,34 @@ handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
                  [Value, State#state.path]),
     {noreply, State};
 
-handle_cast({line, Path, Value, TS} = Line, State) ->
+handle_cast({line, _Path, Value, TS}, State) ->
     File = State#state.fspath,
 
     case statser_whisper:update_point(File, Value, TS) of
         ok ->
-            statser_instrumentation:increment(<<"committed-points">>);
+            statser_instrumentation:increment(<<"committed-points">>),
+            {noreply, State};
         _Error ->
             % archive is not existing (yet)
             % so dispatch a creation via rate-limiter
+            gen_server:cast(create_limiter, {drain, create, self()}),
+            NewState = cache_point(Value, TS, State),
+            {noreply, NewState}
+    end;
 
-            % TODO: stash point and process after creation
-            gen_server:cast(create_limiter, {drain, create, self()})
-    end,
+handle_cast(flush_cache, State) ->
+    case State#state.cache of
+        [] -> {noreply, State};
+        Cs ->
+            lager:info("flushing metric cache of ~p (~w entries)",
+                       [State#state.path, length(Cs)]),
 
-    {noreply, State};
+            % TODO: in here we could introduce some kind of bulk write
+            %       instead of writing every cached point separately
+            File = State#state.fspath,
+            lists:foreach(fun({V, TS}) -> statser_whisper:update_point(File, V, TS) end, Cs),
+            {noreply, State#state{cache=[]}}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -158,6 +171,8 @@ handle_info(create, State) ->
             statser_instrumentation:increment(<<"creates">>),
             M
     end,
+
+    gen_server:cast(self(), flush_cache),
     {noreply, State#state{metadata=Metadata}};
 
 handle_info(_Info, State) ->
@@ -234,6 +249,11 @@ get_creation_metadata(Path) ->
 
     {RetValues, Agg, XFF}.
 
+
+cache_point(Value, TS, State) ->
+    % TODO: sort by timestamp?
+    Cache = State#state.cache,
+    State#state{cache=[{Value, TS} | Cache]}.
 
 %%
 %% TESTS
