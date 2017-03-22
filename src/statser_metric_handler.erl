@@ -126,10 +126,10 @@ handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
                  [Value, State#state.path]),
     {noreply, State};
 
-handle_cast({line, _, Value, TS} = Line, State) ->
+handle_cast({line, Path, Value, TS} = Line, State) ->
     File = State#state.fspath,
 
-    lager:debug("got line: ~w", [Line]),
+    lager:debug("received ~p ~w ~w", [Path, Value, TS]),
 
     case statser_whisper:update_point(File, Value, TS) of
         {error, enoent} ->

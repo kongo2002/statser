@@ -160,7 +160,7 @@ handle_info(Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{timer=Timer}) ->
-    lager:info("terminating instrumentation service"),
+    lager:info("terminating instrumentation service at ~w", [self()]),
     timer:cancel(Timer),
     ok.
 
