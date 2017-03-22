@@ -59,6 +59,8 @@ init(Path) ->
     case ets:insert_new(metrics, {Path, self()}) of
         true ->
             % we could register ourself, let's continue
+            % TODO: not quite sure of this additional `prepare` step
+            %       we could do that in here as well...
             gen_server:cast(self(), prepare),
             {ok, #state{path=Path}};
         false ->
@@ -101,25 +103,7 @@ handle_cast(prepare, State) ->
     Path = prepare_file(Dirs, File),
     lager:info("prepared path: ~p", [Path]),
 
-    % now we make sure the file is created if not already
-    Metadata = case statser_whisper:read_metadata(Path) of
-        {ok, M} -> M;
-        {error, enoent} ->
-            % TODO: rate limit archive creation
-            lager:info("no archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = get_creation_metadata(State#state.path),
-            {ok, _M} = statser_whisper:create(Path, As, A, XFF),
-            statser_instrumentation:increment(<<"creates">>);
-        UnexpectedError ->
-            lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
-            % TODO: rate limit archive creation
-            lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = get_creation_metadata(State#state.path),
-            {ok, _M} = statser_whisper:create(Path, As, A, XFF),
-            statser_instrumentation:increment(<<"creates">>)
-    end,
-
-    {noreply, State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}};
+    {noreply, State#state{dirs=Dirs, file=File, fspath=Path}};
 
 handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
     lager:warning("received value ~w for '~p' for pre year 2000 - skipping value",
@@ -129,19 +113,15 @@ handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
 handle_cast({line, Path, Value, TS} = Line, State) ->
     File = State#state.fspath,
 
-    lager:debug("received ~p ~w ~w", [Path, Value, TS]),
-
     case statser_whisper:update_point(File, Value, TS) of
-        {error, enoent} ->
-            % TODO: rate limit archive creation
-            lager:info("no archive existing for ~p - creating now", [State#state.path]),
-
-            {ok, _M} = statser_whisper:create(File, State#state.metadata),
-            statser_instrumentation:increment(<<"creates">>),
-            ok = statser_whisper:update_point(File, Value, TS),
-            statser_instrumentation:increment(<<"committed-points">>);
         ok ->
-            statser_instrumentation:increment(<<"committed-points">>)
+            statser_instrumentation:increment(<<"committed-points">>);
+        _Error ->
+            % archive is not existing (yet)
+            % so dispatch a creation via rate-limiter
+
+            % TODO: stash point and process after creation
+            gen_server:cast(create_limiter, {drain, create, self()})
     end,
 
     {noreply, State};
@@ -159,6 +139,27 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(create, State) ->
+    % now we make sure the file is created if not already
+    Path = State#state.fspath,
+    Metadata = case statser_whisper:read_metadata(Path) of
+        {ok, M} -> M;
+        {error, enoent} ->
+            lager:info("no archive existing for ~p - creating now", [State#state.path]),
+            {As, A, XFF} = get_creation_metadata(State#state.path),
+            {ok, M} = statser_whisper:create(Path, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>),
+            M;
+        UnexpectedError ->
+            lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
+            lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
+            {As, A, XFF} = get_creation_metadata(State#state.path),
+            {ok, M} = statser_whisper:create(Path, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>),
+            M
+    end,
+    {noreply, State#state{metadata=Metadata}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 

@@ -287,8 +287,11 @@ update_point(File, Value, TimeStamp) ->
 
 
 do_update(IO, Value, TimeStamp) ->
-    {ok, Metadata} = read_metadata_inner(IO),
-    write_point(IO, Metadata, Value, TimeStamp).
+    case read_metadata_inner(IO) of
+        {ok, Metadata} ->
+            write_point(IO, Metadata, Value, TimeStamp);
+        error -> error
+    end.
 
 
 interval_start(Archive, TimeStamp) ->

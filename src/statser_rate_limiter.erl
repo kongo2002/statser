@@ -26,8 +26,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Limit, Name) ->
-    gen_server:start_link(?MODULE, [Limit, Name], []).
+start_link(Type, Name) ->
+    gen_server:start_link({local, Type}, ?MODULE, [Type, Name], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -44,10 +44,16 @@ start_link(Limit, Name) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Limit, Name]) ->
+init([Type, Name]) ->
+    % TODO: get from config based on `Type`
+    Limit = 50,
+
+    lager:info("starting rate limiter [~w] with limit ~w/sec", [Type, Limit]),
+
     % the rate limiter is per-second based
     % that's why we will refill the capacity once every second
     {ok, Timer} = timer:send_interval(1000, refill),
+
     {ok, #state{limit=Limit, remaining=Limit, timer=Timer, name=Name}}.
 
 %%--------------------------------------------------------------------

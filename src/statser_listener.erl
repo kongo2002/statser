@@ -163,6 +163,7 @@ process_line(Pattern, Data) ->
         [Path, ValueBS, TimeStampBS] ->
             {ok, Value} = to_number(ValueBS),
             {ok, TimeStamp} = to_epoch(TimeStampBS),
+            lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]),
             {line, Path, Value, TimeStamp};
 
         % graphite format w/o timestamp: 'path value'

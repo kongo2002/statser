@@ -61,7 +61,10 @@ init([]) ->
           [?CHILD(listeners, statser_listeners_sup, supervisor, []),
            ?CHILD(metrics, statser_metrics_sup, supervisor, []),
            ?CHILD(router, statser_router, worker, []),
-           ?CHILD(instrumentation, statser_instrumentation, worker, [])
+           ?CHILD(instrumentation, statser_instrumentation, worker, []),
+           % rate limiters
+           ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
+           ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>])
           ]}}.
 
 %%%===================================================================
