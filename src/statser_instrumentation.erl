@@ -138,11 +138,13 @@ handle_info(update_metrics, State) ->
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
     % TODO: handle list values as well
-    lists:foreach(fun ({K, V}) when is_number(V) -> publish(K, V, Now, Path);
-                      (_) -> ok
-                  end, maps:to_list(Metrics)),
+    UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
+                                 publish(K, V, Now, Path),
+                                 maps:put(K, 0, Map);
+                            (_K, _V, Map) -> Map
+                         end, Metrics, Metrics),
 
-    {noreply, State};
+    {noreply, State#state{metrics=UpdatedM}};
 
 handle_info(Info, State) ->
     lager:warning("instrumentation: unhandled message ~p", [Info]),

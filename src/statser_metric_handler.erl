@@ -135,7 +135,10 @@ handle_cast(flush_cache, State) ->
             % TODO: in here we could introduce some kind of bulk write
             %       instead of writing every cached point separately
             File = State#state.fspath,
-            lists:foreach(fun({V, TS}) -> statser_whisper:update_point(File, V, TS) end, Cs),
+            lists:foreach(fun({V, TS}) ->
+                                  ok = statser_whisper:update_point(File, V, TS),
+                                  statser_instrumentation:increment(<<"committed-points">>)
+                          end, Cs),
             {noreply, State#state{cache=[]}}
     end;
 
