@@ -1,6 +1,8 @@
 
 # statser
 
+[![build status](https://api.travis-ci.org/kongo2002/statser.svg)][travis]
+
 This project is supposed to *become* a more-or-less drop-in replacement for
 [graphite][graphite].
 
@@ -88,3 +90,4 @@ my roadmap (somewhere) below.
 [rebar3]: https://www.rebar3.org/
 [graphite]: https://graphiteapp.org/
 [grafana]: https://grafana.com/
+[travis]: https://travis-ci.org/kongo2002/statser/
