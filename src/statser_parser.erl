@@ -50,7 +50,7 @@ end
 
 -spec 'arguments'(input(), index()) -> parse_result().
 'arguments'(Input, Index) ->
-  p(Input, Index, 'arguments', fun(I,D) -> (p_seq([p_label('head', fun 'argument'/2), p_label('tail', p_zero_or_more(p_seq([fun 'spaces'/2, fun 'comma'/2, fun 'spaces'/2, fun 'argument'/2])))]))(I,D) end, fun(Node, _Idx) ->
+  p(Input, Index, 'arguments', fun(I,D) -> (p_seq([p_label('head', fun 'argument'/2), p_label('tail', p_zero_or_more(p_seq([fun 'spaces'/2, fun 'comma'/2, fun 'spaces'/2, fun 'argument'/2, fun 'spaces'/2])))]))(I,D) end, fun(Node, _Idx) ->
 Head = proplists:get_value(head, Node),
 Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
@@ -58,7 +58,7 @@ Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 
 -spec 'argument'(input(), index()) -> parse_result().
 'argument'(Input, Index) ->
-  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'path'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
+  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
 
 -spec 'paths'(input(), index()) -> parse_result().
 'paths'(Input, Index) ->

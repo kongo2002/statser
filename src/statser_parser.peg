@@ -14,13 +14,13 @@ function <- alphanum '(' arguments ')'
 `
 [Fctn, P1, Args, P2] = Node, {call, iolist_to_binary(Fctn), Args}
 `;
-arguments <- head:argument tail:( spaces comma spaces argument )*
+arguments <- head:argument tail:( spaces comma spaces argument spaces )*
 `
 Head = proplists:get_value(head, Node),
 Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
 `;
-argument <- number / bool / path;
+argument <- number / bool / paths;
 
 paths <- path `{paths, Node}`;
 path <- head:path_elem tail:( dot path_elem )*
