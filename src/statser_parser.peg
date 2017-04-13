@@ -1,4 +1,15 @@
+root <- template / expr;
+
+template <- 'template(' expr spaces (',' spaces arguments )? spaces ')'
+`
+case Node of
+    [_, Expr, _, [], _, _] -> {template, Expr, []};
+    [_, Expr, _, [_, _, Args], _, _] -> {template, Expr, Args}
+end
+`;
+
 expr <- function / paths;
+
 function <- alphanum '(' arguments ')'
 `
 [Fctn, P1, Args, P2] = Node, {call, iolist_to_binary(Fctn), Args}

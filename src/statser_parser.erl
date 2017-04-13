@@ -19,11 +19,24 @@ file(Filename) -> case file:read_file(Filename) of {ok,Bin} -> parse(Bin); Err -
 parse(List) when is_list(List) -> parse(unicode:characters_to_binary(List));
 parse(Input) when is_binary(Input) ->
   _ = setup_memo(),
-  Result = case 'expr'(Input,{{line,1},{column,1}}) of
+  Result = case 'root'(Input,{{line,1},{column,1}}) of
              {AST, <<>>, _Index} -> AST;
              Any -> Any
            end,
   release_memo(), Result.
+
+-spec 'root'(input(), index()) -> parse_result().
+'root'(Input, Index) ->
+  p(Input, Index, 'root', fun(I,D) -> (p_choose([fun 'template'/2, fun 'expr'/2]))(I,D) end, fun(Node, Idx) ->transform('root', Node, Idx) end).
+
+-spec 'template'(input(), index()) -> parse_result().
+'template'(Input, Index) ->
+  p(Input, Index, 'template', fun(I,D) -> (p_seq([p_string(<<"template(">>), fun 'expr'/2, fun 'spaces'/2, p_optional(p_seq([p_string(<<",">>), fun 'spaces'/2, fun 'arguments'/2])), fun 'spaces'/2, p_string(<<")">>)]))(I,D) end, fun(Node, _Idx) ->
+case Node of
+    [_, Expr, _, [], _, _] -> {template, Expr, []};
+    [_, Expr, _, [_, _, Args], _, _] -> {template, Expr, Args}
+end
+ end).
 
 -spec 'expr'(input(), index()) -> parse_result().
 'expr'(Input, Index) ->
