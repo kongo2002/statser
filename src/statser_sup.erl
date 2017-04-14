@@ -57,6 +57,10 @@ init([]) ->
     % TODO: investigate into 'read_concurrency'
     ets:new(metrics, [set, named_table, public]),
 
+    ApiPort = application:get_env(api_port, statser, 8080),
+
+    lager:info("start listening for API requests on port ~w", [ApiPort]),
+
     {ok, {{one_for_one, 5, 10},
           [?CHILD(listeners, statser_listeners_sup, supervisor, []),
            ?CHILD(metrics, statser_metrics_sup, supervisor, []),
@@ -64,7 +68,9 @@ init([]) ->
            ?CHILD(instrumentation, statser_instrumentation, worker, []),
            % rate limiters
            ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
-           ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>])
+           ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>]),
+           % API
+           ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
           ]}}.
 
 %%%===================================================================

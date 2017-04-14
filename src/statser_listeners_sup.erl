@@ -27,13 +27,13 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     NumListeners = application:get_env(listeners, statser, 20),
-    Port = application:get_env(port, statser, 2003),
+    MetricsPort = application:get_env(metrics_port, statser, 2003),
 
-    lager:info("start listening on port ~w", [Port]),
+    lager:info("start listening for metrics on port ~w", [MetricsPort]),
 
     % open listening socket
     ListenParams = [{active, false}, binary, {packet, line}],
-    {ok, ListenSocket} = gen_tcp:listen(Port, ListenParams),
+    {ok, ListenSocket} = gen_tcp:listen(MetricsPort, ListenParams),
 
     % spawn initial pool of listeners
     spawn_link(?MODULE, initial_listeners, [NumListeners]),
