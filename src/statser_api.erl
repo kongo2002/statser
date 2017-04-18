@@ -12,8 +12,10 @@ handle(Req, _Args) ->
 handle('POST', [<<"render">> | _], Req) ->
     Args = elli_request:post_args_decoded(Req),
     Targets = many_by_key(<<"target">>, Args),
-    From = get_by_key(<<"from">>, Args),
-    Until = get_by_key(<<"until">>, Args),
+    % 'from' defaults to -24 h
+    From = get_or_fallback(<<"from">>, Args, <<"-1d">>),
+    % 'until' defaults to now
+    Until = get_or_fallback(<<"until">>, Args, <<"now">>),
     MaxPoints = get_or_fallback(<<"maxDataPoints">>, Args, 366),
 
     handle_render(Targets, From, Until, MaxPoints);
