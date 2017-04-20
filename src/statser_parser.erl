@@ -27,7 +27,7 @@ parse(Input) when is_binary(Input) ->
 
 -spec 'root'(input(), index()) -> parse_result().
 'root'(Input, Index) ->
-  p(Input, Index, 'root', fun(I,D) -> (p_choose([fun 'template'/2, fun 'expr'/2]))(I,D) end, fun(Node, Idx) ->transform('root', Node, Idx) end).
+  p(Input, Index, 'root', fun(I,D) -> (p_choose([fun 'template'/2, fun 'function'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('root', Node, Idx) end).
 
 -spec 'template'(input(), index()) -> parse_result().
 'template'(Input, Index) ->

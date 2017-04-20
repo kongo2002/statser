@@ -1,4 +1,4 @@
-root <- template / expr;
+root <- template / function / paths;
 
 template <- 'template(' expr spaces (',' spaces arguments )? spaces ')'
 `

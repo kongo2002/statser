@@ -43,8 +43,35 @@ handle_render(_Targets, false, _Until, _MaxPoints) ->
 handle_render(_Targets, _From, false, _MaxPoints) ->
     {400, [], <<"no 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
-    lager:debug("render request ~p [~p - ~p] [~w]", [Targets, From, Until, MaxPoints]),
+    Processed = lists:map(fun(Target) -> process_target(Target, From, Until, MaxPoints) end, Targets),
     {ok, [], <<"not implemented yet">>}.
+
+
+process_target(Target, From, Until, MaxPoints) ->
+    lager:debug("render request for target ~p [~p - ~p] [~w]", [Target, From, Until, MaxPoints]),
+    Parsed = statser_parser:parse(Target),
+    Parameters = {From, Until, MaxPoints},
+    process(Parsed, Parameters).
+
+
+process({paths, Paths}, Params) -> process_paths(Paths, Params);
+process({call, Fctn, Args}, Params) -> process_function(Fctn, Args, Params);
+process({template, Expr, Args}, Params) -> process_template(Expr, Args, Params);
+process(Invalid, _Params) ->
+    lager:error("failed to parse target expression: ~p", [Invalid]),
+    error.
+
+
+process_paths(Paths, {From, Until, MaxPoints} = Params) ->
+    [{0, 0}].
+
+
+process_function(Fctn, Args, {From, Until, MaxPoints} = Params) ->
+    [{0, 0}].
+
+
+process_template(Expr, Args, {From, Until, MaxPoints} = Params) ->
+    [{0, 0}].
 
 
 many_by_key(Key, List) ->
@@ -56,10 +83,9 @@ many_by_key(Key, [{Key, Value} | Rest], Acc) ->
 many_by_key(Key, [_Otherwise | Rest], Acc) ->
     many_by_key(Key, Rest, Acc).
 
+
 get_or_fallback(Key, List, Default) ->
     case lists:keyfind(Key, 1, List) of
         false -> Default;
         {Key, Value} -> Value
     end.
-
-get_by_key(Key, List) -> get_or_fallback(Key, List, false).
