@@ -17,8 +17,14 @@ handle('POST', [<<"render">> | _], Req) ->
     % 'until' defaults to now
     Until = get_or_fallback(<<"until">>, Args, <<"now">>),
     MaxPoints = get_or_fallback(<<"maxDataPoints">>, Args, 366),
+    Format = get_or_fallback(<<"format">>, Args, <<"json">>),
 
-    handle_render(Targets, From, Until, MaxPoints);
+    case Format of
+        <<"json">> ->
+            handle_render(Targets, From, Until, MaxPoints);
+        Unsupported ->
+            {400, [], <<"unsupported format '", Unsupported/binary, "'">>}
+    end;
 
 handle(_, _, _Req) ->
     {404, [], <<"not found">>}.
