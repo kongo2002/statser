@@ -58,10 +58,11 @@ handle_metrics(Request) ->
     Query = elli_request:get_arg_decoded(<<"query">>, Request, <<"*">>),
     case statser_parser:parse(Query) of
         {paths, Path} ->
-            lager:debug("handle metrics query: ~p ~p", [Query, Path]),
-            Metrics = statser_finder:find_metrics(Path),
-            lists:foreach(fun(M) -> lager:debug("found metrics path: ~p", [M]) end, Metrics),
-            {ok, [], <<"not implemented yet">>};
+            lager:debug("handle metrics query: ~p", [Query]),
+            Metrics0 = statser_finder:find_metrics(Path),
+            Metrics = {[{<<"metrics">>, Metrics0}]},
+            Formatted = format(Metrics, json),
+            {ok, [], Formatted};
         _Invalid ->
             lager:warning("invalid metrics query: ~p", [Query]),
             {400, [], <<"invalid query specified">>}
@@ -121,3 +122,8 @@ get_or_fallback(Key, List, Default) ->
         false -> Default;
         {Key, Value} -> Value
     end.
+
+
+format(Output, _Format) ->
+    % XXX: support multiple output formats?
+    jiffy:encode(Output).

@@ -13,14 +13,36 @@ find_metrics(Parts) ->
 
 
 find_metrics([FilePart], Cwd) ->
-    Files = glob_whispers(FilePart, full_dir(Cwd)),
     MetricsPath = tl(Cwd),
-    lists:map(fun(F) -> MetricsPath ++ [F] end, Files);
+    Files0 = glob_whispers(FilePart, full_dir(Cwd)),
+    Files = lists:map(fun(F) -> to_file(MetricsPath, F) end, Files0),
+    Dirs0 = glob_dirs(FilePart, full_dir(Cwd)),
+    Dirs = lists:map(fun(D) -> to_dir(MetricsPath, D) end, Dirs0),
+    Files ++ Dirs;
 
 find_metrics([DirPart | Rest], Cwd) ->
     DirCandidates = glob_dirs(DirPart, full_dir(Cwd)),
     Descend = fun(Dir) -> find_metrics(Rest, Cwd ++ [Dir]) end,
     lists:flatmap(Descend, DirCandidates).
+
+
+to_file(Path, File) ->
+    to_node(Path, File, true).
+
+
+to_dir(Path, Dir) ->
+    to_node(Path, Dir, false).
+
+
+to_node(Path, Node, IsLeaf) ->
+    {[{<<"is_leaf">>, IsLeaf},
+      {<<"name">>, list_to_binary(Node)},
+      % XXX: trailing dot on branches?
+      {<<"path">>, to_path(Path ++ [Node])}]}.
+
+
+to_path(Path) ->
+    list_to_binary(string:join(Path, ".")).
 
 
 glob_dirs(Dir, Cwd) when is_binary(Dir) ->
