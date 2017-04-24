@@ -78,11 +78,11 @@ my roadmap (somewhere) below.
 ### TODO
 
 * throttling of metrics updates (flushed to disk)
-* JSON API of `graphite-web`
-    - I want to support the pure data point API (I don't know what it's called
-      for real) only: **no image generation**
-    - this is a *huge* list for sure - I will try to start with the most
-      common/basic ones and go from there I guess
+* render and metrics API of `graphite-web`
+    - I want to support the JSON output of the render API only: **no image
+      generation**
+    - it is a *huge* list of functions for sure - I will try to start with the
+      most common/basic ones and go from there I guess
 * configurable amount of caching (see above)
 * investigate into more elaborate archive write optimization
 
