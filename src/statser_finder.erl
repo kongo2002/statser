@@ -14,7 +14,8 @@ find_metrics(Parts) ->
 
 find_metrics([FilePart], Cwd) ->
     Files = glob_whispers(FilePart, full_dir(Cwd)),
-    lists:map(fun(F) -> Cwd ++ [F] end, Files);
+    MetricsPath = tl(Cwd),
+    lists:map(fun(F) -> MetricsPath ++ [F] end, Files);
 
 find_metrics([DirPart | Rest], Cwd) ->
     DirCandidates = glob_dirs(DirPart, full_dir(Cwd)),

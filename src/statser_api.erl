@@ -7,9 +7,15 @@
 handle(Req, _Args) ->
     handle(Req#req.method, elli_request:path(Req), Req).
 
+% metrics API
+handle('GET', [<<"metrics">>], Req) ->
+    handle_metrics(Req);
+
+handle('GET', [<<"metrics">>, <<"find">>], Req) ->
+    handle_metrics(Req);
 
 % render API
-handle('POST', [<<"render">> | _], Req) ->
+handle('POST', [<<"render">>], Req) ->
     Args = elli_request:post_args_decoded(Req),
     Targets = many_by_key(<<"target">>, Args),
     % 'from' defaults to -24 h
@@ -30,10 +36,36 @@ handle(_, _, _Req) ->
     {404, [], <<"not found">>}.
 
 
-%% @doc: Handle request events, like request completed, exception
-%% thrown, client timeout, etc. Must return 'ok'.
+handle_event(request_throw, [Req, Exception, Stack], _Config) ->
+    lager:error("exception: ~p stack: ~p request: ~p",
+                [Exception, Stack, elli_request:to_proplist(Req)]),
+    ok;
+handle_event(request_exit, [Req, Exit, Stack], _Config) ->
+    lager:error("exit: ~p stack: ~p request: ~p",
+                [Exit, Stack, elli_request:to_proplist(Req)]),
+    ok;
+
+handle_event(request_error, [Req, Error, Stack], _Config) ->
+    lager:error("error: ~p stack: ~p request: ~p",
+                [Error, Stack, elli_request:to_proplist(Req)]),
+    ok;
+
 handle_event(_Event, _Data, _Args) ->
     ok.
+
+
+handle_metrics(Request) ->
+    Query = elli_request:get_arg_decoded(<<"query">>, Request, <<"*">>),
+    case statser_parser:parse(Query) of
+        {paths, Path} ->
+            lager:debug("handle metrics query: ~p ~p", [Query, Path]),
+            Metrics = statser_finder:find_metrics(Path),
+            lists:foreach(fun(M) -> lager:debug("found metrics path: ~p", [M]) end, Metrics),
+            {ok, [], <<"not implemented yet">>};
+        _Invalid ->
+            lager:warning("invalid metrics query: ~p", [Query]),
+            {400, [], <<"invalid query specified">>}
+    end.
 
 
 handle_render([], _From, _Until, _MaxPoints) ->
