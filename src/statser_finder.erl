@@ -5,23 +5,41 @@
 -endif.
 
 -export([find_metrics/1,
-         find_metrics/2]).
+         find_metrics/2,
+         find_metrics_tree/1,
+         find_metrics_tree/2]).
+
+
+find_metrics_tree(Parts) ->
+    find_metrics_tree(Parts, ["."]).
+
+find_metrics_tree(Parts, Cwd) ->
+    find_metrics(Parts, Cwd, true).
 
 
 find_metrics(Parts) ->
     find_metrics(Parts, ["."]).
 
+find_metrics(Parts, Cwd) ->
+    find_metrics(Parts, Cwd, false).
 
-find_metrics([FilePart], Cwd) ->
+
+find_metrics([FilePart], Cwd, WithDirs) ->
     MetricsPath = tl(Cwd),
     Files = glob_whispers(FilePart, full_dir(Cwd)),
-    Dirs = glob_dirs(FilePart, full_dir(Cwd)),
-    Elements = lists:sort(fun by_name/2, Files ++ Dirs),
+
+    % fetch directory entries as well (if requested)
+    Elements0 = case WithDirs of
+                    true -> Files ++ glob_dirs(FilePart, full_dir(Cwd));
+                    false -> Files
+                end,
+
+    Elements = lists:sort(fun by_name/2, Elements0),
     lists:map(fun(E) -> to_node(E, MetricsPath) end, Elements);
 
-find_metrics([DirPart | Rest], Cwd) ->
+find_metrics([DirPart | Rest], Cwd, WithDirs) ->
     DirCandidates = glob_dirs(DirPart, full_dir(Cwd)),
-    Descend = fun({dir, Dir}) -> find_metrics(Rest, Cwd ++ [Dir]) end,
+    Descend = fun({dir, Dir}) -> find_metrics(Rest, Cwd ++ [Dir], WithDirs) end,
     lists:flatmap(Descend, DirCandidates).
 
 

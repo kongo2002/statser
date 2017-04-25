@@ -65,7 +65,7 @@ handle_metrics(Request) ->
     case statser_parser:parse(Query) of
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
-            Metrics = statser_finder:find_metrics(Path),
+            Metrics = statser_finder:find_metrics_tree(Path),
             Formatted = format(Metrics, json),
             {ok, ?DEFAULT_HEADERS, Formatted};
         _Invalid ->
