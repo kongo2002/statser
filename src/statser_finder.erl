@@ -14,27 +14,25 @@ find_metrics(Parts) ->
 
 find_metrics([FilePart], Cwd) ->
     MetricsPath = tl(Cwd),
-    Files0 = glob_whispers(FilePart, full_dir(Cwd)),
-    Files = lists:map(fun(F) -> to_file(MetricsPath, F) end, Files0),
-    Dirs0 = glob_dirs(FilePart, full_dir(Cwd)),
-    Dirs = lists:map(fun(D) -> to_dir(MetricsPath, D) end, Dirs0),
-    Files ++ Dirs;
+    Files = glob_whispers(FilePart, full_dir(Cwd)),
+    Dirs = glob_dirs(FilePart, full_dir(Cwd)),
+    Elements = lists:sort(fun by_name/2, Files ++ Dirs),
+    lists:map(fun(E) -> to_node(E, MetricsPath) end, Elements);
 
 find_metrics([DirPart | Rest], Cwd) ->
     DirCandidates = glob_dirs(DirPart, full_dir(Cwd)),
-    Descend = fun(Dir) -> find_metrics(Rest, Cwd ++ [Dir]) end,
+    Descend = fun({dir, Dir}) -> find_metrics(Rest, Cwd ++ [Dir]) end,
     lists:flatmap(Descend, DirCandidates).
 
 
-to_file(Path, File) ->
-    to_node(Path, File, true).
+to_node({file, File}, Path) ->
+    to_node(File, Path, true);
+
+to_node({dir, Dir}, Path) ->
+    to_node(Dir, Path, false).
 
 
-to_dir(Path, Dir) ->
-    to_node(Path, Dir, false).
-
-
-to_node(Path, Node, IsLeaf) ->
+to_node(Node, Path, IsLeaf) ->
     {[{<<"leaf">>, IsLeaf},
       {<<"allowChildren">>, not IsLeaf},
       {<<"expandable">>, not IsLeaf},
@@ -46,12 +44,16 @@ to_path(Path) ->
     list_to_binary(string:join(Path, ".")).
 
 
+by_name({_TypeA, NameA}, {_TypeB, NameB}) when NameA =< NameB -> true;
+by_name({_TypeA, _NameA}, {_TypeB, _NameB}) -> false.
+
+
 glob_dirs(Dir, Cwd) when is_binary(Dir) ->
     glob_dirs(binary_to_list(Dir), Cwd);
 
 glob_dirs(Dir, Cwd) ->
-    [D || D <- filelib:wildcard(Dir, Cwd),
-          filelib:is_dir(Cwd ++ "/" ++ D)].
+    [{dir, D} || D <- filelib:wildcard(Dir, Cwd),
+                 filelib:is_dir(Cwd ++ "/" ++ D)].
 
 
 glob_whispers(File, Cwd) when is_binary(File) ->
@@ -59,7 +61,7 @@ glob_whispers(File, Cwd) when is_binary(File) ->
 
 glob_whispers(File, Cwd) ->
     WhisperFile = File ++ ".wsp",
-    [drop_suffix(F) || F <- filelib:wildcard(WhisperFile, Cwd)].
+    [{file, drop_suffix(F)} || F <- filelib:wildcard(WhisperFile, Cwd)].
 
 
 full_dir(Files) ->
