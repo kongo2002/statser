@@ -35,10 +35,11 @@ to_dir(Path, Dir) ->
 
 
 to_node(Path, Node, IsLeaf) ->
-    {[{<<"is_leaf">>, IsLeaf},
-      {<<"name">>, list_to_binary(Node)},
-      % XXX: trailing dot on branches?
-      {<<"path">>, to_path(Path ++ [Node])}]}.
+    {[{<<"leaf">>, IsLeaf},
+      {<<"allowChildren">>, not IsLeaf},
+      {<<"expandable">>, not IsLeaf},
+      {<<"text">>, list_to_binary(Node)},
+      {<<"id">>, to_path(Path ++ [Node])}]}.
 
 
 to_path(Path) ->

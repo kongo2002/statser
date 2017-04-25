@@ -4,6 +4,12 @@
 -include_lib("elli/include/elli.hrl").
 -behaviour(elli_handler).
 
+-define(NO_CACHE, <<"no-cache">>).
+-define(DEFAULT_HEADERS, [{<<"Pragma">>, ?NO_CACHE},
+                          {<<"Cache-Control">>, ?NO_CACHE},
+                          {<<"Content-Type">>, <<"application/json; charset=utf-8">>},
+                          {<<"Access-Control-Allow-Origin">>, <<"*">>}]).
+
 handle(Req, _Args) ->
     handle(Req#req.method, elli_request:path(Req), Req).
 
@@ -59,10 +65,9 @@ handle_metrics(Request) ->
     case statser_parser:parse(Query) of
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
-            Metrics0 = statser_finder:find_metrics(Path),
-            Metrics = {[{<<"metrics">>, Metrics0}]},
+            Metrics = statser_finder:find_metrics(Path),
             Formatted = format(Metrics, json),
-            {ok, [], Formatted};
+            {ok, ?DEFAULT_HEADERS, Formatted};
         _Invalid ->
             lager:warning("invalid metrics query: ~p", [Query]),
             {400, [], <<"invalid query specified">>}
