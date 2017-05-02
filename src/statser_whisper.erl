@@ -11,6 +11,7 @@
          read_metadata/1,
          aggregation_type/1,
          aggregation_value/1,
+         fetch/3,
          update_point/3]).
 
 
@@ -83,6 +84,108 @@ read_archive_info(IO, As, Archives) ->
             read_archive_info(IO, [Archive | As], Archives - 1);
         _Error -> error
     end.
+
+
+fetch(File, From, Until) ->
+    case file:open(File, [read, binary]) of
+        {ok, IO} ->
+            try fetch_inner(IO, From, Until)
+                after file:close(IO)
+            end;
+        Error -> Error
+    end.
+
+
+fetch_inner(IO, From, Until) ->
+    {ok, Metadata} = read_metadata_inner(IO),
+    Now = erlang:system_time(second),
+    Oldest = Now - Metadata#whisper_metadata.retention,
+
+    if From > Now orelse Until < Oldest -> [];
+       true ->
+           FromAdjusted = adjust_from(From, Oldest),
+           UntilAdjusted = adjust_until(Until, Now),
+           fetch_with_metadata(IO, Metadata, Now, FromAdjusted, UntilAdjusted)
+    end.
+
+
+adjust_from(From, OldestRetention) when From < OldestRetention -> OldestRetention;
+adjust_from(From, _Oldest) -> From.
+
+
+adjust_until(Until, Now) when Until > Now -> Now;
+adjust_until(Until, _Now) -> Until.
+
+
+fetch_with_metadata(IO, Metadata, Now, From, Until) ->
+    Distance = Now - From,
+    Archive = target_archive(Distance, Metadata#whisper_metadata.archives),
+
+    % normalize range
+    ArchiveSeconds = Archive#whisper_archive.seconds,
+    FromInterval = interval_start(Archive, From),
+    UntilInterval0 = interval_start(Archive, Until),
+
+    UntilInterval = if UntilInterval0 == FromInterval ->
+                           UntilInterval0 + ArchiveSeconds;
+                       true ->
+                           UntilInterval0
+                    end,
+
+    % read base data point
+    {BaseInterval, _Value} = point_at(IO, Archive#whisper_archive.offset),
+
+    FromOffset = get_data_point_offset(Archive, FromInterval, BaseInterval),
+    UntilOffset = get_data_point_offset(Archive, UntilInterval, BaseInterval),
+
+    % read series data points
+    Series = fetch_series(IO, Archive, FromOffset, UntilOffset),
+    fetch_series_values(Archive, FromInterval, Series).
+
+
+fetch_series(IO, _Archive, FromOffset, UntilOffset) when FromOffset < UntilOffset ->
+    {ok, _} = file:position(IO, {bof, FromOffset}),
+    Distance = UntilOffset - FromOffset,
+    {ok, Content} = file:read(IO, Distance),
+    Content;
+
+fetch_series(IO, Archive, FromOffset, UntilOffset) ->
+    % we have to wrap around the archive's end
+    {ok, _} = file:position(IO, {bof, FromOffset}),
+    ArchiveOffset = Archive#whisper_archive.offset,
+    ArchiveEnd = ArchiveOffset + Archive#whisper_archive.size,
+
+    {ok, FstContent} = file:read(IO, ArchiveEnd - FromOffset),
+    {ok, _} = file:position(IO, {bof, ArchiveOffset}),
+    {ok, LstContent} = file:read(IO, UntilOffset - ArchiveOffset),
+    <<FstContent/binary, LstContent/binary>>.
+
+
+fetch_series_values(#whisper_archive{seconds=Step}, Interval, Values) ->
+    fetch_series_values(Step, Interval, Values, []).
+
+fetch_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc) ->
+    if
+        % we compare the timestamp of the data point we just read (TS) with
+        % the timestamp value we are expecting (Interval)
+        % only if these timestamps match up we consider that data point a valid one
+        % NOTE: this is *not* an error - the archive may very well contain sparse values
+        Interval == TS ->
+            fetch_series_values(Step, Interval + Step, Rst, [{TS, Value} | Acc]);
+        true ->
+            fetch_series_values(Step, Interval + Step, Rst, [{Interval, null} | Acc])
+    end;
+fetch_series_values(_Step, _Interval, <<>>, Res) ->
+    % XXX: probably we don't have to sort the values in here
+    lists:reverse(Res).
+
+
+target_archive(Distance, [#whisper_archive{retention=Retention} | As]) when Distance > Retention ->
+    target_archive(Distance, As);
+target_archive(_Distance, [#whisper_archive{}=Archive | _As]) ->
+    Archive;
+target_archive(_Distance, _Archives) ->
+    none.
 
 
 -spec create(binary(), #whisper_metadata{}) -> {ok, #whisper_metadata{}}.
