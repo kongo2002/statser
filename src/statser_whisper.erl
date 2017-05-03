@@ -165,23 +165,13 @@ fetch_series(IO, Archive, FromOffset, UntilOffset) ->
     <<FstContent/binary, LstContent/binary>>.
 
 
-fetch_series_values(#whisper_archive{seconds=Step}, Interval, Values) ->
-    fetch_series_values(Step, Interval, Values, []).
+fetch_fold_func({TS, Value}, List) -> [{TS, Value} | List].
 
-fetch_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc) ->
-    if
-        % we compare the timestamp of the data point we just read (TS) with
-        % the timestamp value we are expecting (Interval)
-        % only if these timestamps match up we consider that data point a valid one
-        % NOTE: this is *not* an error - the archive may very well contain sparse values
-        Interval == TS ->
-            fetch_series_values(Step, Interval + Step, Rst, [{TS, Value} | Acc]);
-        true ->
-            fetch_series_values(Step, Interval + Step, Rst, [{Interval, null} | Acc])
-    end;
-fetch_series_values(_Step, _Interval, <<>>, Res) ->
+
+fetch_series_values(Archive, Interval, Values) ->
+    {Result, _Seen} = fold_series_values(fun fetch_fold_func/2, Archive, Interval, Values),
     % XXX: probably we don't have to sort the values in here
-    lists:reverse(Res).
+    lists:reverse(Result).
 
 
 target_archive(Distance, [#whisper_archive{retention=Retention} | As]) when Distance > Retention ->
@@ -405,21 +395,30 @@ interval_start(Archive, TimeStamp) ->
     TimeStamp - (TimeStamp rem Archive#whisper_archive.seconds).
 
 
-collect_series_values(#whisper_archive{seconds=Step}, Interval, Values) ->
-    collect_series_values(Step, Interval, Values, [], 0).
+collect_fold_func({_TS, null}, List) -> List;
+collect_fold_func({_TS, Value}, List) -> [Value | List].
 
-collect_series_values(Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc, Seen) ->
-    if
-        % we compare the timestamp of the data point we just read (TS) with
-        % the timestamp value we are expecting (Interval)
-        % only if these timestamps match up we consider that data point a valid one
-        % NOTE: this is *not* an error - the archive may very well contain sparse values
-        Interval == TS ->
-            collect_series_values(Step, Interval + Step, Rst, [Value | Acc], Seen + 1);
-        true ->
-            collect_series_values(Step, Interval + Step, Rst, Acc, Seen + 1)
-    end;
-collect_series_values(_Step, _Interval, <<>>, Res, Seen) -> {Res, Seen}.
+
+collect_series_values(Archive, Interval, Values) ->
+    fold_series_values(fun collect_fold_func/2, Archive, Interval, Values).
+
+
+fold_series_values(Fun, #whisper_archive{seconds=Step}, Interval, Values) ->
+    fold_series_values(Fun, Step, Interval, Values, [], 0).
+
+fold_series_values(Fun, Step, Interval, <<TS:32/integer-unsigned-big, Value:64/float-big, Rst/binary>>, Acc, Seen) ->
+    Result = if
+                 % we compare the timestamp of the data point we just read (TS) with
+                 % the timestamp value we are expecting (Interval)
+                 % only if these timestamps match up we consider that data point a valid one
+                 % NOTE: this is *not* an error - the archive may very well contain sparse values
+                 Interval == TS ->
+                     Fun({Interval, Value}, Acc);
+                 true ->
+                     Fun({Interval, null}, Acc)
+             end,
+    fold_series_values(Fun, Step, Interval + Step, Rst, Result, Seen + 1);
+fold_series_values(_Fun, _Step, _Interval, <<>>, Result, Seen) -> {Result, Seen}.
 
 
 propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
