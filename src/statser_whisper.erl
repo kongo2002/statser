@@ -12,6 +12,7 @@
          aggregation_type/1,
          aggregation_value/1,
          fetch/3,
+         fetch/4,
          update_point/3]).
 
 
@@ -87,18 +88,21 @@ read_archive_info(IO, As, Archives) ->
 
 
 fetch(File, From, Until) ->
+    fetch(File, From, Until, erlang:system_time(second)).
+
+
+fetch(File, From, Until, Now) ->
     case file:open(File, [read, binary]) of
         {ok, IO} ->
-            try fetch_inner(IO, From, Until)
+            try fetch_inner(IO, From, Until, Now)
                 after file:close(IO)
             end;
         Error -> Error
     end.
 
 
-fetch_inner(IO, From, Until) ->
+fetch_inner(IO, From, Until, Now) ->
     {ok, Metadata} = read_metadata_inner(IO),
-    Now = erlang:system_time(second),
     Oldest = Now - Metadata#whisper_metadata.retention,
 
     if From > Now orelse Until < Oldest -> [];
