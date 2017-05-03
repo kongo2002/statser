@@ -87,10 +87,12 @@ read_archive_info(IO, As, Archives) ->
     end.
 
 
+-spec fetch(binary(), integer(), integer()) -> [{integer(), number()}].
 fetch(File, From, Until) ->
     fetch(File, From, Until, erlang:system_time(second)).
 
 
+-spec fetch(binary(), integer(), integer(), integer()) -> [{integer(), number()}].
 fetch(File, From, Until, Now) ->
     case file:open(File, [read, binary]) of
         {ok, IO} ->

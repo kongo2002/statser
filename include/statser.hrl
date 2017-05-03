@@ -38,13 +38,13 @@
 
 -record(storage_definition, {
           name :: nonempty_string(),
-          pattern :: tuple(),
+          pattern :: tuple() | undefined,
           retentions :: [#retention_definition{},...]
          }).
 
 -record(aggregation_definition, {
           name :: nonempty_string(),
-          pattern :: tuple(),
+          pattern :: tuple() | undefined,
           aggregation :: aggregation(),
           factor :: float()
          }).
