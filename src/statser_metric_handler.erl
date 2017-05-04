@@ -9,7 +9,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/1,
+         get_whisper_file/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -83,9 +84,9 @@ init(Path) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({fetch, From, Until}, _From, State) ->
+handle_call({fetch, From, Until, Now}, _From, State) ->
     File = State#state.fspath,
-    ReadFromFile = statser_whisper:fetch(File, From, Until),
+    ReadFromFile = statser_whisper:fetch(File, From, Until, Now),
     Cached = State#state.cache,
     % TODO: merge
     Merged = ReadFromFile ++ Cached,
@@ -216,6 +217,12 @@ terminate(_Reason, State) ->
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+get_whisper_file(Path) ->
+    {ok, Dirs, File} = get_directory(Path),
+    prepare_file(Dirs, File).
+
 
 %%%===================================================================
 %%% Internal functions

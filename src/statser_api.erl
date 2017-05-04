@@ -25,14 +25,17 @@ handle('POST', [<<"render">>], Req) ->
     Args = elli_request:post_args_decoded(Req),
     Targets = many_by_key(<<"target">>, Args),
     % 'from' defaults to -24 h
-    From = get_or_fallback(<<"from">>, Args, <<"-1d">>),
+    From0 = get_or_fallback(<<"from">>, Args, <<"-1d">>),
     % 'until' defaults to now
-    Until = get_or_fallback(<<"until">>, Args, <<"now">>),
+    Until0 = get_or_fallback(<<"until">>, Args, <<"now">>),
     MaxPoints = get_or_fallback(<<"maxDataPoints">>, Args, 366),
     Format = get_or_fallback(<<"format">>, Args, <<"json">>),
 
     case Format of
         <<"json">> ->
+            % TODO: parse from/until
+            Until = erlang:system_time(second),
+            From = Until - 86000,
             handle_render(Targets, From, Until, MaxPoints);
         Unsupported ->
             {400, [], <<"unsupported format '", Unsupported/binary, "'">>}
@@ -81,34 +84,40 @@ handle_render(_Targets, false, _Until, _MaxPoints) ->
 handle_render(_Targets, _From, false, _MaxPoints) ->
     {400, [], <<"no 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
-    Processed = lists:map(fun(Target) -> process_target(Target, From, Until, MaxPoints) end, Targets),
+    Now = erlang:system_time(second),
+    Processed = lists:map(fun(Target) -> process_target(Target, From, Until, Now, MaxPoints) end, Targets),
     {ok, [], <<"not implemented yet">>}.
 
 
-process_target(Target, From, Until, MaxPoints) ->
+process_target(Target, From, Until, Now, MaxPoints) ->
     lager:debug("render request for target ~p [~p - ~p] [~w]", [Target, From, Until, MaxPoints]),
     Parsed = statser_parser:parse(Target),
     Parameters = {From, Until, MaxPoints},
-    process(Parsed, Parameters).
+    process(Parsed, Parameters, Now).
 
 
-process({paths, Paths}, Params) -> process_paths(Paths, Params);
-process({call, Fctn, Args}, Params) -> process_function(Fctn, Args, Params);
-process({template, Expr, Args}, Params) -> process_template(Expr, Args, Params);
-process(Invalid, _Params) ->
+process({paths, Path}, Params, Now) -> process_paths(Path, Params, Now);
+process({call, Fctn, Args}, Params, Now) -> process_function(Fctn, Args, Params, Now);
+process({template, Expr, Args}, Params, Now) -> process_template(Expr, Args, Params, Now);
+process(Invalid, _Params, _Now) ->
     lager:error("failed to parse target expression: ~p", [Invalid]),
     error.
 
 
-process_paths(Paths, {From, Until, MaxPoints} = Params) ->
+process_paths(Path, {From, Until, MaxPoints} = Params, Now) ->
+    FoundPaths = statser_finder:find_metrics(Path),
+    Paths = lists:map(fun({P}) -> proplists:get_value(<<"id">>, P) end, FoundPaths),
+    lager:debug("found ~w paths to process: ~p", [length(Paths), Paths]),
+    Processed = statser_processor:fetch_data(Paths, From, Until, Now),
+    lager:debug("processing resulted in ~p", [Processed]),
+    Processed.
+
+
+process_function(Fctn, Args, {From, Until, MaxPoints} = Params, Now) ->
     [{0, 0}].
 
 
-process_function(Fctn, Args, {From, Until, MaxPoints} = Params) ->
-    [{0, 0}].
-
-
-process_template(Expr, Args, {From, Until, MaxPoints} = Params) ->
+process_template(Expr, Args, {From, Until, MaxPoints} = Params, Now) ->
     [{0, 0}].
 
 
