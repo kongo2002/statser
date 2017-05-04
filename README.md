@@ -40,12 +40,26 @@ be solved in a distributed erlang-powered application.
 
 ## Build
 
+### Requirements
+
+* erlang OTP >= 19
+
+
 ### Compile
 
 The project is powered by [rebar3][rebar3], so expect the common commands to
 work as expected:
 
     $ rebar3 compile
+
+
+## Quickstart
+
+After successful compilation you can quickly start a development *statser*
+instance with the sample `start.sh` script. The script uses default options that
+spawn port `2003` (carbon plain text interface) and `8080` (metrics API):
+
+    $ rebar3 compile && ./start.sh
 
 
 ### Tests
@@ -62,11 +76,11 @@ will go ahead with recording and aggregating your metrics just like
 `carbon-cache` did. Moreover you can configure the storage and aggregation rules
 in a simple YAML configuration file.
 
-Please find a roughly up-to-date list of features that are either finished or on
-my roadmap (somewhere) below.
+Find a roughly up-to-date list of features that are either finished or somewhere
+on my roadmap below.
 
 
-### Stuff that should work
+### Stuff that works already
 
 * full whisper database support
 * carbon plain text interface (known to listen on port `2003`)
