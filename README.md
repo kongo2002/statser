@@ -53,7 +53,7 @@ work as expected:
     $ rebar3 compile
 
 
-## Quickstart
+### Quickstart
 
 After successful compilation you can quickly start a development *statser*
 instance with the sample `start.sh` script. The script uses default options that
