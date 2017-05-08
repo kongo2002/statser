@@ -33,9 +33,9 @@ handle('POST', [<<"render">>], Req) ->
 
     case Format of
         <<"json">> ->
-            % TODO: parse from/until
-            Until = erlang:system_time(second),
-            From = Until - 86000,
+            Now = erlang:system_time(second),
+            From = parse_time(From0, Now),
+            Until = parse_time(Until0, Now),
             handle_render(Targets, From, Until, MaxPoints);
         Unsupported ->
             {400, [], <<"unsupported format '", Unsupported/binary, "'">>}
@@ -130,6 +130,7 @@ process_function(Fctn, Args, {From, Until, MaxPoints} = Params, Now) ->
 
 
 process_template(Expr, Args, {From, Until, MaxPoints} = Params, Now) ->
+    % TODO: template handling
     [{0, 0}].
 
 
@@ -153,3 +154,42 @@ get_or_fallback(Key, List, Default) ->
 format(Output, _Format) ->
     % XXX: support multiple output formats?
     jiffy:encode(Output).
+
+
+parse_time(<<"now">>, Now) -> Now;
+
+parse_time(<<"-", Relative/binary>>, Now) ->
+    parse_time(Relative, Now, relative);
+
+parse_time(Absolute, Now) ->
+    parse_time(Absolute, Now, absolute).
+
+
+parse_time(Value, _Now, absolute) ->
+    List = binary_to_list(Value),
+    case string:to_integer(List) of
+        {error, _} -> error;
+        % this is supposed to be epoch
+        {Val, []} -> Val;
+        _Otherwise ->
+            % TODO: absolute time parsing
+            error
+    end;
+
+parse_time(Value, Now, relative) ->
+    List = binary_to_list(Value),
+    case string:to_integer(List) of
+        {error, _} -> error;
+        {Val, Unit} -> Now - parse_unit(Val, Unit)
+    end.
+
+
+parse_unit(Value, [$s | _])   -> Value;
+parse_unit(Value, [$S | _])   -> Value;
+parse_unit(Value, "min" ++ _) -> Value * 60;
+parse_unit(Value, [$h | _])   -> Value * 3600;
+parse_unit(Value, [$d | _])   -> Value * 86400;
+parse_unit(Value, [$w | _])   -> Value * 604800;
+parse_unit(Value, "mon" ++ _) -> Value * 18144000;
+parse_unit(Value, [$y | _])   -> Value * 220752000;
+parse_unit(_, _)              -> error.

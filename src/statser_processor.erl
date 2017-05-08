@@ -30,9 +30,9 @@ fetch_data(Paths, From, Until, Now) ->
 
 
 % alias
-evaluate_call(<<"alias">>, [Series, Alias], From, Until, Now) when is_binary(Alias) ->
-    lists:map(fun({Target, Values}) -> {Alias, Values} end, Series);
+evaluate_call(<<"alias">>, [Series, Alias], _From, _Until, _Now) when is_binary(Alias) ->
+    lists:map(fun({_Target, Values}) -> {Alias, Values} end, Series);
 
-evaluate_call(Unknown, Args, From, Until, Now) ->
+evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
