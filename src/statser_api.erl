@@ -85,8 +85,18 @@ handle_render(_Targets, _From, false, _MaxPoints) ->
     {400, [], <<"no 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
     Now = erlang:system_time(second),
-    Processed = lists:map(fun(Target) -> process_target(Target, From, Until, Now, MaxPoints) end, Targets),
-    {ok, [], <<"not implemented yet">>}.
+    Processed = lists:flatmap(fun(Target) ->
+                                      % one target definition may result in 0-n results
+                                      process_target(Target, From, Until, Now, MaxPoints)
+                              end, Targets),
+    Formatted = format(lists:map(fun format_to_json/1, Processed), json),
+    {ok, ?DEFAULT_HEADERS, Formatted}.
+
+
+format_to_json({Target, DataPoints}) ->
+    Points = lists:map(fun({TS, Value}) -> [Value, TS] end, DataPoints),
+    {[{<<"target">>, Target},
+      {<<"datapoints">>, Points}]}.
 
 
 process_target(Target, From, Until, Now, MaxPoints) ->
