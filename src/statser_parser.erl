@@ -1,8 +1,10 @@
 -module(statser_parser).
 -export([parse/1,file/1]).
+-define(p_anything,true).
 -define(p_charclass,true).
 -define(p_choose,true).
 -define(p_label,true).
+-define(p_not,true).
 -define(p_one_or_more,true).
 -define(p_optional,true).
 -define(p_scan,true).
@@ -58,7 +60,7 @@ Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 
 -spec 'argument'(input(), index()) -> parse_result().
 'argument'(Input, Index) ->
-  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
+  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'singleq_string'/2, fun 'doubleq_string'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
 
 -spec 'paths'(input(), index()) -> parse_result().
 'paths'(Input, Index) ->
@@ -127,6 +129,14 @@ Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
 -spec 'digit'(input(), index()) -> parse_result().
 'digit'(Input, Index) ->
   p(Input, Index, 'digit', fun(I,D) -> (p_charclass(<<"[0-9]">>))(I,D) end, fun(Node, Idx) ->transform('digit', Node, Idx) end).
+
+-spec 'doubleq_string'(input(), index()) -> parse_result().
+'doubleq_string'(Input, Index) ->
+  p(Input, Index, 'doubleq_string', fun(I,D) -> (p_seq([p_string(<<"\"">>), p_label('chars', p_zero_or_more(p_seq([p_not(p_string(<<"\"">>)), p_choose([p_string(<<"\\\\">>), p_string(<<"\\\"">>), p_anything()])]))), p_string(<<"\"">>)]))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(proplists:get_value(chars, Node)) end).
+
+-spec 'singleq_string'(input(), index()) -> parse_result().
+'singleq_string'(Input, Index) ->
+  p(Input, Index, 'singleq_string', fun(I,D) -> (p_seq([p_string(<<"\'">>), p_label('chars', p_zero_or_more(p_seq([p_not(p_string(<<"\'">>)), p_choose([p_string(<<"\\\\">>), p_string(<<"\\\'">>), p_anything()])]))), p_string(<<"\'">>)]))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(proplists:get_value(chars, Node)) end).
 
 -spec 'spaces'(input(), index()) -> parse_result().
 'spaces'(Input, Index) ->

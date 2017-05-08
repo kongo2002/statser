@@ -4,7 +4,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([fetch_data/4]).
+-export([fetch_data/4,
+         evaluate_call/5]).
 
 -define(TIMEOUT, 2000).
 
@@ -26,3 +27,12 @@ fetch_data(Paths, From, Until, Now) ->
                               {Path, Result}
                       end
               end, Paths).
+
+
+% alias
+evaluate_call(<<"alias">>, [Series, Alias], From, Until, Now) when is_binary(Alias) ->
+    lists:map(fun({Target, Values}) -> {Alias, Values} end, Series);
+
+evaluate_call(Unknown, Args, From, Until, Now) ->
+    lager:error("unknown function call ~p or invalid arguments", [Unknown]),
+    error.

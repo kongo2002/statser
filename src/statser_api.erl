@@ -102,6 +102,7 @@ format_to_json({Target, DataPoints}) ->
 process_target(Target, From, Until, Now, MaxPoints) ->
     lager:debug("render request for target ~p [~p - ~p] [~w]", [Target, From, Until, MaxPoints]),
     Parsed = statser_parser:parse(Target),
+    lager:debug("parsed request target: ~p", [Parsed]),
     Parameters = {From, Until, MaxPoints},
     process(Parsed, Parameters, Now).
 
@@ -109,9 +110,7 @@ process_target(Target, From, Until, Now, MaxPoints) ->
 process({paths, Path}, Params, Now) -> process_paths(Path, Params, Now);
 process({call, Fctn, Args}, Params, Now) -> process_function(Fctn, Args, Params, Now);
 process({template, Expr, Args}, Params, Now) -> process_template(Expr, Args, Params, Now);
-process(Invalid, _Params, _Now) ->
-    lager:error("failed to parse target expression: ~p", [Invalid]),
-    error.
+process(Argument, _Params, _Now) -> Argument.
 
 
 process_paths(Path, {From, Until, MaxPoints} = Params, Now) ->
@@ -124,7 +123,10 @@ process_paths(Path, {From, Until, MaxPoints} = Params, Now) ->
 
 
 process_function(Fctn, Args, {From, Until, MaxPoints} = Params, Now) ->
-    [{0, 0}].
+    ProcessedArgs = lists:map(fun(Arg) -> process(Arg, Params, Now) end, Args),
+    Processed = statser_processor:evaluate_call(Fctn, ProcessedArgs, From, Until, Now),
+    lager:debug("processing ~p resulted in ~p", [Fctn, Processed]),
+    Processed.
 
 
 process_template(Expr, Args, {From, Until, MaxPoints} = Params, Now) ->

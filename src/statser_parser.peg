@@ -20,7 +20,7 @@ Head = proplists:get_value(head, Node),
 Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
 `;
-argument <- number / bool / paths;
+argument <- number / bool / singleq_string / doubleq_string / paths;
 
 paths <- path `{paths, Node}`;
 path <- head:path_elem tail:( dot path_elem )*
@@ -47,5 +47,8 @@ number <- float / int;
 float <- '-'? digit+ '.' digit+ `list_to_float(binary_to_list(iolist_to_binary(Node)))`;
 int <- '-'? digit+ `list_to_integer(binary_to_list(iolist_to_binary(Node)))`;
 digit <- [0-9];
+
+doubleq_string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
+singleq_string <- "'" chars:(!"'" ("\\\\" / "\\'" / .))* "'" `iolist_to_binary(proplists:get_value(chars, Node))`;
 
 spaces <- [ \t\n\s\r]*;
