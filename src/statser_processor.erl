@@ -29,6 +29,12 @@ fetch_data(Paths, From, Until, Now) ->
               end, Paths).
 
 
+% absolute
+evaluate_call(<<"absolute">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun({Target, Values}) ->
+                      {Target, process_series_values(Values, fun erlang:abs/1)}
+              end, Series);
+
 % alias
 evaluate_call(<<"alias">>, [Series, Alias], _From, _Until, _Now) when is_binary(Alias) ->
     lists:map(fun({_Target, Values}) -> {Alias, Values} end, Series);
@@ -48,6 +54,10 @@ evaluate_call(<<"aliasByNode">>, [Series | Aliases], _From, _Until, _Now) ->
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
+
+
+process_series_values(Series, Func) ->
+    lists:map(fun({TS, Value}) -> {TS, Func(Value)} end, Series).
 
 
 alias_target(Target, []) -> Target;
