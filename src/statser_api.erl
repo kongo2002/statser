@@ -1,4 +1,9 @@
 -module(statser_api).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([handle/2, handle_event/3]).
 
 -include_lib("elli/include/elli.hrl").
@@ -190,6 +195,37 @@ parse_unit(Value, "min" ++ _) -> Value * 60;
 parse_unit(Value, [$h | _])   -> Value * 3600;
 parse_unit(Value, [$d | _])   -> Value * 86400;
 parse_unit(Value, [$w | _])   -> Value * 604800;
-parse_unit(Value, "mon" ++ _) -> Value * 18144000;
-parse_unit(Value, [$y | _])   -> Value * 220752000;
+parse_unit(Value, "mon" ++ _) -> Value * 2592000;
+parse_unit(Value, [$y | _])   -> Value * 31536000;
 parse_unit(_, _)              -> error.
+
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+parse_unit_test_() ->
+    [?_assertEqual(error, parse_unit(100, "")),
+     ?_assertEqual(error, parse_unit(100, "m")),
+     ?_assertEqual(100, parse_unit(100, "s")),
+     ?_assertEqual(180, parse_unit(3, "min")),
+     ?_assertEqual(2 * 86400 * 7, parse_unit(2, "w"))
+    ].
+
+parse_time_test_() ->
+    % easier to test with `now` being 0 instead of real time
+    Now = 0,
+    [?_assertEqual(error, parse_time(<<"">>, Now)),
+     % now
+     ?_assertEqual(Now, parse_time(<<"now">>, Now)),
+     % relative
+     ?_assertEqual(-1, parse_time(<<"-1s">>, Now)),
+     ?_assertEqual(-60, parse_time(<<"-1min">>, Now)),
+     ?_assertEqual(-365 * 86400, parse_time(<<"-1y">>, Now)),
+     % epoch
+     ?_assertEqual(1474468456, parse_time(<<"1474468456">>, Now))
+    ].
+
+-endif.
