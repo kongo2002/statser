@@ -20,7 +20,7 @@ Head = proplists:get_value(head, Node),
 Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
 `;
-argument <- number / bool / singleq_string / doubleq_string / paths;
+argument <- number / bool / singleq_string / doubleq_string / function / paths;
 
 paths <- path `{paths, Node}`;
 path <- head:path_elem tail:( dot path_elem )*

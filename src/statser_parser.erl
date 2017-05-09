@@ -60,7 +60,7 @@ Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 
 -spec 'argument'(input(), index()) -> parse_result().
 'argument'(Input, Index) ->
-  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'singleq_string'/2, fun 'doubleq_string'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
+  p(Input, Index, 'argument', fun(I,D) -> (p_choose([fun 'number'/2, fun 'bool'/2, fun 'singleq_string'/2, fun 'doubleq_string'/2, fun 'function'/2, fun 'paths'/2]))(I,D) end, fun(Node, Idx) ->transform('argument', Node, Idx) end).
 
 -spec 'paths'(input(), index()) -> parse_result().
 'paths'(Input, Index) ->

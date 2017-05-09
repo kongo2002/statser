@@ -57,7 +57,9 @@ evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
 
 
 process_series_values(Series, Func) ->
-    lists:map(fun({TS, Value}) -> {TS, Func(Value)} end, Series).
+    lists:map(fun ({_, null} = T) -> T;
+                  ({TS, Value}) -> {TS, Func(Value)}
+              end, Series).
 
 
 alias_target(Target, []) -> Target;
