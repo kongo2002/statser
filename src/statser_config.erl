@@ -25,11 +25,11 @@
                                                       factor=0.5}).
 
 
--spec load_config() -> ok | error.
+-spec load_config() -> ok.
 load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
 
 
--spec load_config(string()) -> ok | error.
+-spec load_config(string()) -> ok.
 load_config(ConfigFile) ->
     Docs = try
                % load yaml
@@ -315,7 +315,7 @@ load_storage_from_file_test_() ->
      [?_assertEqual(ok, load_config("test/examples/storage1.yaml")),
       ?_assertEqual(ok, load_config("test/examples/storage2.yaml")),
       ?_assertEqual(ok, load_config("test/examples/storage3.yaml")),
-      ?_assertEqual(error, load_config("test/examples/does_not_exist.yaml"))
+      ?_assertEqual(ok, load_config("test/examples/does_not_exist.yaml"))
      ]}.
 
 
