@@ -31,16 +31,18 @@ load_config() -> load_config(?STATSER_DEFAULT_CONFIG).
 
 -spec load_config(string()) -> ok | error.
 load_config(ConfigFile) ->
-    try
-        % load yaml
-        Docs = yamerl_constr:file(ConfigFile),
+    Docs = try
+               % load yaml
+               yamerl_constr:file(ConfigFile)
+           catch
+               Error ->
+                   lager:warning("failed to load configuration from ~p - fallback to defaults: ~p", [ConfigFile, Error]),
+                   []
+           end,
 
-        % parse contents
-        {Storages, Aggregations} = load_documents(Docs),
-        update(Storages, Aggregations)
-    catch
-        _ -> error
-    end.
+    % parse contents
+    {Storages, Aggregations} = load_documents(Docs),
+    update(Storages, Aggregations).
 
 
 get_metadata(Path) ->
