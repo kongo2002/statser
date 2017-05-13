@@ -140,7 +140,8 @@ alias_target_test_() ->
     ].
 
 pseudo_series(Series) ->
-    lists:map(fun(V) -> {100, V} end, Series).
+    {Lst, _Idx} = lists:foldr(fun(V, {Acc, Idx}) -> {[{Idx, V} | Acc], Idx + 10} end, {[], 100}, Series),
+    Lst.
 
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
