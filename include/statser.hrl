@@ -48,3 +48,11 @@
           aggregation :: aggregation(),
           factor :: float()
          }).
+
+-record(series, {
+          target :: nonempty_string(),
+          values :: [{integer(), number()}],
+          step :: integer(),
+          start :: integer(),
+          until :: integer()
+         }).

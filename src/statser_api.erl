@@ -4,6 +4,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("statser.hrl").
+
 -export([handle/2, handle_event/3]).
 
 -include_lib("elli/include/elli.hrl").
@@ -98,7 +100,7 @@ handle_render(Targets, From, Until, MaxPoints) ->
     {ok, ?DEFAULT_HEADERS, Formatted}.
 
 
-format_to_json({Target, DataPoints}) ->
+format_to_json(#series{target=Target, values=DataPoints}) ->
     Points = lists:map(fun({TS, Value}) -> [Value, TS] end, DataPoints),
     {[{<<"target">>, Target},
       {<<"datapoints">>, Points}]}.

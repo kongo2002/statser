@@ -87,12 +87,12 @@ read_archive_info(IO, As, Archives) ->
     end.
 
 
--spec fetch(binary(), integer(), integer()) -> [{integer(), number()}].
+-spec fetch(binary(), integer(), integer()) -> #series{}.
 fetch(File, From, Until) ->
     fetch(File, From, Until, erlang:system_time(second)).
 
 
--spec fetch(binary(), integer(), integer(), integer()) -> [{integer(), number()}].
+-spec fetch(binary(), integer(), integer(), integer()) -> #series{}.
 fetch(File, From, Until, Now) ->
     case file:open(File, [read, binary]) of
         {ok, IO} ->
@@ -107,7 +107,7 @@ fetch_inner(IO, From, Until, Now) ->
     {ok, Metadata} = read_metadata_inner(IO),
     Oldest = Now - Metadata#whisper_metadata.retention,
 
-    if From > Now orelse Until < Oldest -> [];
+    if From > Now orelse Until < Oldest -> #series{values=[]};
        true ->
            FromAdjusted = adjust_from(From, Oldest),
            UntilAdjusted = adjust_until(Until, Now),
@@ -146,7 +146,8 @@ fetch_with_metadata(IO, Metadata, Now, From, Until) ->
 
     % read series data points
     Series = fetch_series(IO, Archive, FromOffset, UntilOffset),
-    fetch_series_values(Archive, FromInterval, Series).
+    Values = fetch_series_values(Archive, FromInterval, Series),
+    #series{values=Values,start=FromInterval,until=UntilInterval,step=ArchiveSeconds}.
 
 
 fetch_series(IO, _Archive, FromOffset, UntilOffset) when FromOffset < UntilOffset ->
