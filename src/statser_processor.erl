@@ -59,6 +59,12 @@ evaluate_call(<<"averageAbove">>, [Series, Avg], _From, _Until, _Now) ->
 evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
     lists:filter(fun({_, Values}) -> safe_average(Values) =< Avg end, Series);
 
+% derivative
+evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun({Target, Values}) ->
+                      {Target, derivative(Values)}
+              end, Series);
+
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
@@ -106,6 +112,19 @@ safe_average([Val | Vs], Cnt, Avg) ->
     safe_average(Vs, Cnt + 1, NewAvg).
 
 
+derivative(Values) ->
+    derivative(Values, null, []).
+
+derivative([], _Prev, Acc) ->
+    lists:reverse(Acc);
+derivative([{TS, Value} | Vs], null, Acc) ->
+    derivative(Vs, Value, [{TS, null} | Acc]);
+derivative([{TS, null} | Vs], _Prev, Acc) ->
+    derivative(Vs, null, [{TS, null} | Acc]);
+derivative([{TS, Value} | Vs], Prev, Acc) ->
+    derivative(Vs, Value, [{TS, Value - Prev} | Acc]).
+
+
 %%
 %% TESTS
 %%
@@ -118,6 +137,17 @@ alias_target_test_() ->
      ?_assertEqual(<<"test">>, alias_target(<<"foo.bar.test">>, [2])),
      ?_assertEqual(<<"test">>, alias_target(<<"foo.bar.test">>, [-1])),
      ?_assertEqual(<<"foo">>, alias_target(<<"foo.bar.test">>, [0]))
+    ].
+
+pseudo_series(Series) ->
+    lists:map(fun(V) -> {100, V} end, Series).
+
+derivative_test_() ->
+    [?_assertEqual([], derivative([])),
+     ?_assertEqual(pseudo_series([null,null,1,1,1,1,null,null,1,1]),
+                   derivative(pseudo_series([null,1,2,3,4,5,null,6,7,8]))),
+     ?_assertEqual(pseudo_series([null,1,2,2,2]),
+                   derivative(pseudo_series([1,2,4,6,8])))
     ].
 
 safe_average_test_() ->
