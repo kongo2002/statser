@@ -61,6 +61,15 @@ evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
 
+% nPercentile
+evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    lists:map(fun(S) ->
+                      Values0 = S#series.values,
+                      Perc = percentile(Values0, N),
+                      Values = process_series_values(Values0, fun(_) -> Perc end),
+                      S#series{values=Values}
+              end, Series);
+
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
@@ -256,6 +265,13 @@ average_below_test_() ->
     [?_assertEqual([], evaluate_call(<<"averageBelow">>, [Series, 5.5], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
+    ].
+
+npercentile_test_() ->
+    Series = pseudo_series([5.0, 8.0, 7.0]),
+    [?_assertEqual(pseudo_series([7.0, 7.0, 7.0]), evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
+     ?_assertEqual(pseudo_series([5.0, 5.0, 5.0]), evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
+     ?_assertEqual(pseudo_series([8.0, 8.0, 8.0]), evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
     ].
 
 sort_non_null_test_() ->
