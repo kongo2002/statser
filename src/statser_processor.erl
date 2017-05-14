@@ -135,6 +135,70 @@ lcm(A, B)  ->
     A div gcd(A, B) * B.
 
 
+sort_non_null(Values) ->
+    sort_non_null(Values, [], 0).
+
+sort_non_null([], Acc, Len) ->
+    {lists:sort(Acc), Len};
+sort_non_null([null | Vs], Acc, Len) ->
+    sort_non_null(Vs, Acc, Len);
+sort_non_null([{_TS, null} | Vs], Acc, Len) ->
+    sort_non_null(Vs, Acc, Len);
+sort_non_null([{_TS, Val} | Vs], Acc, Len) ->
+    sort_non_null(Vs, [Val | Acc], Len + 1);
+sort_non_null([Val | Vs], Acc, Len) ->
+    sort_non_null(Vs, [Val | Acc], Len + 1).
+
+
+floor(X) when X < 0 ->
+    Truncated = trunc(X),
+    case X - Truncated == 0 of
+       true -> Truncated;
+       false -> Truncated - 1
+    end;
+floor(X) ->
+    trunc(X).
+
+
+ceiling(X) when X < 0 ->
+    trunc(X);
+ceiling(X) ->
+    Truncated = trunc(X),
+    case X - Truncated == 0 of
+       true -> Truncated;
+       false -> Truncated + 1
+    end.
+
+
+percentile(Values, N) ->
+    percentile(Values, N, false).
+
+percentile(Values, N, Interpolate) ->
+    {Sorted, Len} = sort_non_null(Values),
+    FractionalRank = (N / 100.0) * (Len + 1),
+    Rank0 = floor(FractionalRank),
+    RankFraction = FractionalRank - Rank0,
+
+    Rank =
+    if Interpolate == true -> Rank0;
+       true -> Rank0 + ceiling(RankFraction)
+    end,
+
+    Percentile =
+    if Len == 0 -> null;
+       Rank == 0 -> hd(Sorted);
+       Rank > Len -> lists:nth(Len, Sorted);
+       true -> lists:nth(Rank, Sorted)
+    end,
+
+    if Interpolate == true andalso Len > Rank ->
+           NextValue = lists:nth(Rank + 1, Sorted),
+           Percentile + RankFraction * (NextValue - Percentile);
+       true ->
+           Percentile
+    end.
+
+
 %%
 %% TESTS
 %%
@@ -192,6 +256,30 @@ average_below_test_() ->
     [?_assertEqual([], evaluate_call(<<"averageBelow">>, [Series, 5.5], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
+    ].
+
+sort_non_null_test_() ->
+    [?_assertEqual({[], 0}, sort_non_null([])),
+     ?_assertEqual({[], 0}, sort_non_null([null, null])),
+     ?_assertEqual({[1], 1}, sort_non_null([1])),
+     ?_assertEqual({[1, 2], 2}, sort_non_null([1, null, 2])),
+     ?_assertEqual({[1, 2], 2}, sort_non_null([2, null, 1]))
+    ].
+
+percentile_test_() ->
+    [?_assertEqual(null, percentile([], 50)),
+     ?_assertEqual(null, percentile([null], 50)),
+     ?_assertEqual(1, percentile([1], 50)),
+     ?_assertEqual(1, percentile([1, null, null], 50)),
+     ?_assertEqual(2, percentile([1, null, 2], 50)),
+     ?_assertEqual(2, percentile([2, null, 1], 50)),
+     ?_assertEqual(1.5, percentile([2, null, 1], 50, true)),
+     ?_assertEqual(2, percentile([2, null, 1, 3], 50)),
+     ?_assertEqual(2.0, percentile([2, null, 1, 3], 50, true)),
+     ?_assertEqual(1, percentile([2, 1, 3], 10)),
+     ?_assertEqual(1.0, percentile([2, 1, 3], 10, true)),
+     ?_assertEqual(3, percentile([2, 1, 3], 99)),
+     ?_assertEqual(3, percentile([2, 1, 3], 99, true))
     ].
 
 -endif.
