@@ -218,6 +218,25 @@ ceiling(X) ->
     end.
 
 
+square_sum([]) -> 0;
+square_sum(Values) ->
+    Avg = safe_average(Values),
+    square_sum(Values, Avg, 0, 0).
+
+square_sum([], Avg, Sum, Len) ->
+    Sum / Len;
+square_sum([{_TS, null} | Vs], Avg, Sum, Len) ->
+    square_sum(Vs, Avg, Sum, Len);
+square_sum([{_TS, Val} | Vs], Avg, Sum, Len) ->
+    Square = math:pow(Val - Avg, 2),
+    square_sum(Vs, Avg, Sum + Square, Len + 1);
+square_sum([null | Vs], Avg, Sum, Len) ->
+    square_sum(Vs, Avg, Sum, Len);
+square_sum([Val | Vs], Avg, Sum, Len) ->
+    Square = math:pow(Val - Avg, 2),
+    square_sum(Vs, Avg, Sum + Square, Len + 1).
+
+
 percentile(Values, N) ->
     percentile(Values, N, false).
 
@@ -328,6 +347,12 @@ sort_non_null_test_() ->
      ?_assertEqual({[1], 1}, sort_non_null([1])),
      ?_assertEqual({[1, 2], 2}, sort_non_null([1, null, 2])),
      ?_assertEqual({[1, 2], 2}, sort_non_null([2, null, 1]))
+    ].
+
+square_sum_test_() ->
+    [?_assertEqual(0, square_sum([])),
+     ?_assertEqual(2/3, square_sum([3, 4, 5])),
+     ?_assertEqual(0.0, square_sum([3, 3, null, 3, null]))
     ].
 
 percentile_test_() ->
