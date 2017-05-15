@@ -72,12 +72,36 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
 
+% limit
+evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    lists:sublist(Series, N);
+
 % nPercentile
 evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) ->
                       Values0 = S#series.values,
                       Perc = percentile(Values0, N),
                       Values = process_series_values(Values0, fun(_) -> Perc end),
+                      S#series{values=Values}
+              end, Series);
+
+% removeAboveValue
+evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
+    lists:map(fun(S) ->
+                      Values0 = S#series.values,
+                      Values = process_series_values(Values0, fun(X) when X > Val -> null;
+                                                                 (X) -> X
+                                                              end),
+                      S#series{values=Values}
+              end, Series);
+
+% removeBelowValue
+evaluate_call(<<"removeBelowValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
+    lists:map(fun(S) ->
+                      Values0 = S#series.values,
+                      Values = process_series_values(Values0, fun(X) when X < Val -> null;
+                                                                 (X) -> X
+                                                              end),
                       S#series{values=Values}
               end, Series);
 
