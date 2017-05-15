@@ -76,6 +76,23 @@ evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:sublist(Series, N);
 
+% mostDeviant
+evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    NumSeries = length(Series),
+    case NumSeries =< N of
+        true ->
+            % no reason to calculate deviant if the requested count is less than
+            % the total number of given series anyways
+            Series;
+        false ->
+            SigmaSeries = lists:map(fun(S) ->
+                                            SquareSum = square_sum(S#series.values),
+                                            {SquareSum, S}
+                                    end, Series),
+            Sorted = lists:sort(fun({SigmaA, _}, {SigmaB, _}) -> SigmaA > SigmaB end, SigmaSeries),
+            lists:map(fun({_Sigma, S}) -> S end, lists:sublist(Sorted, N))
+    end;
+
 % nPercentile
 evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) ->
@@ -339,6 +356,17 @@ average_outside_percentile_test_() ->
     Series = S1 ++ S2 ++ S3,
     [?_assertEqual(S1 ++ S3, evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
+    ].
+
+most_deviant_test_() ->
+    S1 = pseudo_series([3.0, 5.0, 4.0]), % avg 4.0
+    S2 = pseudo_series([3.0, 9.0, 6.0]), % avg 6.0
+    S3 = pseudo_series([3.0, 12.0, 9.0]), % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
+     ?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
+     ?_assertEqual(S3 ++ S2, evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(S3, evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
     ].
 
 sort_non_null_test_() ->
