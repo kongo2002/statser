@@ -57,6 +57,17 @@ evaluate_call(<<"averageAbove">>, [Series, Avg], _From, _Until, _Now) ->
 evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
     lists:filter(fun(#series{values=Values}) -> safe_average(Values) =< Avg end, Series);
 
+% averageOutsidePercentile
+evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now) when is_number(N0) ->
+    N = upper_half(N0),
+    Avgs = lists:map(fun(#series{values=Values}) -> safe_average(Values) end, Series),
+    LowPerc = percentile(Avgs, 100 - N),
+    HighPerc = percentile(Avgs, N),
+    lists:filter(fun(#series{values=Values}) ->
+                         Avg = safe_average(Values),
+                         Avg =< LowPerc orelse Avg >= HighPerc
+                 end, Series);
+
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
@@ -73,6 +84,10 @@ evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_numbe
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
+
+
+upper_half(N) when N < 50 -> 100 - N;
+upper_half(N) -> N.
 
 
 process_series_values(Series, Func) ->
@@ -272,6 +287,15 @@ npercentile_test_() ->
     [?_assertEqual(pseudo_series([7.0, 7.0, 7.0]), evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
      ?_assertEqual(pseudo_series([5.0, 5.0, 5.0]), evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
      ?_assertEqual(pseudo_series([8.0, 8.0, 8.0]), evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
+    ].
+
+average_outside_percentile_test_() ->
+    S1 = pseudo_series([3.0, 5.0, 4.0]), % avg 4.0
+    S2 = pseudo_series([3.0, 9.0, 6.0]), % avg 6.0
+    S3 = pseudo_series([3.0, 12.0, 9.0]), % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(S1 ++ S3, evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
+     ?_assertEqual(Series, evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
     ].
 
 sort_non_null_test_() ->
