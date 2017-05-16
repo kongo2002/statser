@@ -72,6 +72,12 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
 
+% invert
+evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      S#series{values=process_series_values(S#series.values, fun safe_invert/1)}
+              end, Series);
+
 % limit
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:sublist(Series, N);
@@ -102,6 +108,12 @@ evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_numbe
                       S#series{values=Values}
               end, Series);
 
+% offset
+evaluate_call(<<"offset">>, [Series, Offset], _From, _Until, _Now) when is_number(Offset) ->
+    lists:map(fun(S) ->
+                      S#series{values=process_series_values(S#series.values, fun(X) -> X + Offset end)}
+              end, Series);
+
 % removeAboveValue
 evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
     lists:map(fun(S) ->
@@ -120,6 +132,12 @@ evaluate_call(<<"removeBelowValue">>, [Series, Val], _From, _Until, _Now) when i
                                                                  (X) -> X
                                                               end),
                       S#series{values=Values}
+              end, Series);
+
+% squareRoot
+evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      S#series{values=process_series_values(S#series.values, fun safe_square_root/1)}
               end, Series);
 
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
@@ -172,6 +190,14 @@ safe_average([null | Vs], Cnt, Avg) ->
 safe_average([Val | Vs], Cnt, Avg) ->
     NewAvg = Avg + (Val - Avg) / Cnt,
     safe_average(Vs, Cnt + 1, NewAvg).
+
+
+safe_invert(null) -> null;
+safe_invert(Value) -> math:pow(Value, -1).
+
+
+safe_square_root(null) -> null;
+safe_square_root(Value) -> math:pow(Value, 0.5).
 
 
 derivative(Values) ->
@@ -233,6 +259,21 @@ ceiling(X) ->
        true -> Truncated;
        false -> Truncated + 1
     end.
+
+
+safe_minimum([]) -> null;
+safe_minimum(Values) ->
+    safe_minimum(Values, 0).
+
+safe_minimum([], Min) -> Min;
+safe_minimum([{_TS, null} | Vs], Min) ->
+    safe_minimum(Vs, Min);
+safe_minimum([{_TS, Value} | Vs], Min) ->
+    safe_minimum(Vs, min(Min, Value));
+safe_minimum([null | Vs], Min) ->
+    safe_minimum(Vs, Min);
+safe_minimum([Value | Vs], Min) ->
+    safe_minimum(Vs, min(Min, Value)).
 
 
 square_sum([]) -> 0;
@@ -381,6 +422,14 @@ square_sum_test_() ->
     [?_assertEqual(0, square_sum([])),
      ?_assertEqual(2/3, square_sum([3, 4, 5])),
      ?_assertEqual(0.0, square_sum([3, 3, null, 3, null]))
+    ].
+
+minimum_test_() ->
+    [?_assertEqual(0, safe_minimum([23, 0])),
+     ?_assertEqual(0, safe_minimum([23, 0, 1, null])),
+     ?_assertEqual(-1, safe_minimum([null, 0, -1, null])),
+     ?_assertEqual(-1, safe_minimum(pseudo_values([null, 0, -1, null]))),
+     ?_assertEqual(null, safe_minimum([]))
     ].
 
 percentile_test_() ->
