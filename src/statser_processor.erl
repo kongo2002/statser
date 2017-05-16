@@ -72,6 +72,19 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
 
+% integral
+evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Values0 = S#series.values,
+                      {Values, _} = lists:foldl(fun({_, null} = X, {Vs, Sum}) -> {[X | Vs], Sum};
+                                                   ({TS, Val}, {Vs, Sum0}) ->
+                                                        Sum = Sum0 + Val,
+                                                        {[{TS, Sum} | Vs], Sum}
+                                                end, {[], 0}, Values0),
+                      ReversedValues = lists:reverse(Values),
+                      S#series{values=ReversedValues}
+              end, Series);
+
 % invert
 evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -421,6 +434,13 @@ most_deviant_test_() ->
      ?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
      ?_assertEqual(S3 ++ S2, evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(S3, evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
+    ].
+
+integral_test_() ->
+    [?_assertEqual(pseudo_series([1,2,3]), evaluate_call(<<"integral">>, [pseudo_series([1,1,1])], 0, 0, 0)),
+     ?_assertEqual(pseudo_series([1,null,2,3]), evaluate_call(<<"integral">>, [pseudo_series([1,null,1,1])], 0, 0, 0)),
+     ?_assertEqual(pseudo_series([]), evaluate_call(<<"integral">>, [pseudo_series([])], 0, 0, 0)),
+     ?_assertEqual(pseudo_series([null,null]), evaluate_call(<<"integral">>, [pseudo_series([null,null])], 0, 0, 0))
     ].
 
 offset_to_zero_test_() ->
