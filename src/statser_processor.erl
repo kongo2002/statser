@@ -114,6 +114,14 @@ evaluate_call(<<"offset">>, [Series, Offset], _From, _Until, _Now) when is_numbe
                       S#series{values=process_series_values(S#series.values, fun(X) -> X + Offset end)}
               end, Series);
 
+% offsetToZero
+evaluate_call(<<"offsetToZero">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Values = S#series.values,
+                      Minimum = safe_minimum(Values),
+                      S#series{values=process_series_values(Values, fun(X) -> X - Minimum end)}
+              end, Series);
+
 % removeAboveValue
 evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
     lists:map(fun(S) ->
@@ -263,17 +271,22 @@ ceiling(X) ->
 
 safe_minimum([]) -> null;
 safe_minimum(Values) ->
-    safe_minimum(Values, 0).
+    safe_minimum(Values, null).
 
 safe_minimum([], Min) -> Min;
 safe_minimum([{_TS, null} | Vs], Min) ->
     safe_minimum(Vs, Min);
 safe_minimum([{_TS, Value} | Vs], Min) ->
-    safe_minimum(Vs, min(Min, Value));
+    safe_minimum(Vs, safe_minimum0(Min, Value));
 safe_minimum([null | Vs], Min) ->
     safe_minimum(Vs, Min);
 safe_minimum([Value | Vs], Min) ->
-    safe_minimum(Vs, min(Min, Value)).
+    safe_minimum(Vs, safe_minimum0(Min, Value)).
+
+
+safe_minimum0(null, Value) -> Value;
+safe_minimum0(Value, null) -> Value;
+safe_minimum0(A, B) -> min(A, B).
 
 
 square_sum([]) -> 0;
@@ -410,6 +423,11 @@ most_deviant_test_() ->
      ?_assertEqual(S3, evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
     ].
 
+offset_to_zero_test_() ->
+    Series = pseudo_series([102, 101, 104, 101, 100, 111]),
+    Expected = pseudo_series([2, 1, 4, 1, 0, 11]),
+    [?_assertEqual(Expected, evaluate_call(<<"offsetToZero">>, [Series], 0, 0, 0))].
+
 sort_non_null_test_() ->
     [?_assertEqual({[], 0}, sort_non_null([])),
      ?_assertEqual({[], 0}, sort_non_null([null, null])),
@@ -429,6 +447,7 @@ minimum_test_() ->
      ?_assertEqual(0, safe_minimum([23, 0, 1, null])),
      ?_assertEqual(-1, safe_minimum([null, 0, -1, null])),
      ?_assertEqual(-1, safe_minimum(pseudo_values([null, 0, -1, null]))),
+     ?_assertEqual(5, safe_minimum(pseudo_values([null, 101, 5, null, 32]))),
      ?_assertEqual(null, safe_minimum([]))
     ].
 
