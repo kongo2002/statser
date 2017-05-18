@@ -356,8 +356,9 @@ write_at(IO, Point, Offset) ->
     file:write(IO, Point).
 
 
-mod(A, B) when A < 0 -> erlang:abs(A) rem B;
-mod(A, B) -> A rem B.
+mod(X, Y) when X > 0 -> X rem Y;
+mod(X, Y) when X < 0 -> Y + X rem Y;
+mod(0, Y) -> 0.
 
 
 % this method determines the offset where a data point with the
