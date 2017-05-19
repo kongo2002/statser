@@ -471,6 +471,18 @@ minimum_test_() ->
      ?_assertEqual(null, safe_minimum([]))
     ].
 
+lcm_test_() ->
+    [?_assertEqual(0, lcm(10, 0)),
+     ?_assertEqual(0, lcm(0, 5)),
+     ?_assertEqual(10, lcm(10, 5))
+    ].
+
+gcd_test_() ->
+    [?_assertEqual(10, gcd(10, 0)),
+     ?_assertEqual(5, gcd(0, 5)),
+     ?_assertEqual(5, gcd(10, 5))
+    ].
+
 percentile_test_() ->
     [?_assertEqual(null, percentile([], 50)),
      ?_assertEqual(null, percentile([null], 50)),
