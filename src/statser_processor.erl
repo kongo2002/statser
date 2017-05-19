@@ -282,6 +282,33 @@ ceiling(X) ->
     end.
 
 
+consolidate(Series, ValuesPP) ->
+    consolidate(Series, ValuesPP, fun safe_average/1).
+
+consolidate(Series, ValuesPP, _Func) when ValuesPP =< 1 -> Series;
+consolidate(Series, ValuesPP, Func) ->
+    Values = consolidate_values(Series#series.values, ValuesPP, Func),
+    Step = Series#series.step * ValuesPP,
+    Series#series{values=Values,step=Step}.
+
+
+consolidate_values([], _ValuesPP, _Func) -> [];
+consolidate_values([{TS0, Val0}=Hd | Tl], ValuesPP, Func) ->
+    {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, TS0, Cnt}) when Cnt == ValuesPP->
+                                          {[{TS0, Func(ConsVs)} | Result], [], TS, 1};
+                                     ({TS, Val}, {Result, ConsVs, TS0, Cnt}) when Cnt == ValuesPP ->
+                                          {[{TS0, Func(ConsVs)} | Result], [Val], TS, 1};
+                                     ({_TS, null}, {Result, ConsVs, TS, Cnt}) ->
+                                          {Result, ConsVs, TS, Cnt+1};
+                                     ({_TS, Val}, {Result, ConsVs, TS, Cnt}) ->
+                                          {Result, [Val | ConsVs], TS, Cnt+1}
+                                  end, {[], [Val0], TS0, 1}, Tl),
+    case Cs of
+        [] -> lists:reverse(Vs);
+        _ -> lists:reverse([{TS, Func(Cs)} | Vs])
+    end.
+
+
 safe_minimum([]) -> null;
 safe_minimum(Values) ->
     safe_minimum(Values, null).
@@ -369,12 +396,18 @@ pseudo_target(Target) ->
     #series{target=Target}.
 
 pseudo_values(Series) ->
-    {Lst, _Idx} = lists:foldr(fun(V, {Acc, Idx}) -> {[{Idx, V} | Acc], Idx + 10} end, {[], 100}, Series),
-    Lst.
+    pseudo_values(Series, 10).
+
+pseudo_values(Series, Step) ->
+    {Lst, _Idx} = lists:foldl(fun(V, {Acc, Idx}) -> {[{Idx, V} | Acc], Idx + Step} end, {[], 100}, Series),
+    lists:reverse(Lst).
 
 pseudo_series(Values) ->
+    pseudo_series(Values, 10).
+
+pseudo_series(Values, Step) ->
     Target = <<"target">>,
-    [#series{target=Target,values=pseudo_values(Values)}].
+    #series{target=Target,values=pseudo_values(Values, Step),step=Step}.
 
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
@@ -397,38 +430,38 @@ safe_average_test_() ->
     ].
 
 average_above_test_() ->
-    Series = pseudo_series([5.0, 7.0]),
+    Series = [pseudo_series([5.0, 7.0])],
     [?_assertEqual(Series, evaluate_call(<<"averageAbove">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual([], evaluate_call(<<"averageAbove">>, [Series, 6.5], 0, 0, 0))
     ].
 
 average_below_test_() ->
-    Series = pseudo_series([5.0, 7.0]),
+    Series = [pseudo_series([5.0, 7.0])],
     [?_assertEqual([], evaluate_call(<<"averageBelow">>, [Series, 5.5], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
     ].
 
 npercentile_test_() ->
-    Series = pseudo_series([5.0, 8.0, 7.0]),
-    [?_assertEqual(pseudo_series([7.0, 7.0, 7.0]), evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
-     ?_assertEqual(pseudo_series([5.0, 5.0, 5.0]), evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
-     ?_assertEqual(pseudo_series([8.0, 8.0, 8.0]), evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
+    Series = [pseudo_series([5.0, 8.0, 7.0])],
+    [?_assertEqual([pseudo_series([7.0, 7.0, 7.0])], evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([5.0, 5.0, 5.0])], evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([8.0, 8.0, 8.0])], evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
     ].
 
 average_outside_percentile_test_() ->
-    S1 = pseudo_series([3.0, 5.0, 4.0]), % avg 4.0
-    S2 = pseudo_series([3.0, 9.0, 6.0]), % avg 6.0
-    S3 = pseudo_series([3.0, 12.0, 9.0]), % avg 8.0
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
     [?_assertEqual(S1 ++ S3, evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
     ].
 
 most_deviant_test_() ->
-    S1 = pseudo_series([3.0, 5.0, 4.0]), % avg 4.0
-    S2 = pseudo_series([3.0, 9.0, 6.0]), % avg 6.0
-    S3 = pseudo_series([3.0, 12.0, 9.0]), % avg 8.0
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
     [?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
@@ -437,15 +470,15 @@ most_deviant_test_() ->
     ].
 
 integral_test_() ->
-    [?_assertEqual(pseudo_series([1,2,3]), evaluate_call(<<"integral">>, [pseudo_series([1,1,1])], 0, 0, 0)),
-     ?_assertEqual(pseudo_series([1,null,2,3]), evaluate_call(<<"integral">>, [pseudo_series([1,null,1,1])], 0, 0, 0)),
-     ?_assertEqual(pseudo_series([]), evaluate_call(<<"integral">>, [pseudo_series([])], 0, 0, 0)),
-     ?_assertEqual(pseudo_series([null,null]), evaluate_call(<<"integral">>, [pseudo_series([null,null])], 0, 0, 0))
+    [?_assertEqual([pseudo_series([1,2,3])], evaluate_call(<<"integral">>, [[pseudo_series([1,1,1])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([1,null,2,3])], evaluate_call(<<"integral">>, [[pseudo_series([1,null,1,1])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([])], evaluate_call(<<"integral">>, [[pseudo_series([])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([null,null])], evaluate_call(<<"integral">>, [[pseudo_series([null,null])]], 0, 0, 0))
     ].
 
 offset_to_zero_test_() ->
-    Series = pseudo_series([102, 101, 104, 101, 100, 111]),
-    Expected = pseudo_series([2, 1, 4, 1, 0, 11]),
+    Series = [pseudo_series([102, 101, 104, 101, 100, 111])],
+    Expected = [pseudo_series([2, 1, 4, 1, 0, 11])],
     [?_assertEqual(Expected, evaluate_call(<<"offsetToZero">>, [Series], 0, 0, 0))].
 
 sort_non_null_test_() ->
@@ -481,6 +514,15 @@ gcd_test_() ->
     [?_assertEqual(10, gcd(10, 0)),
      ?_assertEqual(5, gcd(0, 5)),
      ?_assertEqual(5, gcd(10, 5))
+    ].
+
+consolidate_test_() ->
+    Series = pseudo_series([1,2,1,2,1,2,1,5]),
+    Expected = pseudo_series([1.5,1.5,1.5,3.0], 20),
+    [?_assertEqual(Expected, consolidate(Series, 2)),
+     ?_assertEqual(pseudo_series([1.5], 30), consolidate(pseudo_series([1, null, 2]), 3)),
+     ?_assertEqual(pseudo_series([1.5, 1.0], 30), consolidate(pseudo_series([1, null, 2, null, null, 1]), 3)),
+     ?_assertEqual(pseudo_series([], 20), consolidate(pseudo_series([]), 2))
     ].
 
 percentile_test_() ->
