@@ -293,11 +293,11 @@ consolidate(Series, ValuesPP, Func) ->
 
 
 consolidate_values([], _ValuesPP, _Func) -> [];
-consolidate_values([{TS0, Val0}=Hd | Tl], ValuesPP, Func) ->
-    {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, TS0, Cnt}) when Cnt == ValuesPP->
-                                          {[{TS0, Func(ConsVs)} | Result], [], TS, 1};
-                                     ({TS, Val}, {Result, ConsVs, TS0, Cnt}) when Cnt == ValuesPP ->
-                                          {[{TS0, Func(ConsVs)} | Result], [Val], TS, 1};
+consolidate_values([{TS0, Val0} | Tl], ValuesPP, Func) ->
+    {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP->
+                                          {[{Ts, Func(ConsVs)} | Result], [], TS, 1};
+                                     ({TS, Val}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP ->
+                                          {[{Ts, Func(ConsVs)} | Result], [Val], TS, 1};
                                      ({_TS, null}, {Result, ConsVs, TS, Cnt}) ->
                                           {Result, ConsVs, TS, Cnt+1};
                                      ({_TS, Val}, {Result, ConsVs, TS, Cnt}) ->
@@ -307,6 +307,25 @@ consolidate_values([{TS0, Val0}=Hd | Tl], ValuesPP, Func) ->
         [] -> lists:reverse(Vs);
         _ -> lists:reverse([{TS, Func(Cs)} | Vs])
     end.
+
+
+normalize(SeriesLst) ->
+    Series = lists:flatten(SeriesLst),
+    {_Start, _End, Step} = normalize_stats(Series),
+    % TODO: properly handle start/stop
+    lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series).
+
+
+normalize_stats([Hd | Tl]) ->
+    Acc = {Hd#series.start, Hd#series.until, Hd#series.step},
+    {S, End0, Step} = lists:foldr(fun(S, {Start0, End0, Step0}) ->
+                                          Start = min(Start0, S#series.start),
+                                          End = max(End0, S#series.until),
+                                          Step = lcm(Step0, S#series.step),
+                                          {Start, End, Step}
+                                  end, Acc, Tl),
+    End = (End0 - S) rem Step,
+    {S, End, Step}.
 
 
 safe_minimum([]) -> null;
@@ -334,7 +353,7 @@ square_sum(Values) ->
     Avg = safe_average(Values),
     square_sum(Values, Avg, 0, 0).
 
-square_sum([], Avg, Sum, Len) ->
+square_sum([], _Avg, Sum, Len) ->
     Sum / Len;
 square_sum([{_TS, null} | Vs], Avg, Sum, Len) ->
     square_sum(Vs, Avg, Sum, Len);
@@ -407,7 +426,9 @@ pseudo_series(Values) ->
 
 pseudo_series(Values, Step) ->
     Target = <<"target">>,
-    #series{target=Target,values=pseudo_values(Values, Step),step=Step}.
+    Start = 100,
+    End = length(Values) * Step + Start,
+    #series{target=Target,values=pseudo_values(Values, Step),start=Start,until=End,step=Step}.
 
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
@@ -524,6 +545,10 @@ consolidate_test_() ->
      ?_assertEqual(pseudo_series([1.5, 1.0], 30), consolidate(pseudo_series([1, null, 2, null, null, 1]), 3)),
      ?_assertEqual(pseudo_series([], 20), consolidate(pseudo_series([]), 2))
     ].
+
+normalize_test_() ->
+    Series = [pseudo_series([1,1,1], 20), pseudo_series([2,2,2,2,2,2])],
+    [?_assertEqual([pseudo_series([1,1,1], 20), pseudo_series([2.0,2.0,2.0], 20)], normalize([Series]))].
 
 percentile_test_() ->
     [?_assertEqual(null, percentile([], 50)),
