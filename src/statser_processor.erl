@@ -282,11 +282,9 @@ ceiling(X) ->
     end.
 
 
+consolidate(Series, ValuesPP) when ValuesPP =< 1 -> Series;
 consolidate(Series, ValuesPP) ->
-    consolidate(Series, ValuesPP, average).
-
-consolidate(Series, ValuesPP, _Aggregate) when ValuesPP =< 1 -> Series;
-consolidate(Series, ValuesPP, Aggregate) ->
+    Aggregate = Series#series.aggregation,
     Values = consolidate_values(Series#series.values, ValuesPP, Aggregate),
     Step = Series#series.step * ValuesPP,
     Series#series{values=Values,step=Step}.
@@ -317,6 +315,7 @@ normalize(SeriesLst) ->
     Series = lists:flatten(SeriesLst),
     {_Start, _End, Step} = normalize_stats(Series),
     % TODO: properly handle start/stop
+    % TODO: this is sufficient for now as most of the time start/end are the same over all series
     lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series).
 
 
@@ -429,10 +428,14 @@ pseudo_series(Values) ->
     pseudo_series(Values, 10).
 
 pseudo_series(Values, Step) ->
+    pseudo_series(Values, Step, average).
+
+pseudo_series(Values, Step, Aggregation) ->
     Target = <<"target">>,
     Start = 100,
     End = length(Values) * Step + Start,
-    #series{target=Target,values=pseudo_values(Values, Step),start=Start,until=End,step=Step}.
+    PValues = pseudo_values(Values, Step),
+    #series{target=Target,values=PValues,start=Start,until=End,step=Step,aggregation=Aggregation}.
 
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
@@ -547,7 +550,8 @@ consolidate_test_() ->
     [?_assertEqual(Expected, consolidate(Series, 2)),
      ?_assertEqual(pseudo_series([1.5], 30), consolidate(pseudo_series([1, null, 2]), 3)),
      ?_assertEqual(pseudo_series([1.5, 1.0], 30), consolidate(pseudo_series([1, null, 2, null, null, 1]), 3)),
-     ?_assertEqual(pseudo_series([], 20), consolidate(pseudo_series([]), 2))
+     ?_assertEqual(pseudo_series([], 20), consolidate(pseudo_series([]), 2)),
+     ?_assertEqual(pseudo_series([2,2,2], 20, sum), consolidate(pseudo_series([1,1,1,1,1,1], 10, sum), 2))
     ].
 
 normalize_test_() ->
