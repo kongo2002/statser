@@ -597,9 +597,11 @@ sum_series_test_() ->
     ].
 
 diff_series_test_() ->
-    Series = [pseudo_series([1,2,3])],
-    [?_assertEqual([pseudo_series([0,0,0])], evaluate_call(<<"diffSeries">>, [Series, Series], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([0,0,0])], evaluate_call(<<"diffSeries">>, [[Series ++ Series]], 0, 0, 0))
+    Series1 = [pseudo_series([1,2,3])],
+    Series2 = [pseudo_series([3,2,6])],
+    [?_assertEqual([pseudo_series([-2,0,-3])], evaluate_call(<<"diffSeries">>, [Series1, Series2], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([-2,0,-3])], evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([-5,-2,-9])], evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2 ++ Series2]], 0, 0, 0))
     ].
 
 offset_to_zero_test_() ->
