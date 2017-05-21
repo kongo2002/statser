@@ -9,6 +9,7 @@
 -export([create/2,
          create/4,
          read_metadata/1,
+         aggregate/4,
          aggregation_type/1,
          aggregation_value/1,
          fetch/3,
@@ -107,7 +108,9 @@ fetch_inner(IO, From, Until, Now) ->
     {ok, Metadata} = read_metadata_inner(IO),
     Oldest = Now - Metadata#whisper_metadata.retention,
 
-    if From > Now orelse Until < Oldest -> #series{values=[]};
+    if From > Now orelse Until < Oldest ->
+           % XXX: is this the right return value?
+           #series{values=[]};
        true ->
            FromAdjusted = adjust_from(From, Oldest),
            UntilAdjusted = adjust_until(Until, Now),
@@ -147,7 +150,8 @@ fetch_with_metadata(IO, Metadata, Now, From, Until) ->
     % read series data points
     Series = fetch_series(IO, Archive, FromOffset, UntilOffset),
     Values = fetch_series_values(Archive, FromInterval, Series),
-    #series{values=Values,start=FromInterval,until=UntilInterval,step=ArchiveSeconds}.
+    Aggregation = Metadata#whisper_metadata.aggregation,
+    #series{values=Values,start=FromInterval,until=UntilInterval,step=ArchiveSeconds,aggregation=Aggregation}.
 
 
 fetch_series(IO, _Archive, FromOffset, UntilOffset) when FromOffset < UntilOffset ->
@@ -358,7 +362,7 @@ write_at(IO, Point, Offset) ->
 
 mod(X, Y) when X > 0 -> X rem Y;
 mod(X, Y) when X < 0 -> Y + X rem Y;
-mod(0, Y) -> 0.
+mod(0, _Y) -> 0.
 
 
 % this method determines the offset where a data point with the

@@ -283,21 +283,23 @@ ceiling(X) ->
 
 
 consolidate(Series, ValuesPP) ->
-    consolidate(Series, ValuesPP, fun safe_average/1).
+    consolidate(Series, ValuesPP, average).
 
-consolidate(Series, ValuesPP, _Func) when ValuesPP =< 1 -> Series;
-consolidate(Series, ValuesPP, Func) ->
-    Values = consolidate_values(Series#series.values, ValuesPP, Func),
+consolidate(Series, ValuesPP, _Aggregate) when ValuesPP =< 1 -> Series;
+consolidate(Series, ValuesPP, Aggregate) ->
+    Values = consolidate_values(Series#series.values, ValuesPP, Aggregate),
     Step = Series#series.step * ValuesPP,
     Series#series{values=Values,step=Step}.
 
 
-consolidate_values([], _ValuesPP, _Func) -> [];
-consolidate_values([{TS0, Val0} | Tl], ValuesPP, Func) ->
-    {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP->
-                                          {[{Ts, Func(ConsVs)} | Result], [], TS, 1};
+consolidate_values([], _ValuesPP, _Aggregate) -> [];
+consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
+    {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP ->
+                                          Agg = statser_whisper:aggregate(Aggregate, ConsVs, length(ConsVs), Cnt),
+                                          {[{Ts, Agg} | Result], [], TS, 1};
                                      ({TS, Val}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP ->
-                                          {[{Ts, Func(ConsVs)} | Result], [Val], TS, 1};
+                                          Agg = statser_whisper:aggregate(Aggregate, ConsVs, length(ConsVs), Cnt),
+                                          {[{Ts, Agg} | Result], [Val], TS, 1};
                                      ({_TS, null}, {Result, ConsVs, TS, Cnt}) ->
                                           {Result, ConsVs, TS, Cnt+1};
                                      ({_TS, Val}, {Result, ConsVs, TS, Cnt}) ->
@@ -305,7 +307,9 @@ consolidate_values([{TS0, Val0} | Tl], ValuesPP, Func) ->
                                   end, {[], [Val0], TS0, 1}, Tl),
     case Cs of
         [] -> lists:reverse(Vs);
-        _ -> lists:reverse([{TS, Func(Cs)} | Vs])
+        _ ->
+            LastValue = statser_whisper:aggregate(Aggregate, Cs, length(Cs), ValuesPP),
+            lists:reverse([{TS, LastValue} | Vs])
     end.
 
 

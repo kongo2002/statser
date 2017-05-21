@@ -54,5 +54,6 @@
           values :: [{integer(), number()}],
           step :: integer(),
           start :: integer(),
-          until :: integer()
+          until :: integer(),
+          aggregation :: aggregation()
          }).
