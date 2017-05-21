@@ -161,6 +161,11 @@ evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
                       S#series{values=process_series_values(S#series.values, fun safe_square_root/1)}
               end, Series);
 
+% sumSeries
+evaluate_call(<<"sumSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun safe_sum/1);
+
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
     error.
@@ -313,10 +318,11 @@ consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
 
 normalize(SeriesLst) ->
     Series = lists:flatten(SeriesLst),
-    {_Start, _End, Step} = normalize_stats(Series),
+    {Start, End, Step} = normalize_stats(Series),
     % TODO: properly handle start/stop
     % TODO: this is sufficient for now as most of the time start/end are the same over all series
-    lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series).
+    Ss = lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series),
+    {Ss, Start, End, Step}.
 
 
 normalize_stats([Hd | Tl]) ->
@@ -327,7 +333,7 @@ normalize_stats([Hd | Tl]) ->
                                           Step = lcm(Step0, S#series.step),
                                           {Start, End, Step}
                                   end, Acc, Tl),
-    End = (End0 - S) rem Step,
+    End = End0 + ((End0 - S) rem Step),
     {S, End, Step}.
 
 
@@ -345,17 +351,42 @@ zip_lists(Lists, WithFunc, Acc) ->
 zip_heads(Lists, Func) ->
     Lsts = lists:foldl(fun([], _Acc) -> undefined;
                           (_, undefined) -> undefined;
-                          ([Hd | Tl], {Heads, Tails}) ->
+                          ([{TS, Val} | Tl], {Heads, Tails, _}) ->
                                % appending (`++`) should be fine in here because the
                                % number of lists will be rather small compared to
                                % the number of values of each list
-                               {Heads ++ [Hd], [Tl | Tails]}
-                       end, {[], []}, Lists),
+                               {Heads ++ [Val], [Tl | Tails], TS};
+                          ([Val | Tl], {Heads, Tails, TS}) ->
+                               {Heads ++ [Val], [Tl | Tails], TS}
+                       end, {[], [], null}, Lists),
     case Lsts of
         undefined -> undefined;
-        {Heads, Tails} ->
-            {Func(Heads), Tails}
+        {Heads, Tails, null} ->
+            {Func(Heads), Tails};
+        {Heads, Tails, TS} ->
+            {{TS, Func(Heads)}, Tails}
     end.
+
+
+zip_series([], _Func) -> [];
+zip_series([Hd | _] = Series, Func) ->
+    Values = lists:map(fun(#series{values=Vs}) -> Vs end, Series),
+    % we use the first series as a template
+    [Hd#series{values=zip_lists(Values, Func)}].
+
+
+safe_sum(Vs) ->
+    safe_sum(Vs, 0).
+
+safe_sum([], Acc) -> Acc;
+safe_sum([null | Vs], Acc) ->
+    safe_sum(Vs, Acc);
+safe_sum([{_TS, null} | Vs], Acc) ->
+    safe_sum(Vs, Acc);
+safe_sum([{_TS, Value} | Vs], Acc) ->
+    safe_sum(Vs, Acc + Value);
+safe_sum([Value | Vs], Acc) ->
+    safe_sum(Vs, Acc + Value).
 
 
 safe_minimum([]) -> null;
@@ -551,6 +582,15 @@ integral_test_() ->
      ?_assertEqual([pseudo_series([null,null])], evaluate_call(<<"integral">>, [[pseudo_series([null,null])]], 0, 0, 0))
     ].
 
+sum_series_test_() ->
+    Series1 = [pseudo_series([1,2,3])],
+    Series2 = [pseudo_series([1,2,3], 20)],
+    Series3 = [pseudo_series([1,1,2,2,3,3])],
+    [?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [Series1, Series1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([2.0,4.0,6.0], 20)], evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    ].
+
 offset_to_zero_test_() ->
     Series = [pseudo_series([102, 101, 104, 101, 100, 111])],
     Expected = [pseudo_series([2, 1, 4, 1, 0, 11])],
@@ -611,8 +651,9 @@ consolidate_test_() ->
     ].
 
 normalize_test_() ->
+    Normalize = fun(S) -> {N, _, _, _} = normalize(S), N end,
     Series = [pseudo_series([1,1,1], 20), pseudo_series([2,2,2,2,2,2])],
-    [?_assertEqual([pseudo_series([1,1,1], 20), pseudo_series([2.0,2.0,2.0], 20)], normalize([Series]))].
+    [?_assertEqual([pseudo_series([1,1,1], 20), pseudo_series([2.0,2.0,2.0], 20)], Normalize([Series]))].
 
 zip_lists_test_() ->
     [?_assertEqual([], zip_lists([], fun lists:sum/1)),
