@@ -87,6 +87,29 @@ on my roadmap below.
 * configurable storage rules
 * configurable aggregation schemes
 * throttling of archive creation
+* metrics API
+* render API (JSON output only!)
+    - `absolute`
+    - `alias`
+    - `aliasByMetric`
+    - `aliasByNode`
+    - `averageAbove`
+    - `averageBelow`
+    - `averageOutsidePercentile`
+    - `derivative`
+    - `diffSeries`
+    - `integral`
+    - `invert`
+    - `limit`
+    - `mostDeviant`
+    - `multiplySeries`
+    - `nPercentile`
+    - `offset`
+    - `offsetToZero`
+    - `removeAboveValue`
+    - `removeBelowValue`
+    - `squareRoot`
+    - `sumSeries`
 
 
 ### TODO
