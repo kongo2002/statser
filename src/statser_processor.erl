@@ -6,8 +6,9 @@
 
 -include("statser.hrl").
 
--export([fetch_data/4,
-         evaluate_call/5]).
+-export([consolidate/2,
+         evaluate_call/5,
+         fetch_data/4]).
 
 -define(TIMEOUT, 2000).
 
@@ -277,26 +278,6 @@ sort_non_null([Val | Vs], Acc, Len) ->
     sort_non_null(Vs, [Val | Acc], Len + 1).
 
 
-floor(X) when X < 0 ->
-    Truncated = trunc(X),
-    case X - Truncated == 0 of
-       true -> Truncated;
-       false -> Truncated - 1
-    end;
-floor(X) ->
-    trunc(X).
-
-
-ceiling(X) when X < 0 ->
-    trunc(X);
-ceiling(X) ->
-    Truncated = trunc(X),
-    case X - Truncated == 0 of
-       true -> Truncated;
-       false -> Truncated + 1
-    end.
-
-
 consolidate(Series, ValuesPP) when ValuesPP =< 1 -> Series;
 consolidate(Series, ValuesPP) ->
     Aggregate = Series#series.aggregation,
@@ -307,6 +288,10 @@ consolidate(Series, ValuesPP) ->
 
 consolidate_values([], _ValuesPP, _Aggregate) -> [];
 consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
+    Init = case Val0 of
+               null -> {[], [], TS0, 1};
+               _ -> {[], [Val0], TS0, 1}
+           end,
     {Vs, Cs, TS, _} = lists:foldl(fun({TS, null}, {Result, ConsVs, Ts, Cnt}) when Cnt == ValuesPP ->
                                           Agg = statser_whisper:aggregate(Aggregate, ConsVs, length(ConsVs), Cnt),
                                           {[{Ts, Agg} | Result], [], TS, 1};
@@ -317,7 +302,7 @@ consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
                                           {Result, ConsVs, TS, Cnt+1};
                                      ({_TS, Val}, {Result, ConsVs, TS, Cnt}) ->
                                           {Result, [Val | ConsVs], TS, Cnt+1}
-                                  end, {[], [Val0], TS0, 1}, Tl),
+                                  end, Init, Tl),
     case Cs of
         [] -> lists:reverse(Vs);
         _ ->
@@ -485,12 +470,12 @@ percentile(Values, N) ->
 percentile(Values, N, Interpolate) ->
     {Sorted, Len} = sort_non_null(Values),
     FractionalRank = (N / 100.0) * (Len + 1),
-    Rank0 = floor(FractionalRank),
+    Rank0 = statser_util:floor(FractionalRank),
     RankFraction = FractionalRank - Rank0,
 
     Rank =
     if Interpolate == true -> Rank0;
-       true -> Rank0 + ceiling(RankFraction)
+       true -> Rank0 + statser_util:ceiling(RankFraction)
     end,
 
     Percentile =

@@ -504,6 +504,7 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
     end.
 
 
+aggregate(_, [], _, _) -> null;
 aggregate(average, Values, NumValues, _) -> lists:sum(Values) / NumValues;
 aggregate(sum, Values, _, _) -> lists:sum(Values);
 aggregate(last, Values, _, _) -> lists:last(Values);

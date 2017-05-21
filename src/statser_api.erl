@@ -35,7 +35,7 @@ handle('POST', [<<"render">>], Req) ->
     From0 = get_or_fallback(<<"from">>, Args, <<"-1d">>),
     % 'until' defaults to now
     Until0 = get_or_fallback(<<"until">>, Args, <<"now">>),
-    MaxPoints = get_or_fallback(<<"maxDataPoints">>, Args, 366),
+    MaxPoints = parse_datapoints(get_or_fallback(<<"maxDataPoints">>, Args, <<"">>)),
     Format = get_or_fallback(<<"format">>, Args, <<"json">>),
 
     case Format of
@@ -94,10 +94,26 @@ handle_render(Targets, From, Until, MaxPoints) ->
     Now = erlang:system_time(second),
     Processed = lists:flatmap(fun(Target) ->
                                       % one target definition may result in 0-n results
-                                      process_target(Target, From, Until, Now, MaxPoints)
+                                      Res = process_target(Target, From, Until, Now, MaxPoints),
+                                      lists:map(fun(S) -> adjust_datapoints(S, MaxPoints) end, Res)
                               end, Targets),
     Formatted = format(lists:map(fun format_to_json/1, Processed), json),
     {ok, ?DEFAULT_HEADERS, Formatted}.
+
+
+adjust_datapoints(Series, none) -> Series;
+adjust_datapoints(Series, MaxDataPoints) ->
+    Step = Series#series.step,
+    TimeRange = Series#series.until - Series#series.start,
+    DataPoints = TimeRange div Step,
+    case DataPoints > MaxDataPoints of
+        true ->
+            ValuesPP = statser_util:ceiling(DataPoints / MaxDataPoints),
+            % XXX: 'nudge' necessary?
+            statser_processor:consolidate(Series, ValuesPP);
+        false ->
+            Series
+    end.
 
 
 format_to_json(#series{target=Target, values=DataPoints}) ->
@@ -188,6 +204,14 @@ parse_time(Value, Now, relative) ->
     case string:to_integer(List) of
         {error, _} -> error;
         {Val, Unit} -> Now - parse_unit(Val, Unit)
+    end.
+
+parse_datapoints(Value) ->
+    List = binary_to_list(Value),
+    case string:to_integer(List) of
+        {error, _} -> none;
+        {Val, []} -> Val;
+        _Otherwise -> none
     end.
 
 
