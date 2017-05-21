@@ -394,6 +394,27 @@ safe_sum([Value | Vs], Acc) ->
     safe_sum(Vs, Acc + Value).
 
 
+safe_multiply([]) -> null;
+safe_multiply([{_TS, V} | Vs]) ->
+    safe_multiply(Vs, V);
+safe_multiply([V | Vs]) ->
+    safe_multiply(Vs, V).
+
+safe_multiply([], Acc) -> Acc;
+safe_multiply([null | Vs], Acc) ->
+    safe_multiply(Vs, Acc);
+safe_multiply([{_TS, null} | Vs], Acc) ->
+    safe_multiply(Vs, Acc);
+safe_multiply([{_TS, Value} | Vs], null) ->
+    safe_multiply(Vs, Value);
+safe_multiply([{_TS, Value} | Vs], Acc) ->
+    safe_multiply(Vs, Acc * Value);
+safe_multiply([Value | Vs], null) ->
+    safe_multiply(Vs, Value);
+safe_multiply([Value | Vs], Acc) ->
+    safe_multiply(Vs, Acc * Value).
+
+
 safe_minimum([]) -> null;
 safe_minimum(Values) ->
     safe_minimum(Values, null).
@@ -651,6 +672,16 @@ safe_diff_test_() ->
      ?_assertEqual(-5, safe_diff([1, 1, 2, 3])),
      ?_assertEqual(-5, safe_diff([null, 1, 1, 2, null, 3, null])),
      ?_assertEqual(0, safe_diff([null, null, null]))
+    ].
+
+safe_multiply_test_() ->
+    [?_assertEqual(null, safe_multiply([])),
+     ?_assertEqual(null, safe_multiply([null, null])),
+     ?_assertEqual(3, safe_multiply([null, 3, null])),
+     ?_assertEqual(6, safe_multiply([3, 2])),
+     ?_assertEqual(6, safe_multiply([null, 3, null, 2, null])),
+     ?_assertEqual(6, safe_multiply(pseudo_values([3, 2]))),
+     ?_assertEqual(6, safe_multiply(pseudo_values([null, 3, null, 2, null])))
     ].
 
 consolidate_test_() ->
