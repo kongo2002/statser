@@ -37,8 +37,10 @@ ceiling(X) ->
 
 floor_test_() ->
     [?_assertEqual(5, floor(5.0)),
+     ?_assertEqual(5, floor(5)),
      ?_assertEqual(5, floor(5.5)),
      ?_assertEqual(5, floor(5.9)),
+     ?_assertEqual(-6, floor(-6)),
      ?_assertEqual(-6, floor(-5.1)),
      ?_assertEqual(-6, floor(-5.9))
     ].
@@ -48,6 +50,7 @@ ceiling_test_() ->
      ?_assertEqual(5, ceiling(5)),
      ?_assertEqual(6, ceiling(5.5)),
      ?_assertEqual(6, ceiling(5.9)),
+     ?_assertEqual(-5, ceiling(-5)),
      ?_assertEqual(-5, ceiling(-5.1)),
      ?_assertEqual(-5, ceiling(-5.9))
     ].
