@@ -331,6 +331,33 @@ normalize_stats([Hd | Tl]) ->
     {S, End, Step}.
 
 
+zip_lists([], _WithFunc) -> [];
+zip_lists(Lists, WithFunc) ->
+    zip_lists(Lists, WithFunc, []).
+
+zip_lists(Lists, WithFunc, Acc) ->
+    case zip_heads(Lists, WithFunc) of
+        undefined -> lists:reverse(Acc);
+        {Hd, Tails} -> zip_lists(Tails, WithFunc, [Hd | Acc])
+    end.
+
+
+zip_heads(Lists, Func) ->
+    Lsts = lists:foldl(fun([], _Acc) -> undefined;
+                          (_, undefined) -> undefined;
+                          ([Hd | Tl], {Heads, Tails}) ->
+                               % appending (`++`) should be fine in here because the
+                               % number of lists will be rather small compared to
+                               % the number of values of each list
+                               {Heads ++ [Hd], [Tl | Tails]}
+                       end, {[], []}, Lists),
+    case Lsts of
+        undefined -> undefined;
+        {Heads, Tails} ->
+            {Func(Heads), Tails}
+    end.
+
+
 safe_minimum([]) -> null;
 safe_minimum(Values) ->
     safe_minimum(Values, null).
@@ -349,6 +376,26 @@ safe_minimum([Value | Vs], Min) ->
 safe_minimum0(null, Value) -> Value;
 safe_minimum0(Value, null) -> Value;
 safe_minimum0(A, B) -> min(A, B).
+
+
+safe_diff([]) -> 0;
+safe_diff([{_TS, Value} | Vs]) -> safe_diff(Vs, Value);
+safe_diff([Value | Vs]) -> safe_diff(Vs, Value).
+
+safe_diff([], null) -> 0;
+safe_diff([], Acc) -> Acc;
+safe_diff([null | Vs], Acc) ->
+    safe_diff(Vs, Acc);
+safe_diff([{_TS, null} | Vs], Acc) ->
+    safe_diff(Vs, Acc);
+safe_diff([{_TS, Value} | Vs], null) ->
+    safe_diff(Vs, Value);
+safe_diff([{_TS, Value} | Vs], Acc) ->
+    safe_diff(Vs, Acc - Value);
+safe_diff([Value | Vs], null) ->
+    safe_diff(Vs, Value);
+safe_diff([Value | Vs], Acc) ->
+    safe_diff(Vs, Acc - Value).
 
 
 square_sum([]) -> 0;
@@ -544,6 +591,15 @@ gcd_test_() ->
      ?_assertEqual(5, gcd(10, 5))
     ].
 
+safe_diff_test_() ->
+    [?_assertEqual(0, safe_diff([])),
+     ?_assertEqual(1, safe_diff([1])),
+     ?_assertEqual(0, safe_diff([1, 1])),
+     ?_assertEqual(-5, safe_diff([1, 1, 2, 3])),
+     ?_assertEqual(-5, safe_diff([null, 1, 1, 2, null, 3, null])),
+     ?_assertEqual(0, safe_diff([null, null, null]))
+    ].
+
 consolidate_test_() ->
     Series = pseudo_series([1,2,1,2,1,2,1,5]),
     Expected = pseudo_series([1.5,1.5,1.5,3.0], 20),
@@ -557,6 +613,15 @@ consolidate_test_() ->
 normalize_test_() ->
     Series = [pseudo_series([1,1,1], 20), pseudo_series([2,2,2,2,2,2])],
     [?_assertEqual([pseudo_series([1,1,1], 20), pseudo_series([2.0,2.0,2.0], 20)], normalize([Series]))].
+
+zip_lists_test_() ->
+    [?_assertEqual([], zip_lists([], fun lists:sum/1)),
+     ?_assertEqual([2, 4, 6], zip_lists([[1,2,3], [1,2,3]], fun lists:sum/1)),
+     ?_assertEqual([2, 4, 6], zip_lists([[1,2,3,4], [1,2,3]], fun lists:sum/1)),
+     ?_assertEqual([2, 4, 6], zip_lists([[1,2,3], [1,2,3,4]], fun lists:sum/1)),
+     ?_assertEqual([2, 4, 6], zip_lists([[1,2,3], [1,2,3,4,5,6,7]], fun lists:sum/1)),
+     ?_assertEqual([3, 6, 9], zip_lists([[1,2,3], [1,2,3], [1,2,3]], fun lists:sum/1))
+    ].
 
 percentile_test_() ->
     [?_assertEqual(null, percentile([], 50)),
