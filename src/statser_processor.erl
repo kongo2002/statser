@@ -72,6 +72,11 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
 
+% diffSeries
+evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun safe_diff/1);
+
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -589,6 +594,12 @@ sum_series_test_() ->
     [?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [Series1, Series1], 0, 0, 0)),
      ?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
      ?_assertEqual([pseudo_series([2.0,4.0,6.0], 20)], evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    ].
+
+diff_series_test_() ->
+    Series = [pseudo_series([1,2,3])],
+    [?_assertEqual([pseudo_series([0,0,0])], evaluate_call(<<"diffSeries">>, [Series, Series], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([0,0,0])], evaluate_call(<<"diffSeries">>, [[Series ++ Series]], 0, 0, 0))
     ].
 
 offset_to_zero_test_() ->
