@@ -117,6 +117,11 @@ evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_numbe
             lists:map(fun({_Sigma, S}) -> S end, lists:sublist(Sorted, N))
     end;
 
+% multiplySeries
+evaluate_call(<<"multiplySeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun safe_multiply/1);
+
 % nPercentile
 evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) ->
@@ -615,6 +620,12 @@ sum_series_test_() ->
     [?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [Series1, Series1], 0, 0, 0)),
      ?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
      ?_assertEqual([pseudo_series([2.0,4.0,6.0], 20)], evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    ].
+
+multiply_series_test_() ->
+    Series = [pseudo_series([null,1,2,null,3])],
+    [?_assertEqual([pseudo_series([null, 1, 4, null, 9])], evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([null, 1, 4, null, 9])], evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
     ].
 
 diff_series_test_() ->
