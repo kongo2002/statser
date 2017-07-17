@@ -66,6 +66,8 @@ init([]) ->
            ?CHILD(metrics, statser_metrics_sup, supervisor, []),
            ?CHILD(router, statser_router, worker, []),
            ?CHILD(instrumentation, statser_instrumentation, worker, []),
+           % TODO: udp - depending on config
+           ?CHILD(udp_listener, statser_listener_udp, worker, [8125]),
            % rate limiters
            ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
            ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>]),
