@@ -165,10 +165,10 @@ handle(Packet, State) ->
              end,
     case Result of
         {ok, Updated} ->
-            lager:debug("updated state: ~p", [Updated]),
+            statser_instrumentation:increment(<<"udp.values-handled">>),
             Updated;
         error ->
-            % TODO: inc error counter
+            statser_instrumentation:increment(<<"udp.invalid-metrics">>),
             State
     end.
 
