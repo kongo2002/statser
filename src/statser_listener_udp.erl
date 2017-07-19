@@ -2,6 +2,10 @@
 
 -behaviour(gen_server).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% API
 -export([start_link/1,
          listen/2]).
@@ -193,6 +197,24 @@ publish(Key, Value, TS) ->
     gen_server:cast(statser_router, {line, Metric, Value, TS}).
 
 
+calculate_timer([], _Count) -> null;
+calculate_timer(Values, Count) ->
+    Sorted = lists:sort(Values),
+    Min = hd(Sorted),
+    Max = lists:last(Sorted),
+    {Sums, SquaredSums, Sum, SquaredSum} = cumulative(Sorted),
+    {Min, Max, Sums, SquaredSums, Sum, SquaredSum}.
+
+
+cumulative([V | Vs]) ->
+    cumulative([V], [V * V], Vs).
+
+cumulative([A | _] = As, [B | _] = Bs, []) ->
+    {lists:reverse(As), lists:reverse(Bs), A, B};
+cumulative([A | _] = As, [B | _] = Bs, [X | Xs]) ->
+    cumulative([A + X | As], [B + X * X | Bs], Xs).
+
+
 handle(Packet, State) ->
     lager:debug("handle UDP packet: ~p", [Packet]),
 
@@ -311,3 +333,18 @@ parse_gauge_value(Mod, Value) ->
         {ok, Val} -> {ok, Mod, Val};
         error -> error
     end.
+
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+calculate_timer_test_() ->
+    [?_assertEqual(null, calculate_timer([], 0)),
+     ?_assertEqual({0, 100, [0, 100], [0, 10000], 100, 10000}, calculate_timer([100, 0], 2)),
+     ?_assertEqual({1, 3, [1, 3, 6], [1, 5, 14], 6, 14}, calculate_timer([1, 3, 2], 3))
+    ].
+
+-endif.
