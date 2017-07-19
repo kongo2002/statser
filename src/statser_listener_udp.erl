@@ -122,8 +122,18 @@ handle_info({msg, Binary}, State) ->
     {noreply, NewState};
 
 handle_info(flush, State) ->
+    Now = erlang:system_time(second),
     lager:debug("flushing UDP values"),
-    {noreply, State};
+
+    % TODO: configurable if values should be reset or removed
+
+    % flush counters
+    Counters = maps:map(fun(K, V) ->
+                                publish(<<"counters.", K/binary>>, V, Now),
+                                0
+                        end, State#state.counters),
+
+    {noreply, State#state{counters=Counters}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -163,6 +173,13 @@ listen(Parent, Socket) ->
     {ok, {_Addr, _Port, Packet}} = gen_udp:recv(Socket, 0),
     Parent ! {msg, Packet},
     listen(Parent, Socket).
+
+
+publish(Key, Value, TS) ->
+    % TODO: configurable global prefix
+    GlobalPrefix = <<"stats.">>,
+    Metric = <<GlobalPrefix/binary, Key/binary>>,
+    gen_server:cast(statser_router, {line, Metric, Value, TS}).
 
 
 handle(Packet, State) ->
