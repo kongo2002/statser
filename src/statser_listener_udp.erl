@@ -122,8 +122,8 @@ handle_info({msg, Binary}, State) ->
     {noreply, NewState};
 
 handle_info(flush, State) ->
+    Start = erlang:monotonic_time(millisecond),
     Now = erlang:system_time(second),
-    lager:debug("flushing UDP values"),
 
     % TODO: configurable if values should be reset or removed
 
@@ -133,7 +133,18 @@ handle_info(flush, State) ->
                                 0
                         end, State#state.counters),
 
-    {noreply, State#state{counters=Counters}};
+    % flush gauges
+    Gauges = maps:map(fun(K, V) ->
+                                publish(<<"gauges.", K/binary>>, V, Now),
+                                0
+                        end, State#state.gauges),
+
+    % TODO: expose duration as instrumentation/metric
+    Duration = erlang:monotonic_time(millisecond) - Start,
+    lager:debug("flush duration: ~w ms", [Duration]),
+
+    {noreply, State#state{counters=Counters,
+                          gauges=Gauges}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
