@@ -274,7 +274,7 @@ handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
 
     {Update, Initial} =
     case Mod of
-        set -> {fun(X) -> Value end, Value};
+        set -> {fun(_) -> Value end, Value};
         inc -> {fun(X) -> X + Value end, Value};
         dec -> {fun(X) -> X - Value end, -Value}
     end,
