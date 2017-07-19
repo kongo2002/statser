@@ -14,7 +14,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, socket, counters, timers, gauges, sets}).
+-record(state, {port, socket, counters, timers, gauges, sets, timer}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -91,9 +91,16 @@ handle_cast(accept, #state{port=Port} = State) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, false}]),
     lager:info("UDP listener opened port at ~w [~p]", [Port, Socket]),
 
+    % TODO: configurable interval
+    Interval = 10 * 1000,
+
+    % TODO: maybe we want to synchronize the flush interval with
+    % the wall clock time matching with the graphite aggregation
+    {ok, Timer} = timer:send_interval(Interval, flush),
+
     % TODO: handle exit/failure
     spawn_link(?MODULE, listen, [Self, Socket]),
-    {noreply, State#state{socket=Socket}};
+    {noreply, State#state{socket=Socket, timer=Timer}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -114,6 +121,10 @@ handle_info({msg, Binary}, State) ->
 
     {noreply, NewState};
 
+handle_info(flush, State) ->
+    lager:debug("flushing UDP values"),
+    {noreply, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -128,7 +139,9 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{timer=Timer}) ->
+    lager:info("terminating UDP listener service at ~w", [self()]),
+    timer:cancel(Timer),
     ok.
 
 %%--------------------------------------------------------------------
@@ -213,17 +226,18 @@ handle_metric(State, Metric, {ok, Value}, <<"c">>, {ok, Sample}) ->
     lager:debug("handle counter: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
     Counters0 = State#state.counters,
-    Update = fun(X) -> X + Value end,
-    Counters = maps:update_with(Metric, Update, Value, Counters0),
+    Update = fun(X) -> X + (Value * (1 / Sample)) end,
+    Counters = maps:update_with(Metric, Update, (Value * (1 / Sample)), Counters0),
 
     {ok, State#state{counters=Counters}};
 
 handle_metric(State, Metric, {ok, Value}, <<"ms">>, {ok, Sample}) ->
     lager:debug("handle timer: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
+    Inc = 1 / Sample,
     Timers0 = State#state.timers,
-    Update = fun({Xs, Cnt}) -> {[Value | Xs], Cnt + 1} end,
-    Timers = maps:update_with(Metric, Update, {[Value], 1}, Timers0),
+    Update = fun({Xs, Cnt}) -> {[Value | Xs], Cnt + Inc} end,
+    Timers = maps:update_with(Metric, Update, {[Value], Inc}, Timers0),
 
     {ok, State#state{timers=Timers}};
 
