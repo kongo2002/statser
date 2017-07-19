@@ -161,14 +161,14 @@ process_line(Pattern, Data) ->
     case binary:split(Data, Pattern, [global, trim_all]) of
         % usual graphite format: 'path value timestamp'
         [Path, ValueBS, TimeStampBS] ->
-            {ok, Value} = to_number(ValueBS),
+            {ok, Value} = statser_util:to_number(ValueBS),
             {ok, TimeStamp} = to_epoch(TimeStampBS),
             lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]),
             {line, Path, Value, TimeStamp};
 
         % graphite format w/o timestamp: 'path value'
         [Path, ValueBS] ->
-            {ok, Value} = to_number(ValueBS),
+            {ok, Value} = statser_util:to_number(ValueBS),
             TimeStamp = erlang:system_time(second),
             lager:debug("received ~p: ~w at ~w (generated)", [Path, Value, TimeStamp]),
             {line, Path, Value, TimeStamp};
@@ -185,15 +185,3 @@ to_epoch(Binary) ->
         {Result, _Rest} -> {ok, Result}
     end.
 
-to_number(Binary) ->
-    List = binary_to_list(Binary),
-    case string:to_float(List) of
-        {error, no_float} ->
-            case string:to_integer(List) of
-                {error, _} ->
-                    lager:warning("not a numeric value: ~p", [Binary]),
-                    error;
-                {Result, _} -> {ok, Result}
-            end;
-        {Result, _} -> {ok, Result}
-    end.

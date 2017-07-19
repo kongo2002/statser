@@ -16,6 +16,9 @@
 
 -record(state, {port, socket}).
 
+-define(DELIMITER_PIPE, <<"|">>).
+-define(DELIMITER_COLON, <<":">>).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -144,8 +147,65 @@ listen(Parent, Socket) ->
     Parent ! {msg, Packet},
     listen(Parent, Socket).
 
+
 handle(Packet) ->
     lager:debug("handle UDP packet: ~p", [Packet]),
 
-    % TODO
-    ok.
+    Result = case binary:split(Packet, ?DELIMITER_COLON) of
+                 [Metric, Rest] ->
+                     Split = binary:split(Rest, ?DELIMITER_PIPE, [global, trim_all]),
+                     handle_metric(Metric, Split);
+                 _ ->
+                     % TODO: check for valid metrics name
+                     handle_metric(Packet)
+             end,
+    case Result of
+        ok -> ok;
+        error ->
+            % TODO: inc error counter
+            ok
+    end.
+
+
+handle_metric(Metric) ->
+    handle_metric(Metric, {ok, 1}, <<"c">>, 1).
+
+handle_metric(Metric, [Value]) ->
+    handle_metric(Metric, statser_util:to_number(Value), <<"c">>, 1);
+handle_metric(Metric, [Value, Type]) ->
+    handle_metric(Metric, statser_util:to_number(Value), Type, 1);
+handle_metric(Metric, [Value, Type, <<"@", Sampling/binary>>]) ->
+    {Sample, _Rst} = string:to_float(binary:bin_to_list(Sampling)),
+    handle_metric(Metric, statser_util:to_number(Value), Type, Sample);
+handle_metric(Metric, Invalid) ->
+    lager:debug("invalid metric received: ~p - ~p", [Metric, Invalid]),
+    error.
+
+handle_metric(_Metric, error, _Type, _Sample) ->
+    lager:debug("invalid value specified"),
+    error;
+
+handle_metric(_Metric, _Value, _Type, error) ->
+    lager:debug("invalid sample specified"),
+    error;
+
+handle_metric(Metric, {ok, Value}, <<"c">>, Sample) ->
+    lager:debug("handle counter: ~p:~w [sample ~w]", [Metric, Value, Sample]),
+    ok;
+
+handle_metric(Metric, {ok, Value}, <<"ms">>, Sample) ->
+    lager:debug("handle timer: ~p:~w [sample ~w]", [Metric, Value, Sample]),
+    ok;
+
+handle_metric(Metric, {ok, Value}, <<"g">>, _Sample) ->
+    lager:debug("handle gauge: ~p:~w", [Metric, Value]),
+    ok;
+
+handle_metric(Metric, {ok, Value}, <<"s">>, _Sample) ->
+    lager:debug("handle set: ~p:~w", [Metric, Value]),
+    ok;
+
+handle_metric(_Metric, _Value, Type, _Sample) ->
+    lager:debug("invalid metric type specified: ~p [supported: c, ms, g, s]", [Type]),
+    error.
+
