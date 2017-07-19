@@ -165,7 +165,7 @@ handle(Packet, State) ->
              end,
     case Result of
         {ok, Updated} ->
-            statser_instrumentation:increment(<<"udp.values-handled">>),
+            statser_instrumentation:increment(<<"udp.handled-values">>),
             Updated;
         error ->
             statser_instrumentation:increment(<<"udp.invalid-metrics">>),
