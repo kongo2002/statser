@@ -14,7 +14,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, socket}).
+-record(state, {port, socket, counters, timers, gauges, sets}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -52,7 +52,11 @@ init(Port) ->
     lager:info("starting UDP listener at port ~w", [Port]),
 
     gen_server:cast(self(), accept),
-    {ok, #state{port=Port}}.
+    {ok, #state{port=Port,
+                counters=maps:new(),
+                timers=maps:new(),
+                gauges=maps:new(),
+                sets=maps:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,9 +110,9 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({msg, Binary}, State) ->
     Parts = binary:split(Binary, <<"\n">>, [global, trim_all]),
-    lists:foreach(fun handle/1, Parts),
+    NewState = lists:foldl(fun handle/2, State, Parts),
 
-    {noreply, State};
+    {noreply, NewState};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -148,64 +152,120 @@ listen(Parent, Socket) ->
     listen(Parent, Socket).
 
 
-handle(Packet) ->
+handle(Packet, State) ->
     lager:debug("handle UDP packet: ~p", [Packet]),
 
     Result = case binary:split(Packet, ?DELIMITER_COLON) of
                  [Metric, Rest] ->
                      Split = binary:split(Rest, ?DELIMITER_PIPE, [global, trim_all]),
-                     handle_metric(Metric, Split);
+                     handle_metric(State, Metric, Split);
                  _ ->
                      % TODO: check for valid metrics name
-                     handle_metric(Packet)
+                     handle_metric(State, Packet)
              end,
     case Result of
-        ok -> ok;
+        {ok, Updated} ->
+            lager:debug("updated state: ~p", [Updated]),
+            Updated;
         error ->
             % TODO: inc error counter
-            ok
+            State
     end.
 
 
-handle_metric(Metric) ->
-    handle_metric(Metric, {ok, 1}, <<"c">>, 1).
+handle_metric(State, Metric) ->
+    handle_metric(State, Metric, {ok, 1}, <<"c">>, {ok, 1}).
 
-handle_metric(Metric, [Value]) ->
-    handle_metric(Metric, statser_util:to_number(Value), <<"c">>, 1);
-handle_metric(Metric, [Value, Type]) ->
-    handle_metric(Metric, statser_util:to_number(Value), Type, 1);
-handle_metric(Metric, [Value, Type, <<"@", Sampling/binary>>]) ->
-    {Sample, _Rst} = string:to_float(binary:bin_to_list(Sampling)),
-    handle_metric(Metric, statser_util:to_number(Value), Type, Sample);
-handle_metric(Metric, Invalid) ->
+
+handle_metric(State, Metric, [Value]) ->
+    handle_metric(State, Metric, statser_util:to_number(Value), <<"c">>, {ok, 1});
+
+% special handling for gauges to differentiate between 'set' and 'modify' values
+handle_metric(State, Metric, [Value, <<"g">>]) ->
+    handle_metric(State, Metric, parse_gauge_value(Value), <<"g">>, {ok, 1});
+
+handle_metric(State, Metric, [Value, Type]) ->
+    handle_metric(State, Metric, statser_util:to_number(Value), Type, {ok, 1});
+
+% special handling for gauges to differentiate between 'set' and 'modify' values
+handle_metric(State, Metric, [Value, <<"g">>, <<"@", Sampling/binary>>]) ->
+    Sample = statser_util:to_number(Sampling),
+    handle_metric(State, Metric, parse_gauge_value(Value), <<"g">>, Sample);
+
+handle_metric(State, Metric, [Value, Type, <<"@", Sampling/binary>>]) ->
+    Sample = statser_util:to_number(Sampling),
+    handle_metric(State, Metric, statser_util:to_number(Value), Type, Sample);
+
+handle_metric(_State, Metric, Invalid) ->
     lager:debug("invalid metric received: ~p - ~p", [Metric, Invalid]),
     error.
 
-handle_metric(_Metric, error, _Type, _Sample) ->
+
+handle_metric(_State, _Metric, error, _Type, _Sample) ->
     lager:debug("invalid value specified"),
     error;
 
-handle_metric(_Metric, _Value, _Type, error) ->
+handle_metric(_State, _Metric, _Value, _Type, error) ->
     lager:debug("invalid sample specified"),
     error;
 
-handle_metric(Metric, {ok, Value}, <<"c">>, Sample) ->
+handle_metric(State, Metric, {ok, Value}, <<"c">>, {ok, Sample}) ->
     lager:debug("handle counter: ~p:~w [sample ~w]", [Metric, Value, Sample]),
-    ok;
 
-handle_metric(Metric, {ok, Value}, <<"ms">>, Sample) ->
+    Counters0 = State#state.counters,
+    Update = fun(X) -> X + Value end,
+    Counters = maps:update_with(Metric, Update, Value, Counters0),
+
+    {ok, State#state{counters=Counters}};
+
+handle_metric(State, Metric, {ok, Value}, <<"ms">>, {ok, Sample}) ->
     lager:debug("handle timer: ~p:~w [sample ~w]", [Metric, Value, Sample]),
-    ok;
 
-handle_metric(Metric, {ok, Value}, <<"g">>, _Sample) ->
-    lager:debug("handle gauge: ~p:~w", [Metric, Value]),
-    ok;
+    Timers0 = State#state.timers,
+    Update = fun({Xs, Cnt}) -> {[Value | Xs], Cnt + 1} end,
+    Timers = maps:update_with(Metric, Update, {[Value], 1}, Timers0),
 
-handle_metric(Metric, {ok, Value}, <<"s">>, _Sample) ->
+    {ok, State#state{timers=Timers}};
+
+handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
+    lager:debug("handle gauge: ~p:~w ~w", [Metric, Mod, Value]),
+
+    {Update, Initial} =
+    case Mod of
+        set -> {fun(X) -> Value end, Value};
+        inc -> {fun(X) -> X + Value end, Value};
+        dec -> {fun(X) -> X - Value end, -Value}
+    end,
+
+    Gauges0 = State#state.gauges,
+    Gauges = maps:update_with(Metric, Update, Initial, Gauges0),
+
+    {ok, State#state{gauges=Gauges}};
+
+handle_metric(State, Metric, {ok, Value}, <<"s">>, _Sample) ->
     lager:debug("handle set: ~p:~w", [Metric, Value]),
-    ok;
 
-handle_metric(_Metric, _Value, Type, _Sample) ->
+    Sets0 = State#state.sets,
+    Update = fun(X) -> sets:add_element(Value, X) end,
+    Sets = maps:update_with(Metric, Update, sets:from_list([Value]), Sets0),
+
+    {ok, State#state{sets=Sets}};
+
+handle_metric(_State, _Metric, _Value, Type, _Sample) ->
     lager:debug("invalid metric type specified: ~p [supported: c, ms, g, s]", [Type]),
     error.
 
+
+parse_gauge_value(<<"+", Rest/binary>>) ->
+    parse_gauge_value(inc, Rest);
+parse_gauge_value(<<"-", Rest/binary>>) ->
+    parse_gauge_value(dec, Rest);
+parse_gauge_value(Rest) ->
+    parse_gauge_value(set, Rest).
+
+
+parse_gauge_value(Mod, Value) ->
+    case statser_util:to_number(Value) of
+        {ok, Val} -> {ok, Mod, Val};
+        error -> error
+    end.

@@ -16,9 +16,7 @@ to_number(Binary) ->
     case string:to_float(List) of
         {error, no_float} ->
             case string:to_integer(List) of
-                {error, _} ->
-                    lager:warning("not a numeric value: ~p", [Binary]),
-                    error;
+                {error, _} -> error;
                 {Result, _} -> {ok, Result}
             end;
         {Result, _} -> {ok, Result}
