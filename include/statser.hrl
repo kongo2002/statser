@@ -16,6 +16,10 @@
 
 -type duration_unit() :: default | seconds | minutes | hours | days | weeks | years.
 
+-record(udp_config, {
+          port :: integer(),
+          interval :: integer()}).
+
 -record(whisper_archive, {
           offset :: integer(),
           seconds :: integer(),

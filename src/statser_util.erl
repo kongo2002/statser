@@ -6,6 +6,8 @@
 
 -include("statser.hrl").
 
+-compile({no_auto_import, [floor/1]}).
+
 -export([ceiling/1,
          floor/1,
          to_number/1]).

@@ -8,10 +8,13 @@
 
 -export([load_config/0,
          load_config/1,
-         get_metadata/1]).
+         get_metadata/1,
+         get_udp_config/0]).
 
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
+
+-define(FALLBACK_UDP_CONFIG, #udp_config{port=none, interval=10000}).
 
 -define(FALLBACK_RETENTIONS, [#retention_definition{raw="1m:1d",
                                                     seconds=60,
@@ -41,8 +44,11 @@ load_config(ConfigFile) ->
            end,
 
     % parse contents
-    {Storages, Aggregations} = load_documents(Docs),
-    update(Storages, Aggregations).
+    {Storages, Aggregations, Udp} = load_documents(Docs),
+
+    update(storages, Storages),
+    update(aggregations, Aggregations),
+    update(udp_config, Udp).
 
 
 get_metadata(Path) ->
@@ -53,6 +59,10 @@ get_metadata(Path) ->
     AggDefinition = first_aggregation(Path, Aggregations),
 
     {StorDefinition, AggDefinition}.
+
+
+get_udp_config() ->
+    application:get_env(statser, udp_config, ?FALLBACK_UDP_CONFIG).
 
 
 %%%===================================================================
@@ -81,21 +91,20 @@ first_aggregation(Path, Candidates) ->
 
 -ifdef(TEST).
 
-update(_Storages, _Aggregations) -> ok.
+update(_Type, _Values) -> ok.
 
 -else.
 
-update(Storages, Aggregations) ->
+update(Type, Values) ->
     % store into application environment
-    application:set_env(statser, storages, Storages),
-    application:set_env(statser, aggregations, Aggregations),
+    application:set_env(statser, Type, Values),
     ok.
 
 -endif. % TEST
 
 
 load_documents([Document]) -> load_document(Document);
-load_documents([]) -> {[], []}.
+load_documents([]) -> {[], [], ?FALLBACK_UDP_CONFIG}.
 
 
 load_document(Doc) ->
@@ -105,7 +114,25 @@ load_document(Doc) ->
     Aggregations = load_aggregation(proplists:get_value("aggregation", Doc, [])),
     lager:info("loaded ~w aggregation definitions", [length(Aggregations)]),
 
-    {Storages, Aggregations}.
+    Udp = load_udp_config(proplists:get_value("udp", Doc, [])),
+    lager:info("loaded UDP config: ~p", [Udp]),
+
+    {Storages, Aggregations, Udp}.
+
+
+load_udp_config(Xs) ->
+    load_udp_config(Xs, ?FALLBACK_UDP_CONFIG).
+
+load_udp_config([{"port", Port} | Xs], Config) when is_number(Port) ->
+    load_udp_config(Xs, Config#udp_config{port=Port});
+
+load_udp_config([{"interval", Interval} | Xs], Config) when is_number(Interval) ->
+    load_udp_config(Xs, Config#udp_config{interval=Interval});
+
+load_udp_config([_ | Xs], Config) ->
+    load_udp_config(Xs, Config);
+
+load_udp_config(_Invalid, Config) -> Config.
 
 
 load_storage(Ss) -> load_storage(Ss, []).
@@ -271,7 +298,7 @@ load_from_string(Str, Func) ->
 
 
 load_aggregation_from_string_test_() ->
-    GetAggregation = fun({_Storage, Aggs}) -> Aggs end,
+    GetAggregation = fun({_Storage, Aggs, _Udp}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetAggregation)),
@@ -294,8 +321,19 @@ load_aggregate_from_file_test_() ->
      ]}.
 
 
+load_udp_config_from_string_test_() ->
+    GetUdp = fun({_Storage, _Aggs, Udp}) -> Udp end,
+    {setup, fun setup/0,
+     [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
+      ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
+      ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp: invalid", GetUdp)),
+      ?_assertEqual(#udp_config{port=8000, interval=15000},
+                    load_from_string("udp:\n port: 8000\n interval: 15000", GetUdp))
+     ]}.
+
+
 load_storage_from_string_test_() ->
-    GetStorage = fun({Storage, _Aggs}) -> Storage end,
+    GetStorage = fun({Storage, _Aggs, _Udp}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetStorage)),
