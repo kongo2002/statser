@@ -9,7 +9,8 @@
 -export([load_config/0,
          load_config/1,
          get_metadata/1,
-         get_udp_config/0]).
+         get_udp_config/0,
+         udp_is_enabled/1]).
 
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
@@ -133,6 +134,11 @@ load_udp_config([_ | Xs], Config) ->
     load_udp_config(Xs, Config);
 
 load_udp_config(_Invalid, Config) -> Config.
+
+
+udp_is_enabled(#udp_config{port=Port}) when is_number(Port) ->
+    Port > 0;
+udp_is_enabled(_) -> false.
 
 
 load_storage(Ss) -> load_storage(Ss, []).

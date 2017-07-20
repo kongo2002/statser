@@ -57,23 +57,29 @@ init([]) ->
     % TODO: investigate into 'read_concurrency'
     ets:new(metrics, [set, named_table, public]),
 
-    ApiPort = application:get_env(api_port, statser, 8080),
+    ApiPort = application:get_env(statser, api_port, 8080),
+
+    UdpConfig = statser_config:get_udp_config(),
+    UdpChild =
+    case statser_config:udp_is_enabled(UdpConfig) of
+        true -> [?CHILD(udp_listener, statser_listener_udp, worker, [UdpConfig])];
+        false -> []
+    end,
 
     lager:info("start listening for API requests on port ~w", [ApiPort]),
 
-    {ok, {{one_for_one, 5, 10},
-          [?CHILD(listeners, statser_listeners_sup, supervisor, []),
-           ?CHILD(metrics, statser_metrics_sup, supervisor, []),
-           ?CHILD(router, statser_router, worker, []),
-           ?CHILD(instrumentation, statser_instrumentation, worker, []),
-           % TODO: udp - depending on config
-           ?CHILD(udp_listener, statser_listener_udp, worker, [8125]),
-           % rate limiters
-           ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
-           ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>]),
-           % API
-           ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
-          ]}}.
+    Children = [?CHILD(listeners, statser_listeners_sup, supervisor, []),
+                ?CHILD(metrics, statser_metrics_sup, supervisor, []),
+                ?CHILD(router, statser_router, worker, []),
+                ?CHILD(instrumentation, statser_instrumentation, worker, []),
+                % rate limiters
+                ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
+                ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>]),
+                % API
+                ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
+               ],
+
+    {ok, {{one_for_one, 5, 10}, Children ++ UdpChild}}.
 
 %%%===================================================================
 %%% Internal functions

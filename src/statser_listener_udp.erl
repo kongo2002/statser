@@ -6,6 +6,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/1,
          listen/2]).
@@ -18,7 +20,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, interval, counters, timers, gauges, sets, timer}).
+-record(state, {config, counters, timers, gauges, sets, timer}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -34,8 +36,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Port) ->
-    gen_server:start_link(?MODULE, Port, []).
+start_link(Config) ->
+    gen_server:start_link(?MODULE, Config, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -52,15 +54,12 @@ start_link(Port) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init(Port) ->
-    lager:info("starting UDP listener at port ~w", [Port]),
-
-    % TODO: configurable interval
-    Interval = 10000,
+init(#udp_config{port=Port, interval=Interval} = Config) ->
+    lager:info("starting UDP listener at port ~w with flush interval ~w ms", [Port, Interval]),
 
     gen_server:cast(self(), accept),
-    {ok, #state{port=Port,
-                interval=Interval,
+
+    {ok, #state{config=Config,
                 counters=maps:new(),
                 timers=maps:new(),
                 gauges=maps:new(),
@@ -94,14 +93,15 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(accept, #state{port=Port, interval=Interval} = State) ->
+handle_cast(accept, #state{config=Config} = State) ->
     Self = self(),
+    Port = Config#udp_config.port,
     {ok, Socket} = gen_udp:open(Port, [binary, {active, false}]),
     lager:info("UDP listener opened port at ~w [~p]", [Port, Socket]),
 
     % TODO: maybe we want to synchronize the flush interval with
     % the wall clock time matching with the graphite aggregation
-    {ok, Timer} = timer:send_interval(Interval, flush),
+    {ok, Timer} = timer:send_interval(Config#udp_config.interval, flush),
 
     % TODO: handle exit/failure
     spawn_link(?MODULE, listen, [Self, Socket]),
@@ -126,10 +126,10 @@ handle_info({msg, Binary}, State) ->
 
     {noreply, NewState};
 
-handle_info(flush, #state{interval=Interval} = State) ->
+handle_info(flush, #state{config=Config} = State) ->
     Start = erlang:monotonic_time(nanosecond),
     Now = erlang:system_time(second),
-    PerSecond = Interval / 1000,
+    PerSecond = Config#udp_config.interval / 1000,
 
     % TODO: configurable if values should be reset or removed
 

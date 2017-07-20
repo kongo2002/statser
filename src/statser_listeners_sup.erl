@@ -26,8 +26,8 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    NumListeners = application:get_env(listeners, statser, 20),
-    MetricsPort = application:get_env(metrics_port, statser, 2003),
+    NumListeners = application:get_env(statser, listeners, 20),
+    MetricsPort = application:get_env(statser, metrics_port, 2003),
 
     lager:info("start listening for metrics on port ~w", [MetricsPort]),
 
