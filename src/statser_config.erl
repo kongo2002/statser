@@ -338,6 +338,15 @@ load_udp_config_from_string_test_() ->
      ]}.
 
 
+udp_is_enabled_test_() ->
+    GetUdp = fun({_Storage, _Aggs, Udp}) -> Udp end,
+    {setup, fun setup/0,
+     [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
+      ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
+      ?_assertEqual(false, udp_is_enabled(load_from_string("udp:\n port: 0", GetUdp)))
+     ]}.
+
+
 load_storage_from_string_test_() ->
     GetStorage = fun({Storage, _Aggs, _Udp}) -> Storage end,
     {setup, fun setup/0,
