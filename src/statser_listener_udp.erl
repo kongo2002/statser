@@ -262,21 +262,24 @@ std_err(Mean, Value) ->
 handle(Packet, State) ->
     lager:debug("handle UDP packet: ~p", [Packet]),
 
-    Result = case binary:split(Packet, ?DELIMITER_COLON) of
-                 [Metric, Rest] ->
-                     Split = binary:split(Rest, ?DELIMITER_PIPE, [global, trim_all]),
-                     handle_metric(State, Metric, Split);
-                 _ ->
-                     % TODO: check for valid metrics name
-                     handle_metric(State, Packet)
-             end,
-    case Result of
+    case handle_packet(Packet, State) of
         {ok, Updated} ->
             statser_instrumentation:increment(<<"udp.handled-values">>),
             Updated;
         error ->
             statser_instrumentation:increment(<<"udp.invalid-metrics">>),
             State
+    end.
+
+
+handle_packet(Packet, State) ->
+    case binary:split(Packet, ?DELIMITER_COLON) of
+        [Metric, Rest] ->
+            Split = binary:split(Rest, ?DELIMITER_PIPE, [global, trim_all]),
+            handle_metric(State, Metric, Split);
+        _ ->
+            % TODO: check for valid metrics name
+            handle_metric(State, Packet)
     end.
 
 
@@ -384,6 +387,39 @@ parse_gauge_value(Mod, Value) ->
 %%
 
 -ifdef(TEST).
+
+handle_packet_test_() ->
+    EmptyState = #state{counters=maps:new(),
+                        timers=maps:new(),
+                        gauges=maps:new(),
+                        sets=maps:new()},
+    HandleSuccess = fun(P) ->
+                            case handle_packet(P, EmptyState) of
+                                {ok, _} -> ok;
+                                error -> error
+                            end
+                    end,
+    [?_assertEqual(ok, HandleSuccess(<<"foo">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:2">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:2.0|c">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:2.0|c|@0.2">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:2.0|c|@0.2\nfoo:5.2">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:-23|c">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:2.0|ms|@0.1">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:223.3|g">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:223.3|g|@1">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:+12|g">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:-9.2|g">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:23.0|s">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:gsh">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:gsh|c">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:gsh|c|@0.1">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:123|t">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:+|g">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:123|c|@g">>)),
+     ?_assertEqual(error, HandleSuccess(<<"foo:123|c|@1|x">>))
+    ].
+
 
 calculate_timer_test_() ->
     [?_assertEqual({0, 0, 0, 0, 0, 0, 0}, calculate_timer([])),
