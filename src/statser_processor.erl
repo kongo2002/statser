@@ -6,9 +6,15 @@
 
 -include("statser.hrl").
 
+% base API
 -export([consolidate/2,
          evaluate_call/5,
          fetch_data/4]).
+
+% calculation functions
+-export([percentile/2,
+         percentile/3,
+         median/1]).
 
 -define(TIMEOUT, 2000).
 
@@ -462,6 +468,10 @@ square_sum([null | Vs], Avg, Sum, Len) ->
 square_sum([Val | Vs], Avg, Sum, Len) ->
     Square = math:pow(Val - Avg, 2),
     square_sum(Vs, Avg, Sum + Square, Len + 1).
+
+
+median(Values) ->
+    percentile(Values, 50, true).
 
 
 percentile(Values, N) ->

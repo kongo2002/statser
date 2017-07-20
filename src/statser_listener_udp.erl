@@ -126,7 +126,7 @@ handle_info({msg, Binary}, State) ->
     {noreply, NewState};
 
 handle_info(flush, State) ->
-    Start = erlang:monotonic_time(millisecond),
+    Start = erlang:monotonic_time(nanosecond),
     Now = erlang:system_time(second),
 
     % TODO: configurable if values should be reset or removed
@@ -144,8 +144,8 @@ handle_info(flush, State) ->
                         end, State#state.gauges),
 
     % TODO: expose duration as instrumentation/metric
-    Duration = erlang:monotonic_time(millisecond) - Start,
-    lager:debug("flush duration: ~w ms", [Duration]),
+    Duration = erlang:monotonic_time(nanosecond) - Start,
+    lager:debug("flush duration: ~w ns", [Duration]),
 
     {noreply, State#state{counters=Counters,
                           gauges=Gauges}};
@@ -197,22 +197,38 @@ publish(Key, Value, TS) ->
     gen_server:cast(statser_router, {line, Metric, Value, TS}).
 
 
-calculate_timer([], _Count) -> null;
-calculate_timer(Values, Count) ->
+calculate_timer([], _Samples) -> null;
+calculate_timer(Values, Samples) ->
     Sorted = lists:sort(Values),
     Min = hd(Sorted),
-    Max = lists:last(Sorted),
-    {Sums, SquaredSums, Sum, SquaredSum} = cumulative(Sorted),
-    {Min, Max, Sums, SquaredSums, Sum, SquaredSum}.
+    {Sums, SquaredSums, Len, Sum, SquaredSum} = walk_values(Sorted),
+    Mean = Sum / Len,
+    {StdDev, Max} = stddev_max(Mean, Sorted),
+    Median = statser_processor:median(Sorted),
+    {Min, Max, Mean, Median, StdDev, Sums, SquaredSums, Len, Sum, SquaredSum}.
 
 
-cumulative([V | Vs]) ->
-    cumulative([V], [V * V], Vs).
+walk_values([V | Vs]) ->
+    walk_values([V], [V * V], 1, Vs).
 
-cumulative([A | _] = As, [B | _] = Bs, []) ->
-    {lists:reverse(As), lists:reverse(Bs), A, B};
-cumulative([A | _] = As, [B | _] = Bs, [X | Xs]) ->
-    cumulative([A + X | As], [B + X * X | Bs], Xs).
+walk_values([A | _] = As, [B | _] = Bs, Len, []) ->
+    {lists:reverse(As), lists:reverse(Bs), Len, A, B};
+walk_values([A | _] = As, [B | _] = Bs, Len, [X | Xs]) ->
+    walk_values([A + X | As], [B + X * X | Bs], Len+1, Xs).
+
+
+stddev_max(Mean, Values) ->
+    stddev_max(Mean, 0, Values).
+
+stddev_max(Mean, StdDev, [V]) ->
+    {StdDev + std_err(Mean, V), V};
+stddev_max(Mean, StdDev, [V | Vs]) ->
+    stddev_max(Mean, StdDev + std_err(Mean, V), Vs).
+
+
+std_err(Mean, Value) ->
+    Err0 = Value - Mean,
+    Err = Err0 * Err0.
 
 
 handle(Packet, State) ->
@@ -343,8 +359,8 @@ parse_gauge_value(Mod, Value) ->
 
 calculate_timer_test_() ->
     [?_assertEqual(null, calculate_timer([], 0)),
-     ?_assertEqual({0, 100, [0, 100], [0, 10000], 100, 10000}, calculate_timer([100, 0], 2)),
-     ?_assertEqual({1, 3, [1, 3, 6], [1, 5, 14], 6, 14}, calculate_timer([1, 3, 2], 3))
+     ?_assertEqual({0, 100, 100/2, 100/2, 5000.0, [0, 100], [0, 10000], 2, 100, 10000}, calculate_timer([100, 0], 2)),
+     ?_assertEqual({1, 3, 2.0, 2.0, 2.0, [1, 3, 6], [1, 5, 14], 3, 6, 14}, calculate_timer([1, 3, 2], 3))
     ].
 
 -endif.
