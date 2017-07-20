@@ -228,7 +228,7 @@ stddev_max(Mean, StdDev, [V | Vs]) ->
 
 std_err(Mean, Value) ->
     Err0 = Value - Mean,
-    Err = Err0 * Err0.
+    Err0 * Err0.
 
 
 handle(Packet, State) ->
