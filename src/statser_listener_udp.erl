@@ -18,7 +18,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {port, socket, counters, timers, gauges, sets, timer}).
+-record(state, {port, interval, counters, timers, gauges, sets, timer}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -55,8 +55,12 @@ start_link(Port) ->
 init(Port) ->
     lager:info("starting UDP listener at port ~w", [Port]),
 
+    % TODO: configurable interval
+    Interval = 10000,
+
     gen_server:cast(self(), accept),
     {ok, #state{port=Port,
+                interval=Interval,
                 counters=maps:new(),
                 timers=maps:new(),
                 gauges=maps:new(),
@@ -90,13 +94,10 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(accept, #state{port=Port} = State) ->
+handle_cast(accept, #state{port=Port, interval=Interval} = State) ->
     Self = self(),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, false}]),
     lager:info("UDP listener opened port at ~w [~p]", [Port, Socket]),
-
-    % TODO: configurable interval
-    Interval = 10 * 1000,
 
     % TODO: maybe we want to synchronize the flush interval with
     % the wall clock time matching with the graphite aggregation
@@ -104,7 +105,7 @@ handle_cast(accept, #state{port=Port} = State) ->
 
     % TODO: handle exit/failure
     spawn_link(?MODULE, listen, [Self, Socket]),
-    {noreply, State#state{socket=Socket, timer=Timer}};
+    {noreply, State#state{timer=Timer}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -125,17 +126,35 @@ handle_info({msg, Binary}, State) ->
 
     {noreply, NewState};
 
-handle_info(flush, State) ->
+handle_info(flush, #state{interval=Interval} = State) ->
     Start = erlang:monotonic_time(nanosecond),
     Now = erlang:system_time(second),
+    PerSecond = Interval / 1000,
 
     % TODO: configurable if values should be reset or removed
 
     % flush counters
     Counters = maps:map(fun(K, V) ->
-                                publish(<<"counters.", K/binary>>, V, Now),
+                                publish(<<"counters.", K/binary, ".count">>, V, Now),
+                                publish(<<"counters.", K/binary, ".rate">>, V / PerSecond, Now),
                                 0
                         end, State#state.counters),
+
+    % flush timers
+    Timers = maps:map(fun(K, {Vs, Cnt}) ->
+                              {Min, Max, Mean, Median, StdDev, Sum, SquaredSum} = calculate_timer(Vs),
+
+                              publish(<<"timers.", K/binary, ".min">>, Min, Now),
+                              publish(<<"timers.", K/binary, ".max">>, Max, Now),
+                              publish(<<"timers.", K/binary, ".mean">>, Mean, Now),
+                              publish(<<"timers.", K/binary, ".median">>, Median, Now),
+                              publish(<<"timers.", K/binary, ".stddev">>, StdDev, Now),
+                              publish(<<"timers.", K/binary, ".sum">>, Sum, Now),
+                              publish(<<"timers.", K/binary, ".sum_squares">>, SquaredSum, Now),
+                              publish(<<"timers.", K/binary, ".count">>, Cnt, Now),
+
+                              {[], 0}
+                      end, State#state.timers),
 
     % flush gauges
     Gauges = maps:map(fun(K, V) ->
@@ -143,12 +162,20 @@ handle_info(flush, State) ->
                                 0
                         end, State#state.gauges),
 
+    % flush sets
+    Sets = maps:map(fun(K, V) ->
+                            publish(<<"sets.", K/binary>>, sets:size(sets:from_list(V)), Now),
+                            []
+                    end, State#state.sets),
+
     % TODO: expose duration as instrumentation/metric
     Duration = erlang:monotonic_time(nanosecond) - Start,
     lager:debug("flush duration: ~w ns", [Duration]),
 
     {noreply, State#state{counters=Counters,
-                          gauges=Gauges}};
+                          timers=Timers,
+                          gauges=Gauges,
+                          sets=Sets}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -197,24 +224,25 @@ publish(Key, Value, TS) ->
     gen_server:cast(statser_router, {line, Metric, Value, TS}).
 
 
-calculate_timer([], _Samples) -> null;
-calculate_timer(Values, Samples) ->
+calculate_timer([]) ->
+    {0, 0, 0, 0, 0, 0, 0};
+calculate_timer(Values) ->
     Sorted = lists:sort(Values),
     Min = hd(Sorted),
-    {Sums, SquaredSums, Len, Sum, SquaredSum} = walk_values(Sorted),
+    {Sum, SquaredSum, Len} = walk_values(Sorted),
     Mean = Sum / Len,
     {StdDev, Max} = stddev_max(Mean, Sorted),
     Median = statser_processor:median(Sorted),
-    {Min, Max, Mean, Median, StdDev, Sums, SquaredSums, Len, Sum, SquaredSum}.
+    {Min, Max, Mean, Median, StdDev, Sum, SquaredSum}.
 
 
 walk_values([V | Vs]) ->
-    walk_values([V], [V * V], 1, Vs).
+    walk_values(V, V * V, 1, Vs).
 
-walk_values([A | _] = As, [B | _] = Bs, Len, []) ->
-    {lists:reverse(As), lists:reverse(Bs), Len, A, B};
-walk_values([A | _] = As, [B | _] = Bs, Len, [X | Xs]) ->
-    walk_values([A + X | As], [B + X * X | Bs], Len+1, Xs).
+walk_values(A, B, Len, []) ->
+    {A, B, Len};
+walk_values(A, B, Len, [X | Xs]) ->
+    walk_values(A + X, B + X * X, Len+1, Xs).
 
 
 stddev_max(Mean, Values) ->
@@ -326,8 +354,8 @@ handle_metric(State, Metric, {ok, Value}, <<"s">>, _Sample) ->
     lager:debug("handle set: ~p:~w", [Metric, Value]),
 
     Sets0 = State#state.sets,
-    Update = fun(X) -> sets:add_element(Value, X) end,
-    Sets = maps:update_with(Metric, Update, sets:from_list([Value]), Sets0),
+    Update = fun(Xs) -> [Value | Xs] end,
+    Sets = maps:update_with(Metric, Update, [Value], Sets0),
 
     {ok, State#state{sets=Sets}};
 
@@ -358,9 +386,9 @@ parse_gauge_value(Mod, Value) ->
 -ifdef(TEST).
 
 calculate_timer_test_() ->
-    [?_assertEqual(null, calculate_timer([], 0)),
-     ?_assertEqual({0, 100, 100/2, 100/2, 5000.0, [0, 100], [0, 10000], 2, 100, 10000}, calculate_timer([100, 0], 2)),
-     ?_assertEqual({1, 3, 2.0, 2.0, 2.0, [1, 3, 6], [1, 5, 14], 3, 6, 14}, calculate_timer([1, 3, 2], 3))
+    [?_assertEqual({0, 0, 0, 0, 0, 0, 0}, calculate_timer([])),
+     ?_assertEqual({0, 100, 100/2, 100/2, 5000.0, 100, 10000}, calculate_timer([100, 0])),
+     ?_assertEqual({1, 3, 2.0, 2.0, 2.0, 6, 14}, calculate_timer([1, 3, 2]))
     ].
 
 -endif.
