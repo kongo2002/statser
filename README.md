@@ -76,6 +76,11 @@ will go ahead with recording and aggregating your metrics just like
 `carbon-cache` did. Moreover you can configure the storage and aggregation rules
 in a simple YAML configuration file.
 
+Moreover you can already point your [grafana][grafana] dashboard to your statser
+instance just like you did with a graphite backend. Even though
+[grafana][grafana] has no particular statser-support it does work because
+statser implements most parts of graphite-web's API already.
+
 Find a roughly up-to-date list of features that are either finished or somewhere
 on my roadmap below.
 
