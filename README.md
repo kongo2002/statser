@@ -87,6 +87,8 @@ on my roadmap below.
 * configurable storage rules
 * configurable aggregation schemes
 * throttling of archive creation
+* basic StatsD interface (known to listen on UDP port `8125`)
+    - support for counters, timers, gauges and sets
 * metrics API
 * render API (JSON output only!)
     - `absolute`
@@ -110,6 +112,50 @@ on my roadmap below.
     - `removeBelowValue`
     - `squareRoot`
     - `sumSeries`
+
+
+### Configuration
+
+Statser ships with sane defaults out-of-the-box so you might not need a
+configuration at all. However there are a few settings that you may configure
+via a YAML file (`statser.yaml` in the working directory):
+
+```yaml
+storage:
+
+  stats:
+    pattern: ^stats\.
+    retentions:
+      - 10:1m
+      - 60:1d
+
+  carbon:
+    pattern: ^carbon\.
+    retentions:
+      - 60:30d
+
+aggregation:
+
+  min:
+    pattern: \.min$
+    aggregation: min
+    factor: 0.1
+
+  max:
+    pattern: \.max$
+    aggregation: max
+    factor: 0.1
+
+  count:
+    pattern: \.count$
+    aggregation: sum
+    factor: 0
+
+# StatsD compatible adapter (disabled by default)
+udp:
+  port: 8125
+  interval: 10000
+```
 
 
 ### TODO
