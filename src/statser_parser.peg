@@ -23,7 +23,7 @@ Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 argument <- number / bool / singleq_string / doubleq_string / function / paths;
 
 paths <- path `{paths, Node}`;
-path <- head:path_elem tail:( dot path_elem )*
+path <- head:path_elem tail:( dot (path_elem / path_alternatives ) )*
 `
 Head = proplists:get_value(head, Node),
 Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
@@ -31,6 +31,15 @@ Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
 `;
 
 path_elem <- ( wordchar / ( escape special ) )+ `iolist_to_binary(Node)`;
+
+path_alternatives <- '{' path_alternative '}' `iolist_to_binary(Node)`;
+path_alternative <- spaces head:alternative tail:( spaces comma spaces alternative spaces )*
+`
+Head = proplists:get_value(head, Node),
+Rest = [[<<",">>, lists:nth(4, I)] || I <- proplists:get_value(tail, Node)],
+[Head | Rest]
+`;
+alternative <- wordchar+ `iolist_to_binary(Node)`;
 
 wordchar <- [a-zA-Z0-9*_-];
 alphanum <- [a-zA-Z] [a-zA-Z0-9]*;

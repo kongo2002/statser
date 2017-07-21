@@ -68,7 +68,7 @@ Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 
 -spec 'path'(input(), index()) -> parse_result().
 'path'(Input, Index) ->
-  p(Input, Index, 'path', fun(I,D) -> (p_seq([p_label('head', fun 'path_elem'/2), p_label('tail', p_zero_or_more(p_seq([fun 'dot'/2, fun 'path_elem'/2])))]))(I,D) end, fun(Node, _Idx) ->
+  p(Input, Index, 'path', fun(I,D) -> (p_seq([p_label('head', fun 'path_elem'/2), p_label('tail', p_zero_or_more(p_seq([fun 'dot'/2, p_choose([fun 'path_elem'/2, fun 'path_alternatives'/2])])))]))(I,D) end, fun(Node, _Idx) ->
 Head = proplists:get_value(head, Node),
 Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
@@ -77,6 +77,22 @@ Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
 -spec 'path_elem'(input(), index()) -> parse_result().
 'path_elem'(Input, Index) ->
   p(Input, Index, 'path_elem', fun(I,D) -> (p_one_or_more(p_choose([fun 'wordchar'/2, p_seq([fun 'escape'/2, fun 'special'/2])])))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(Node) end).
+
+-spec 'path_alternatives'(input(), index()) -> parse_result().
+'path_alternatives'(Input, Index) ->
+  p(Input, Index, 'path_alternatives', fun(I,D) -> (p_seq([p_string(<<"{">>), fun 'path_alternative'/2, p_string(<<"}">>)]))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(Node) end).
+
+-spec 'path_alternative'(input(), index()) -> parse_result().
+'path_alternative'(Input, Index) ->
+  p(Input, Index, 'path_alternative', fun(I,D) -> (p_seq([fun 'spaces'/2, p_label('head', fun 'alternative'/2), p_label('tail', p_zero_or_more(p_seq([fun 'spaces'/2, fun 'comma'/2, fun 'spaces'/2, fun 'alternative'/2, fun 'spaces'/2])))]))(I,D) end, fun(Node, _Idx) ->
+Head = proplists:get_value(head, Node),
+Rest = [[<<",">>, lists:nth(4, I)] || I <- proplists:get_value(tail, Node)],
+[Head | Rest]
+ end).
+
+-spec 'alternative'(input(), index()) -> parse_result().
+'alternative'(Input, Index) ->
+  p(Input, Index, 'alternative', fun(I,D) -> (p_one_or_more(fun 'wordchar'/2))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(Node) end).
 
 -spec 'wordchar'(input(), index()) -> parse_result().
 'wordchar'(Input, Index) ->

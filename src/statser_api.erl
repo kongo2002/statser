@@ -254,4 +254,13 @@ parse_time_test_() ->
      ?_assertEqual(1474468456, parse_time(<<"1474468456">>, Now))
     ].
 
+parse_test_() ->
+    [?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>,<<"bar">>]},<<"test">>]},
+                   statser_parser:parse(<<"aliasByMetric(foo.bar,'test')">>)),
+     ?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>,<<"*">>]},<<"test">>]},
+                   statser_parser:parse(<<"aliasByMetric(foo.*,'test')">>)),
+     ?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>,<<"{one,two}">>]},<<"test">>]},
+                   statser_parser:parse(<<"aliasByMetric(foo.{one,two},'test')">>))
+    ].
+
 -endif.
