@@ -107,10 +107,15 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({tcp, _Sock, Data}, State) ->
     case process_line(State#state.pattern, Data) of
-        error -> ok;
-        Line ->
+        {Path, {ok, Value}, {ok, TimeStamp}} ->
+            Line = {line, Path, Value, TimeStamp},
             gen_server:cast(statser_router, Line),
-            statser_instrumentation:increment(<<"metrics-received">>)
+
+            statser_instrumentation:increment(<<"metrics-received">>),
+            lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]);
+        _Error ->
+            statser_instrumentation:increment(<<"invalid-metrics">>),
+            lager:warning("invalid metric received: ~p", [Data])
     end,
 
     listen(State#state.socket),
@@ -161,20 +166,17 @@ process_line(Pattern, Data) ->
     case binary:split(Data, Pattern, [global, trim_all]) of
         % usual graphite format: 'path value timestamp'
         [Path, ValueBS, TimeStampBS] ->
-            {ok, Value} = statser_util:to_number(ValueBS),
-            {ok, TimeStamp} = to_epoch(TimeStampBS),
-            lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]),
-            {line, Path, Value, TimeStamp};
+            Value = statser_util:to_number(ValueBS),
+            TimeStamp = to_epoch(TimeStampBS),
+            {Path, Value, TimeStamp};
 
         % graphite format w/o timestamp: 'path value'
         [Path, ValueBS] ->
-            {ok, Value} = statser_util:to_number(ValueBS),
+            Value = statser_util:to_number(ValueBS),
             TimeStamp = erlang:system_time(second),
-            lager:debug("received ~p: ~w at ~w (generated)", [Path, Value, TimeStamp]),
-            {line, Path, Value, TimeStamp};
+            {Path, Value, {ok, TimeStamp}};
 
         _Otherwise ->
-            lager:warn("invalid input received: ~p", [Data]),
             error
     end.
 
