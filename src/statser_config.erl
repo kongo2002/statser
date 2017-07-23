@@ -10,10 +10,13 @@
          load_config/1,
          get_metadata/1,
          get_udp_config/0,
+         get_data_dir/0,
          udp_is_enabled/1]).
 
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
+
+-define(FALLBACK_METRICS_DATA_DIR, <<".">>).
 
 -define(FALLBACK_UDP_CONFIG, #udp_config{port=none, interval=10000}).
 
@@ -45,11 +48,12 @@ load_config(ConfigFile) ->
            end,
 
     % parse contents
-    {Storages, Aggregations, Udp} = load_documents(Docs),
+    {Storages, Aggregations, Udp, DataDir} = load_documents(Docs),
 
     update(storages, Storages),
     update(aggregations, Aggregations),
-    update(udp_config, Udp).
+    update(udp_config, Udp),
+    update(data_dir, DataDir).
 
 
 get_metadata(Path) ->
@@ -64,6 +68,10 @@ get_metadata(Path) ->
 
 get_udp_config() ->
     application:get_env(statser, udp_config, ?FALLBACK_UDP_CONFIG).
+
+
+get_data_dir() ->
+    application:get_env(statser, data_dir, ?FALLBACK_METRICS_DATA_DIR).
 
 
 %%%===================================================================
@@ -105,7 +113,7 @@ update(Type, Values) ->
 
 
 load_documents([Document]) -> load_document(Document);
-load_documents([]) -> {[], [], ?FALLBACK_UDP_CONFIG}.
+load_documents([]) -> {[], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR}.
 
 
 load_document(Doc) ->
@@ -118,7 +126,18 @@ load_document(Doc) ->
     Udp = load_udp_config(proplists:get_value("udp", Doc, [])),
     lager:info("loaded UDP config: ~p", [Udp]),
 
-    {Storages, Aggregations, Udp}.
+    DataDir = load_data_dir(proplists:get_value("data_dir", Doc)),
+    lager:info("loaded data directory config: ~p", [DataDir]),
+
+    {Storages, Aggregations, Udp, DataDir}.
+
+
+load_data_dir(Value) when is_list(Value) ->
+    case lists:all(fun erlang:is_integer/1, Value) of
+        true -> list_to_binary(Value);
+        false -> ?FALLBACK_METRICS_DATA_DIR
+    end;
+load_data_dir(_) -> ?FALLBACK_METRICS_DATA_DIR.
 
 
 load_udp_config(Xs) ->
@@ -304,7 +323,7 @@ load_from_string(Str, Func) ->
 
 
 load_aggregation_from_string_test_() ->
-    GetAggregation = fun({_Storage, Aggs, _Udp}) -> Aggs end,
+    GetAggregation = fun({_Storage, Aggs, _Udp, _Dir}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetAggregation)),
@@ -328,7 +347,7 @@ load_aggregate_from_file_test_() ->
 
 
 load_udp_config_from_string_test_() ->
-    GetUdp = fun({_Storage, _Aggs, Udp}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, Udp, _Dir}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
@@ -339,7 +358,7 @@ load_udp_config_from_string_test_() ->
 
 
 udp_is_enabled_test_() ->
-    GetUdp = fun({_Storage, _Aggs, Udp}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, Udp, _Dir}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
       ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
@@ -348,7 +367,7 @@ udp_is_enabled_test_() ->
 
 
 load_storage_from_string_test_() ->
-    GetStorage = fun({Storage, _Aggs, _Udp}) -> Storage end,
+    GetStorage = fun({Storage, _Aggs, _Udp, _Dir}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetStorage)),
