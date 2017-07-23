@@ -357,6 +357,17 @@ load_udp_config_from_string_test_() ->
      ]}.
 
 
+load_data_dir_from_string_test_() ->
+    GetDir = fun({_Storage, _Aggs, _Udp, Dir}) -> Dir end,
+    {setup, fun setup/0,
+     [?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("", GetDir)),
+      ?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("data_dir:", GetDir)),
+      ?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("data_dir: 3252", GetDir)),
+      ?_assertEqual(<<"/tmp/metrics">>,
+                    load_from_string("data_dir: /tmp/metrics", GetDir))
+     ]}.
+
+
 udp_is_enabled_test_() ->
     GetUdp = fun({_Storage, _Aggs, Udp, _Dir}) -> Udp end,
     {setup, fun setup/0,
