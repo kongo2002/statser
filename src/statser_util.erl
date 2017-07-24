@@ -11,6 +11,7 @@
 -export([ceiling/1,
          floor/1,
          to_number/1,
+         parse_unit/1,
          parse_unit/2]).
 
 
@@ -43,6 +44,14 @@ ceiling(X) ->
     case X - Truncated == 0 of
        true -> Truncated;
        false -> Truncated + 1
+    end.
+
+
+parse_unit(Value) ->
+    List = binary_to_list(Value),
+    case string:to_integer(List) of
+        {error, _} -> error;
+        {Val, Unit} -> parse_unit(Val, Unit)
     end.
 
 

@@ -200,11 +200,11 @@ parse_time(Value, _Now, absolute) ->
     end;
 
 parse_time(Value, Now, relative) ->
-    List = binary_to_list(Value),
-    case string:to_integer(List) of
-        {error, _} -> error;
-        {Val, Unit} -> Now - statser_util:parse_unit(Val, Unit)
+    case statser_util:parse_unit(Value) of
+        error -> error;
+        Val -> Now - Val
     end.
+
 
 parse_datapoints(Value) ->
     List = binary_to_list(Value),
