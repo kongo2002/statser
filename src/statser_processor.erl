@@ -507,16 +507,27 @@ moving_average(Values, Window) ->
     Rest = safe_tail(Window, Values),
     lists:reverse(moving_average(Rest, Values, FirstSum, FirstLen, [FirstAvg])).
 
+
 moving_average([], _Last, _Sum, _Len, Acc) -> Acc;
 moving_average([X | Xs], [Last | Ls], Sum, Len, Acc) ->
-    {Sum0, Len0} = case {X, Last} of
-                       {null, null} -> {Sum, Len};
-                       {null, L} -> {Sum - L, Len - 1};
-                       {X0, null} -> {Sum + X0, Len + 1};
-                       {X0, L} -> {Sum + X0 - L, Len}
-                   end,
-    Avg = Sum0 / Len0,
-    moving_average(Xs, Ls, Sum0, Len0, [Avg | Acc]).
+    {Sum0, Len0} = with_last_value(Last),
+    {Sum1, Len1} = with_current_value(X),
+    NewSum = Sum + Sum0 + Sum1,
+    NewLen = Len + Len0 + Len1,
+    Avg = NewSum / NewLen,
+    moving_average(Xs, Ls, NewSum, NewLen, [Avg | Acc]).
+
+
+with_last_value(null) -> {0, 0};
+with_last_value({_TS, null}) -> {0, 0};
+with_last_value({_TS, Value}) -> {-Value, -1};
+with_last_value(Value) -> {-Value, -1}.
+
+
+with_current_value(null) -> {0, 0};
+with_current_value({_TS, null}) -> {0, 0};
+with_current_value({_TS, Value}) -> {Value, 1};
+with_current_value(Value) -> {Value, 1}.
 
 
 median(Values) ->
