@@ -28,6 +28,7 @@ fetch_data(Paths, From, Until, Now) ->
                               % there is no metrics handler already meaning
                               % there is nothing cached to be merged
                               % -> just read from fs directly instead
+                              % XXX: handle non-existing file more gracefully?
                               File = statser_metric_handler:get_whisper_file(Path),
                               Result = statser_whisper:fetch(File, From, Until, Now),
                               Result#series{target=Path};
@@ -123,6 +124,15 @@ evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_numbe
             Sorted = lists:sort(fun({SigmaA, _}, {SigmaB, _}) -> SigmaA > SigmaB end, SigmaSeries),
             lists:map(fun({_Sigma, S}) -> S end, lists:sublist(Sorted, N))
     end;
+
+% movingAverage
+evaluate_call(<<"movingAverage">>, [Series, Window], _From, _Until, _Now) when is_binary(Window) ->
+    Offset = statser_util:parse_unit(Window),
+    % TODO: fetch new data with `Offset` set back
+    lists:map(fun(S) ->
+                      WindowPoints = Offset / S#series.step,
+                      S
+              end, Series);
 
 % multiplySeries
 evaluate_call(<<"multiplySeries">>, Series, _From, _Until, _Now) ->
@@ -390,6 +400,18 @@ safe_sum([Value | Vs], Acc) ->
     safe_sum(Vs, Acc + Value).
 
 
+safe_length(Vs) ->
+    safe_length(Vs, 0).
+
+safe_length([], Len) -> Len;
+safe_length([null | Xs], Len) ->
+    safe_length(Xs, Len);
+safe_length([{_TS, null} | Xs], Len) ->
+    safe_length(Xs, Len);
+safe_length([_ | Xs], Len) ->
+    safe_length(Xs, Len + 1).
+
+
 safe_multiply([]) -> null;
 safe_multiply([{_TS, V} | Vs]) ->
     safe_multiply(Vs, V);
@@ -468,6 +490,33 @@ square_sum([null | Vs], Avg, Sum, Len) ->
 square_sum([Val | Vs], Avg, Sum, Len) ->
     Square = math:pow(Val - Avg, 2),
     square_sum(Vs, Avg, Sum + Square, Len + 1).
+
+
+safe_tail(_Rem, []) -> [];
+safe_tail(Rem, Xs) when Rem =< 0 -> Xs;
+safe_tail(Rem, [_ | Xs]) -> safe_tail(Rem - 1, Xs).
+
+
+moving_average([], _Window) -> [];
+moving_average(Values, Window) when Window =< 0 -> Values;
+moving_average(Values, Window) ->
+    FirstPart = lists:sublist(Values, Window),
+    FirstLen = safe_length(FirstPart),
+    FirstSum = safe_sum(FirstPart),
+    FirstAvg = FirstSum / FirstLen,
+    Rest = safe_tail(Window, Values),
+    lists:reverse(moving_average(Rest, Values, FirstSum, FirstLen, [FirstAvg])).
+
+moving_average([], _Last, _Sum, _Len, Acc) -> Acc;
+moving_average([X | Xs], [Last | Ls], Sum, Len, Acc) ->
+    {Sum0, Len0} = case {X, Last} of
+                       {null, null} -> {Sum, Len};
+                       {null, L} -> {Sum - L, Len - 1};
+                       {X0, null} -> {Sum + X0, Len + 1};
+                       {X0, L} -> {Sum + X0 - L, Len}
+                   end,
+    Avg = Sum0 / Len0,
+    moving_average(Xs, Ls, Sum0, Len0, [Avg | Acc]).
 
 
 median(Values) ->
@@ -712,6 +761,15 @@ zip_lists_test_() ->
      ?_assertEqual([2, 4, 6], zip_lists([[1,2,3], [1,2,3,4]], fun lists:sum/1)),
      ?_assertEqual([2, 4, 6], zip_lists([[1,2,3], [1,2,3,4,5,6,7]], fun lists:sum/1)),
      ?_assertEqual([3, 6, 9], zip_lists([[1,2,3], [1,2,3], [1,2,3]], fun lists:sum/1))
+    ].
+
+moving_average_test_() ->
+    [?_assertEqual([], moving_average([], 3)),
+     ?_assertEqual([6/3,9/3,10/3,9/3,6/3,4/3,3/3], moving_average([1,2,3,4,3,2,1,1,1], 3)),
+     ?_assertEqual([6/3], moving_average([1,4,1], 3)),
+     ?_assertEqual([6/3], moving_average([1,4,1], 4)),
+     ?_assertEqual([1/1,4/1,1/1], moving_average([1,4,1], 1)),
+     ?_assertEqual([5/2,9/3,10/3,9/3,6/3,4/3,2/2], moving_average([null,2,3,4,3,2,1,1,null], 3))
     ].
 
 percentile_test_() ->
