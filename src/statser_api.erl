@@ -203,7 +203,7 @@ parse_time(Value, Now, relative) ->
     List = binary_to_list(Value),
     case string:to_integer(List) of
         {error, _} -> error;
-        {Val, Unit} -> Now - parse_unit(Val, Unit)
+        {Val, Unit} -> Now - statser_util:parse_unit(Val, Unit)
     end.
 
 parse_datapoints(Value) ->
@@ -215,30 +215,11 @@ parse_datapoints(Value) ->
     end.
 
 
-parse_unit(Value, [$s | _])   -> Value;
-parse_unit(Value, [$S | _])   -> Value;
-parse_unit(Value, "min" ++ _) -> Value * 60;
-parse_unit(Value, [$h | _])   -> Value * 3600;
-parse_unit(Value, [$d | _])   -> Value * 86400;
-parse_unit(Value, [$w | _])   -> Value * 604800;
-parse_unit(Value, "mon" ++ _) -> Value * 2592000;
-parse_unit(Value, [$y | _])   -> Value * 31536000;
-parse_unit(_, _)              -> error.
-
-
 %%
 %% TESTS
 %%
 
 -ifdef(TEST).
-
-parse_unit_test_() ->
-    [?_assertEqual(error, parse_unit(100, "")),
-     ?_assertEqual(error, parse_unit(100, "m")),
-     ?_assertEqual(100, parse_unit(100, "s")),
-     ?_assertEqual(180, parse_unit(3, "min")),
-     ?_assertEqual(2 * 86400 * 7, parse_unit(2, "w"))
-    ].
 
 parse_time_test_() ->
     % easier to test with `now` being 0 instead of real time

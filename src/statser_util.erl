@@ -10,7 +10,8 @@
 
 -export([ceiling/1,
          floor/1,
-         to_number/1]).
+         to_number/1,
+         parse_unit/2]).
 
 
 to_number(Binary) ->
@@ -44,11 +45,31 @@ ceiling(X) ->
        false -> Truncated + 1
     end.
 
+
+parse_unit(Value, [$s | _])   -> Value;
+parse_unit(Value, [$S | _])   -> Value;
+parse_unit(Value, "min" ++ _) -> Value * 60;
+parse_unit(Value, [$h | _])   -> Value * 3600;
+parse_unit(Value, [$d | _])   -> Value * 86400;
+parse_unit(Value, [$w | _])   -> Value * 604800;
+parse_unit(Value, "mon" ++ _) -> Value * 2592000;
+parse_unit(Value, [$y | _])   -> Value * 31536000;
+parse_unit(_, _)              -> error.
+
+
 %%
 %% TESTS
 %%
 
 -ifdef(TEST).
+
+parse_unit_test_() ->
+    [?_assertEqual(error, parse_unit(100, "")),
+     ?_assertEqual(error, parse_unit(100, "m")),
+     ?_assertEqual(100, parse_unit(100, "s")),
+     ?_assertEqual(180, parse_unit(3, "min")),
+     ?_assertEqual(2 * 86400 * 7, parse_unit(2, "w"))
+    ].
 
 floor_test_() ->
     [?_assertEqual(5, floor(5.0)),
