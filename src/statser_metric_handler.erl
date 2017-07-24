@@ -248,7 +248,8 @@ to_file(Parts) ->
 
 
 prepare_file(Dirs, File) ->
-    Path = to_file(Dirs ++ [File]),
+    BaseDir = statser_config:get_data_dir(),
+    Path = to_file([BaseDir | Dirs ++ [File]]),
     ok = filelib:ensure_dir(Path),
     Path.
 
