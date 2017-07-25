@@ -6,7 +6,8 @@
 This project is supposed to *become* a more-or-less drop-in replacement for
 [graphite][graphite].
 
-> The project is still in pre-alpha state - work in progress!
+> The project is still in beta state - work in progress but feel free to
+> give it a shot!
 
 
 ## Motivation
