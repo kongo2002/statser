@@ -502,7 +502,7 @@ safe_tail(Rem, Xs) when Rem =< 0 -> Xs;
 safe_tail(Rem, [_ | Xs]) -> safe_tail(Rem - 1, Xs).
 
 
-safe_last([]) -> [];
+safe_last([]) -> null;
 safe_last([X]) -> X;
 safe_last([_ | Xs]) -> safe_last(Xs).
 
