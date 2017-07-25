@@ -134,8 +134,7 @@ evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) when is_b
                       % fetch additional past data
                       [S] = fetch_data([S0#series.target], From-(WindowPoints * Step), Until, Now),
                       Values = moving_average(S#series.values, WindowPoints),
-                      WithTimestamps = with_timestamps(Values, S0#series.start, S#series.step),
-                      S#series{values=WithTimestamps, start=S0#series.start, until=S0#series.until}
+                      S0#series{values=Values}
               end, Series);
 
 % multiplySeries
@@ -231,17 +230,6 @@ to_target(Parts) ->
            (A, B) -> <<A/binary, ".", B/binary>>
         end,
     lists:foldr(F, <<>>, Parts).
-
-
-with_timestamps(Values, Start, Step) ->
-    with_timestamps(Values, Start, Step, []).
-
-with_timestamps([], Start, Step, Acc) ->
-    lists:reverse(Acc);
-with_timestamps([V | Vs], Start, Step, []) ->
-    with_timestamps(Vs, Start, Step, [{Start, V}]);
-with_timestamps([V | Vs], Start, Step, [{TS, _} | _] = Acc) ->
-    with_timestamps(Vs, Start, Step, [{TS + Step, V} | Acc]).
 
 
 safe_average(Values) ->
@@ -512,6 +500,11 @@ safe_tail(Rem, Xs) when Rem =< 0 -> Xs;
 safe_tail(Rem, [_ | Xs]) -> safe_tail(Rem - 1, Xs).
 
 
+safe_last([]) -> [];
+safe_last([X]) -> X;
+safe_last([_ | Xs]) -> safe_last(Xs).
+
+
 safe_avg(_Sum, Len) when Len =< 0 -> 0;
 safe_avg(Sum, Len) -> Sum / Len.
 
@@ -524,7 +517,8 @@ moving_average(Values, Window) ->
     FirstSum = safe_sum(FirstPart),
     FirstAvg = safe_avg(FirstSum, FirstLen),
     Rest = safe_tail(Window, Values),
-    lists:reverse(moving_average(Rest, Values, FirstSum, FirstLen, [FirstAvg])).
+    FirstValue = get_value(safe_last(FirstPart), FirstAvg),
+    lists:reverse(moving_average(Rest, Values, FirstSum, FirstLen, [FirstValue])).
 
 
 moving_average([], _Last, _Sum, _Len, Acc) -> Acc;
@@ -534,7 +528,11 @@ moving_average([X | Xs], [Last | Ls], Sum, Len, Acc) ->
     NewSum = Sum + Sum0 + Sum1,
     NewLen = Len + Len0 + Len1,
     Avg = safe_avg(NewSum, NewLen),
-    moving_average(Xs, Ls, NewSum, NewLen, [Avg | Acc]).
+    moving_average(Xs, Ls, NewSum, NewLen, [get_value(X, Avg) | Acc]).
+
+
+get_value({TS, _}, Value) -> {TS, Value};
+get_value(_, Value) -> Value.
 
 
 with_last_value(null) -> {0, 0};
@@ -800,7 +798,8 @@ moving_average_test_() ->
      ?_assertEqual([6/3], moving_average([1,4,1], 4)),
      ?_assertEqual([1/1,4/1,1/1], moving_average([1,4,1], 1)),
      ?_assertEqual([5/2,9/3,10/3,9/3,6/3,4/3,2/2], moving_average([null,2,3,4,3,2,1,1,null], 3)),
-     ?_assertEqual([6/3,9/3,10/3,9/3,6/3,4/3,3/3], moving_average(pseudo_values([1,2,3,4,3,2,1,1,1]), 3))
+     ?_assertEqual([{120,6/3},{130,9/3},{140,10/3},{150,9/3},{160,6/3},{170,4/3},{180,3/3}],
+                   moving_average(pseudo_values([1,2,3,4,3,2,1,1,1]), 3))
     ].
 
 percentile_test_() ->
