@@ -127,6 +127,14 @@ configuration at all. However there are a few settings that you may configure
 via a YAML file (`statser.yaml` in the working directory):
 
 ```yaml
+# storage directory of the whisper files
+# defaults to the current working directory
+data_dir: /opt/whisper/storage
+
+# configuration of storage rules and archive retentions
+#
+# this contains basically what you might know of `storage-schemas.conf`
+# from the 'carbon-cache' configuration
 storage:
 
   stats:
@@ -140,6 +148,9 @@ storage:
     retentions:
       - 60:30d
 
+# storage aggregation rules
+#
+# may look familiar to `storage-aggregation.conf` of carbon-cache
 aggregation:
 
   min:
