@@ -92,7 +92,7 @@ on my roadmap below.
 * configurable storage rules
 * configurable aggregation schemes
 * throttling of archive creation
-* basic StatsD interface (known to listen on UDP port `8125`)
+* basic [StatsD][statsd] interface (known to listen on UDP port `8125`)
     - support for counters, timers, gauges and sets
 * metrics API
 * render API (JSON output only!)
@@ -178,11 +178,7 @@ udp:
 ### TODO
 
 * throttling of metrics updates (flushed to disk)
-* render and metrics API of `graphite-web`
-    - I want to support the JSON output of the render API only: **no image
-      generation**
-    - it is a *huge* list of functions for sure - I will try to start with the
-      most common/basic ones and go from there I guess
+* support even more functions of `graphite-web` render API
 * configurable amount of caching (see above)
 * investigate into more elaborate archive write optimization
 
@@ -191,3 +187,4 @@ udp:
 [graphite]: https://graphiteapp.org/
 [grafana]: https://grafana.com/
 [travis]: https://travis-ci.org/kongo2002/statser/
+[statsd]: https://github.com/etsy/statsd/
