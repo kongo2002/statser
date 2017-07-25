@@ -126,14 +126,16 @@ evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_numbe
     end;
 
 % movingAverage
-evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) when is_binary(Window) ->
-    Offset = statser_util:parse_unit(Window),
+evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) ->
     lists:map(fun(S0) ->
                       Step = S0#series.step,
-                      WindowPoints = Offset div Step,
+                      Points = if
+                                   is_binary(Window) -> statser_util:parse_unit(Window) div Step;
+                                   true -> Window
+                               end,
                       % fetch additional past data
-                      [S] = fetch_data([S0#series.target], From-(WindowPoints * Step), Until, Now),
-                      Values = moving_average(S#series.values, WindowPoints),
+                      [S] = fetch_data([S0#series.target], From-(Points * Step), Until, Now),
+                      Values = moving_average(S#series.values, Points),
                       S0#series{values=Values}
               end, Series);
 
