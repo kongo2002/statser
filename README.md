@@ -97,9 +97,9 @@ on my roadmap below.
 * metrics API
 * render API (JSON output only!)
     - `absolute`
-    - `alias`
     - `aliasByMetric`
     - `aliasByNode`
+    - `alias`
     - `averageAbove`
     - `averageBelow`
     - `averageOutsidePercentile`
@@ -109,10 +109,11 @@ on my roadmap below.
     - `invert`
     - `limit`
     - `mostDeviant`
+    - `movingAverage`
     - `multiplySeries`
     - `nPercentile`
-    - `offset`
     - `offsetToZero`
+    - `offset`
     - `removeAboveValue`
     - `removeBelowValue`
     - `squareRoot`
