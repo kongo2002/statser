@@ -416,7 +416,7 @@ do_update_points(IO, Points, Metadata, Now) ->
     Distributed = distribute_points(Now, Points, Archives),
 
     lists:foreach(fun ({Archive, Ps}) ->
-                          do_update_retention_points(IO, Ps, Archive)
+                          do_update_retention_points(IO, Archive, Ps)
                   end, Distributed).
 
 
