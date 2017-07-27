@@ -14,7 +14,8 @@
          aggregation_value/1,
          fetch/3,
          fetch/4,
-         update_point/3]).
+         update_point/3,
+         update_points/2]).
 
 
 -spec aggregation_type(integer()) -> aggregation().
@@ -380,6 +381,133 @@ get_data_point_offset(Archive, Interval, BaseInterval) ->
     Archive#whisper_archive.offset + (mod(ByteDistance, Archive#whisper_archive.size)).
 
 
+sort_by_newest(Points) ->
+    ByTimeStamp = fun ({TA, _}, {TB, _}) -> TA > TB end,
+    lists:sort(ByTimeStamp, Points).
+
+
+update_points(_File, []) -> ok;
+update_points(File, Points) ->
+    Now = erlang:system_time(second),
+
+    % order points by timestamp (newest first)
+    OrderedPoints = sort_by_newest(Points),
+
+    % open file handle
+    case file:open(File, [write, read, binary]) of
+        {ok, IO} ->
+            try do_update_points(IO, OrderedPoints, Now)
+                after file:close(IO)
+            end;
+        Error -> Error
+    end.
+
+
+do_update_points(IO, Points, Now) ->
+    case read_metadata_inner(IO) of
+        {ok, Metadata} ->
+            do_update_points(IO, Points, Metadata, Now);
+        error -> error
+    end.
+
+do_update_points(IO, Points, Metadata, Now) ->
+    % first we distribute all points over the available retentions
+    Archives = Metadata#whisper_metadata.archives,
+    Distributed = distribute_points(Now, Points, Archives),
+
+    lists:foreach(fun ({Archive, Ps}) ->
+                          do_update_retention_points(IO, Ps, Archive)
+                  end, Distributed).
+
+
+do_update_retention_points(_IO, _Archive, []) -> ok;
+do_update_retention_points(IO, Archive, Points) ->
+    Step = Archive#whisper_archive.seconds,
+
+    % we combine all consecutive points (current-interval == last-interval + step)
+    Consecutive = build_consecutive_points(Step, Points),
+
+    % all those combined points are seeked + written to the archive at once
+    % while respecting possible archive overlaps
+    {BaseInterval, _Value} = point_at(IO, Archive#whisper_archive.offset),
+
+    lists:foreach(fun(Ps) ->
+                          write_consecutive_points(IO, Archive, BaseInterval, Ps)
+                  end, Consecutive),
+    ok.
+
+
+write_consecutive_points(IO, Archive, BaseInterval, [{TS, _}, _] = Points) ->
+    Position = get_data_point_offset(Archive, TS, BaseInterval),
+    {Bytes, Length} = lists:foldl(fun ({T, Value}, {BS, Len0}) ->
+                                          PointBytes = data_point(T, Value),
+                                          Len = Len0 + ?POINT_SIZE,
+                                          case Len0 of
+                                              0 -> {<<PointBytes/binary>>, Len};
+                                              _ -> {<<PointBytes/binary, BS/binary>>, Len}
+                                          end
+                                  end, {<<>>, 0}, Points),
+
+    % we have to determine if this point sequence overlaps the archive's end
+    ArchiveEnd = Archive#whisper_archive.offset + Archive#whisper_archive.size,
+    BytesOverlap = (Position + Length) - ArchiveEnd,
+    if BytesOverlap > 0 ->
+           lager:debug("point-seq of len ~w overlaps by ~w bytes: ~p", [Length, BytesOverlap, Bytes]),
+           FirstPart = binary:part(Bytes, 0, Length - BytesOverlap),
+           ok = write_at(IO, FirstPart, Position),
+           LastPart = binary:part(Bytes, byte_size(Bytes), -BytesOverlap),
+           ok = write_at(IO, LastPart, Archive#whisper_archive.offset);
+       true ->
+           lager:debug("writing point-seq of len ~w: ~p", [Length, Bytes]),
+           ok = write_at(IO, Bytes, Position)
+    end,
+
+    % TODO: propagate to lower archives (if necessary)
+
+    ok.
+
+
+build_consecutive_points(Step, Points) ->
+    build_consecutive_points(Step, Points, [], []).
+
+build_consecutive_points(_Step, [], [], Acc) -> Acc;
+build_consecutive_points(_Step, [], Pss, Acc) -> [Pss | Acc];
+build_consecutive_points(Step, [{T, V} | Ps], [], Acc) ->
+    Aligned = T - (T rem Step),
+    build_consecutive_points(Step, Ps, [{Aligned, V}], Acc);
+build_consecutive_points(Step, [{T1, V} | Ps], [{T0, _} | _]=Pss, Acc) ->
+    Aligned = T1 - (T1 rem Step),
+    ExpectedNextTimeStamp = T0 + Step,
+
+    % if the current timestamp is the next consecutive timestamp
+    % according to the last timestamp and the archive's step we
+    % keep accumulating this point sequence
+    if ExpectedNextTimeStamp == Aligned ->
+           build_consecutive_points(Step, Ps, [{Aligned, V} | Pss], Acc);
+       true ->
+           build_consecutive_points(Step, Ps, [{Aligned, V}], [Pss | Acc])
+    end.
+
+
+distribute_points(Now, Points, Archives) ->
+    Result = distribute_points(Now, Points, Archives, [], []),
+    lists:reverse(Result).
+
+distribute_points(_Now, _Ps, [], _, Acc) -> Acc;
+distribute_points(_Now, [], [Archive | _], APs, Acc) ->
+    [{Archive, APs} | Acc];
+distribute_points(Now, [{TS, _}=P | Ps]=Pss, [Archive | As]=Ass, APs, Acc) ->
+    Age = Now - TS,
+    if Age >= Archive#whisper_archive.retention ->
+           % point exceeds current archive's retention
+           % -> pack up current archive with its points and
+           % continue with next archive
+           distribute_points(Now, Pss, As, [], [{Archive, APs} | Acc]);
+       true ->
+           distribute_points(Now, Ps, Ass, [P | APs], Acc)
+    end.
+
+
 -spec update_point(binary(), number(), integer()) -> tuple().
 update_point(File, Value, TimeStamp) ->
     case file:open(File, [write, read, binary]) of
@@ -555,6 +683,38 @@ highest_precision_archive_test_() ->
      ?_assertEqual({Archive2, []}, highest_precision_archive(86401, [Archive, Archive2])),
      ?_assertEqual(error, highest_precision_archive(300 * 1000 + 1, [Archive, Archive2]))
     ].
+
+distribute_points_test_() ->
+    Archive0 = make_archive_header(0, 10, 360),
+    Archive1 = make_archive_header(0, 60, 1440),
+    Archives = [Archive0, Archive1],
+
+    [?_assertEqual([{Archive0, [{100, 3}, {110, 2}, {120, 1}]}],
+                   distribute_points(150, [{120, 1}, {110, 2}, {100, 3}], Archives)),
+
+     ?_assertEqual([{Archive0, []}, {Archive1, [{100, 3}, {110, 2}, {120, 1}]}],
+                   distribute_points(4000, [{120, 1}, {110, 2}, {100, 3}], Archives)),
+
+     ?_assertEqual([{Archive0, [{1000, 2}, {1010, 1}]}, {Archive1, [{100, 3}]}],
+                   distribute_points(4000, [{1010, 1}, {1000, 2}, {100, 3}], Archives)),
+
+     ?_assertEqual([{Archive0, []}, {Archive1, []}],
+                   distribute_points(100000, [{1010, 1}, {1000, 2}, {100, 3}], Archives))
+    ].
+
+sort_by_newest_test_() ->
+    [?_assertEqual([{120, 3}, {110, 235}, {100, -3.34}],
+                  sort_by_newest([{110, 235}, {120, 3}, {100, -3.34}]))
+    ].
+
+build_consecutive_points_test_() ->
+    [?_assertEqual([[{130, 0}, {120, 34623}], [{100, 225}]],
+                   build_consecutive_points(10, [{100, 225}, {120, 34623}, {130, 0}])),
+
+     ?_assertEqual([[{130, 0}, {120, 34623}, {110, 225}]],
+                   build_consecutive_points(10, [{110, 225}, {120, 34623}, {130, 0}]))
+    ].
+
 
 get_data_point_offset_test_() ->
     Now = erlang:system_time(second),
