@@ -273,10 +273,13 @@ handle(Packet, State) ->
 
 
 handle_packet(Packet, State) ->
-    case binary:split(Packet, ?DELIMITER_COLON) of
-        [Metric, Rest] ->
-            Split = binary:split(Rest, ?DELIMITER_PIPE, [global, trim_all]),
-            handle_metric(State, Metric, Split);
+    case binary:split(Packet, ?DELIMITER_COLON, [global, trim_all]) of
+        [Metric | Rest] ->
+            lists:foldl(fun (_Bit, error) -> error;
+                            (Bit, {ok, S0}) ->
+                                Split = binary:split(Bit, ?DELIMITER_PIPE, [global, trim_all]),
+                                handle_metric(S0, Metric, Split)
+                        end, {ok, State}, Rest);
         _ ->
             % TODO: check for valid metrics name
             handle_metric(State, Packet)
@@ -411,6 +414,7 @@ handle_packet_test_() ->
      ?_assertEqual(ok, HandleSuccess(<<"foo:+12|g">>)),
      ?_assertEqual(ok, HandleSuccess(<<"foo:-9.2|g">>)),
      ?_assertEqual(ok, HandleSuccess(<<"foo:23.0|s">>)),
+     ?_assertEqual(ok, HandleSuccess(<<"foo:23.0|c:22.0|c">>)),
      ?_assertEqual(error, HandleSuccess(<<"foo:gsh">>)),
      ?_assertEqual(error, HandleSuccess(<<"foo:gsh|c">>)),
      ?_assertEqual(error, HandleSuccess(<<"foo:gsh|c|@0.1">>)),
