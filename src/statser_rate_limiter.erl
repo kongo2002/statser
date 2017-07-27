@@ -162,6 +162,6 @@ code_change(_OldVsn, State, _Extra) ->
 drain(#state{remaining=Rem} = State) when Rem > 0 ->
     {ok, State#state{remaining=Rem-1}};
 drain(#state{limit=Limit, name=Name}) ->
-    lager:warning("request is dropped due to exhausted rate limiter [~w/sec]", [Limit]),
+    lager:debug("request is dropped due to exhausted rate limiter [~w/sec]", [Limit]),
     statser_instrumentation:increment(<<Name/binary, "-dropped">>),
     none.
