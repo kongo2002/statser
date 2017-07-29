@@ -418,13 +418,13 @@ do_update_points(IO, Points, Metadata, Now) ->
     Archives = Metadata#whisper_metadata.archives,
     Distributed = distribute_points(Now, Points, Archives),
 
-    lists:foreach(fun ({Archive, Ps}) ->
-                          do_update_retention_points(IO, Archive, Ps)
+    lists:foreach(fun ({As, Ps}) ->
+                          do_update_retention_points(IO, Metadata, As, Ps)
                   end, Distributed).
 
 
-do_update_retention_points(_IO, _Archive, []) -> ok;
-do_update_retention_points(IO, Archive, Points) ->
+do_update_retention_points(_IO, _Metadata, _Archives, []) -> ok;
+do_update_retention_points(IO, Metadata, [Archive | Lower], Points) ->
     Step = Archive#whisper_archive.seconds,
 
     % we combine all consecutive points (current-interval == last-interval + step)
@@ -437,7 +437,39 @@ do_update_retention_points(IO, Archive, Points) ->
     lists:foreach(fun(Ps) ->
                           write_consecutive_points(IO, Archive, BaseInterval, Ps)
                   end, Consecutive),
-    ok.
+
+    % propagate to lower archives (if necessary)
+    grouped_propagate_to_lowers(IO, Metadata, Archive, Lower, Points).
+
+
+grouped_propagate_to_lowers(_IO, _Metadata, _Higher, [], _Points) -> ok;
+grouped_propagate_to_lowers(IO, Metadata, Higher, [Lower | Ls], Points) ->
+    GroupedPoints = group_points_to_lower_archive(Lower, Points),
+
+    Propagate = lists:foldl(fun({TS, _}, DidPropagate) ->
+                                    Changed = propagate_lower_archives(IO, Metadata, TS, Higher, [Lower]),
+                                    DidPropagate or Changed
+                            end, false, GroupedPoints),
+
+    if Propagate == true ->
+           grouped_propagate_to_lowers(IO, Metadata, Lower, Ls, Points);
+       true -> ok
+    end.
+
+
+group_points_to_lower_archive(Archive, Ps) ->
+    group_points_to_lower_archive(Archive, Ps, []).
+
+group_points_to_lower_archive(_Archive, [], Acc) -> Acc;
+group_points_to_lower_archive(Archive, [{TS, V} | Ps], []) ->
+    group_points_to_lower_archive(Archive, Ps, [{interval_start(Archive, TS), V}]);
+group_points_to_lower_archive(Archive, [{TS0, V} | Ps], [{TS1, _} | _]=Vs) ->
+    TS = interval_start(Archive, TS0),
+    if TS == TS1 ->
+           group_points_to_lower_archive(Archive, Ps, Vs);
+       true ->
+           group_points_to_lower_archive(Archive, Ps, [{TS, V} | Vs])
+    end.
 
 
 write_consecutive_points(IO, Archive, BaseInterval, [{TS, _}, _] = Points) ->
@@ -463,11 +495,7 @@ write_consecutive_points(IO, Archive, BaseInterval, [{TS, _}, _] = Points) ->
        true ->
            lager:debug("writing point-seq of len ~w: ~p", [Length, Bytes]),
            ok = write_at(IO, Bytes, Position)
-    end,
-
-    % TODO: propagate to lower archives (if necessary)
-
-    ok.
+    end.
 
 
 build_consecutive_points(Step, Points) ->
@@ -497,15 +525,15 @@ distribute_points(Now, Points, Archives) ->
     lists:reverse(Result).
 
 distribute_points(_Now, _Ps, [], _, Acc) -> Acc;
-distribute_points(_Now, [], [Archive | _], APs, Acc) ->
-    [{Archive, APs} | Acc];
+distribute_points(_Now, [], Archives, APs, Acc) ->
+    [{Archives, APs} | Acc];
 distribute_points(Now, [{TS, _}=P | Ps]=Pss, [Archive | As]=Ass, APs, Acc) ->
     Age = Now - TS,
     if Age >= Archive#whisper_archive.retention ->
            % point exceeds current archive's retention
            % -> pack up current archive with its points and
            % continue with next archive
-           distribute_points(Now, Pss, As, [], [{Archive, APs} | Acc]);
+           distribute_points(Now, Pss, As, [], [{Ass, APs} | Acc]);
        true ->
            distribute_points(Now, Ps, Ass, [P | APs], Acc)
     end.
@@ -610,9 +638,9 @@ propagate_lower_archives(IO, Header, TimeStamp, Higher, [Lower | Ls]) ->
         WroteAggregate == true ->
             propagate_lower_archives(IO, Header, TimeStamp, Lower, Ls);
         true ->
-            ok
+            false
     end;
-propagate_lower_archives(_, _, _, _, []) -> ok.
+propagate_lower_archives(_, _, _, _, []) -> true.
 
 
 write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
@@ -665,7 +693,8 @@ write_point(IO, Header, Value, TimeStamp) ->
             Point = data_point(Interval, Value),
             ok = write_at(IO, Point, Position),
 
-            propagate_lower_archives(IO, Header, Interval, Archive, LowerArchives)
+            propagate_lower_archives(IO, Header, Interval, Archive, LowerArchives),
+            ok
     end.
 
 %%
@@ -692,16 +721,16 @@ distribute_points_test_() ->
     Archive1 = make_archive_header(0, 60, 1440),
     Archives = [Archive0, Archive1],
 
-    [?_assertEqual([{Archive0, [{100, 3}, {110, 2}, {120, 1}]}],
+    [?_assertEqual([{Archives, [{100, 3}, {110, 2}, {120, 1}]}],
                    distribute_points(150, [{120, 1}, {110, 2}, {100, 3}], Archives)),
 
-     ?_assertEqual([{Archive0, []}, {Archive1, [{100, 3}, {110, 2}, {120, 1}]}],
+     ?_assertEqual([{Archives, []}, {[Archive1], [{100, 3}, {110, 2}, {120, 1}]}],
                    distribute_points(4000, [{120, 1}, {110, 2}, {100, 3}], Archives)),
 
-     ?_assertEqual([{Archive0, [{1000, 2}, {1010, 1}]}, {Archive1, [{100, 3}]}],
+     ?_assertEqual([{Archives, [{1000, 2}, {1010, 1}]}, {[Archive1], [{100, 3}]}],
                    distribute_points(4000, [{1010, 1}, {1000, 2}, {100, 3}], Archives)),
 
-     ?_assertEqual([{Archive0, []}, {Archive1, []}],
+     ?_assertEqual([{Archives, []}, {[Archive1], []}],
                    distribute_points(100000, [{1010, 1}, {1000, 2}, {100, 3}], Archives))
     ].
 
