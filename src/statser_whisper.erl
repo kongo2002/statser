@@ -472,8 +472,8 @@ group_points_to_lower_archive(Archive, [{TS0, V} | Ps], [{TS1, _} | _]=Vs) ->
     end.
 
 
-write_consecutive_points(IO, Archive, BaseInterval, [{TS, _}, _] = Points) ->
-    Position = get_data_point_offset(Archive, TS, BaseInterval),
+write_consecutive_points(IO, Archive, BaseInterval, [{TS, _} | _] = Points) ->
+    LastPointPosition = get_data_point_offset(Archive, TS, BaseInterval),
     {Bytes, Length} = lists:foldl(fun ({T, Value}, {BS, Len0}) ->
                                           PointBytes = data_point(T, Value),
                                           Len = Len0 + ?POINT_SIZE,
@@ -483,18 +483,22 @@ write_consecutive_points(IO, Archive, BaseInterval, [{TS, _}, _] = Points) ->
                                           end
                                   end, {<<>>, 0}, Points),
 
+    % we have to adjust the initial position by the length of the bytes to write
+    % because this function gets its points passed in reverse order
+    FirstPointPosition = LastPointPosition - Length + ?POINT_SIZE,
+
     % we have to determine if this point sequence overlaps the archive's end
     ArchiveEnd = Archive#whisper_archive.offset + Archive#whisper_archive.size,
-    BytesOverlap = (Position + Length) - ArchiveEnd,
+    BytesOverlap = (FirstPointPosition + Length) - ArchiveEnd,
     if BytesOverlap > 0 ->
            lager:debug("point-seq of len ~w overlaps by ~w bytes: ~p", [Length, BytesOverlap, Bytes]),
            FirstPart = binary:part(Bytes, 0, Length - BytesOverlap),
-           ok = write_at(IO, FirstPart, Position),
+           ok = write_at(IO, FirstPart, FirstPointPosition),
            LastPart = binary:part(Bytes, byte_size(Bytes), -BytesOverlap),
            ok = write_at(IO, LastPart, Archive#whisper_archive.offset);
        true ->
            lager:debug("writing point-seq of len ~w: ~p", [Length, Bytes]),
-           ok = write_at(IO, Bytes, Position)
+           ok = write_at(IO, Bytes, FirstPointPosition)
     end.
 
 
