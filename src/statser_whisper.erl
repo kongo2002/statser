@@ -106,16 +106,19 @@ fetch(File, From, Until, Now) ->
 
 
 fetch_inner(IO, From, Until, Now) ->
-    {ok, Metadata} = read_metadata_inner(IO),
-    Oldest = Now - Metadata#whisper_metadata.retention,
+    case read_metadata_inner(IO) of
+        {ok, Metadata} ->
+            Oldest = Now - Metadata#whisper_metadata.retention,
 
-    if From > Now orelse Until < Oldest ->
-           % XXX: is this the right return value?
-           #series{values=[]};
-       true ->
-           FromAdjusted = adjust_from(From, Oldest),
-           UntilAdjusted = adjust_until(Until, Now),
-           fetch_with_metadata(IO, Metadata, Now, FromAdjusted, UntilAdjusted)
+            if From > Now orelse Until < Oldest ->
+                   % XXX: is this the right return value?
+                   #series{values=[]};
+               true ->
+                   FromAdjusted = adjust_from(From, Oldest),
+                   UntilAdjusted = adjust_until(Until, Now),
+                   fetch_with_metadata(IO, Metadata, Now, FromAdjusted, UntilAdjusted)
+            end;
+        Error -> Error
     end.
 
 
