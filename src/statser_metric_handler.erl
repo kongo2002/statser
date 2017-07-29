@@ -86,11 +86,15 @@ init(Path) ->
 %%--------------------------------------------------------------------
 handle_call({fetch, From, Until, Now}, _From, State) ->
     File = State#state.fspath,
-    ReadFromFile = statser_whisper:fetch(File, From, Until, Now),
-    Cached = State#state.cache,
-    % TODO: merge
-    Merged = ReadFromFile#series{values=ReadFromFile#series.values ++ Cached},
-    {reply, Merged, State};
+    case statser_whisper:fetch(File, From, Until, Now) of
+        #series{} = Result ->
+            Cached = State#state.cache,
+            % TODO: merge
+            Merged = Result#series{values=Result#series.values ++ Cached},
+            {reply, Merged, State};
+        Error ->
+            {reply, Error, State}
+    end;
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
