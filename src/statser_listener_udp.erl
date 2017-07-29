@@ -127,7 +127,7 @@ handle_info({msg, Binary}, State) ->
     {noreply, NewState};
 
 handle_info(flush, #state{config=Config} = State) ->
-    Start = erlang:monotonic_time(nanosecond),
+    Start = erlang:monotonic_time(millisecond),
     Now = erlang:system_time(second),
     PerSecond = Config#udp_config.interval / 1000,
 
@@ -169,8 +169,8 @@ handle_info(flush, #state{config=Config} = State) ->
                     end, State#state.sets),
 
     % TODO: expose duration as instrumentation/metric
-    Duration = erlang:monotonic_time(nanosecond) - Start,
-    lager:debug("flush duration: ~w ns", [Duration]),
+    Duration = erlang:monotonic_time(millisecond) - Start,
+    lager:debug("flush duration: ~w ms", [Duration]),
 
     {noreply, State#state{counters=Counters,
                           timers=Timers,
