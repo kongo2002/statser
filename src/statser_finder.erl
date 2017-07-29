@@ -11,14 +11,16 @@
 
 
 find_metrics_tree(Parts) ->
-    find_metrics_tree(Parts, ["."]).
+    Base = binary:bin_to_list(statser_config:get_data_dir()),
+    find_metrics_tree(Parts, [Base]).
 
 find_metrics_tree(Parts, Cwd) ->
     find_metrics(Parts, Cwd, true).
 
 
 find_metrics(Parts) ->
-    find_metrics(Parts, ["."]).
+    Base = binary:bin_to_list(statser_config:get_data_dir()),
+    find_metrics(Parts, [Base]).
 
 find_metrics(Parts, Cwd) ->
     find_metrics(Parts, Cwd, false).
