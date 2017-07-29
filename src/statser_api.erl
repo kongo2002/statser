@@ -124,10 +124,15 @@ format_to_json(#series{target=Target, values=DataPoints}) ->
 
 process_target(Target, From, Until, Now, MaxPoints) ->
     lager:debug("render request for target ~p [~p - ~p] [~w]", [Target, From, Until, MaxPoints]),
-    Parsed = statser_parser:parse(Target),
-    lager:debug("parsed request target: ~p", [Parsed]),
-    Parameters = {From, Until, MaxPoints},
-    process(Parsed, Parameters, Now).
+    case statser_parser:parse(Target) of
+        {_Parsed, _Rest, {{line, _Line},{column, _Col}}} ->
+            lager:warning("failed to parse target: ~p", [Target]),
+            [];
+        Parsed ->
+            lager:debug("parsed request target: ~p", [Parsed]),
+            Parameters = {From, Until, MaxPoints},
+            process(Parsed, Parameters, Now)
+    end.
 
 
 process({paths, Path}, Params, Now) -> process_paths(Path, Params, Now);
