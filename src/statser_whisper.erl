@@ -808,6 +808,25 @@ create_and_read_test_() ->
      RunTest([{10, 60}, {60, 600}, {3600, 168}])
     ]).
 
+update_points_test_() ->
+    Check = fun(Points, From, To) ->
+                    WithF = fun(File) ->
+                                    {ok, _} = create(File, [{10, 60}], average, 0.5),
+                                    lists:foreach(fun({T, P}) -> ok = update_point(File, P, T) end, Points),
+                                    Series1 = fetch(File, From, To),
+                                    ok = update_points(File, Points),
+                                    Series2 = fetch(File, From, To),
+                                    {ok, Series1, Series2}
+                            end,
+                    {ok, S1, S2} = with_tempfile(WithF),
+                    [?_assertEqual(S1, S2)]
+            end,
+    Now = erlang:system_time(second),
+    lists:flatten([Check([{Now, 100}], Now, Now+60),
+                   Check([{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
+                   Check([{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60)
+                  ]).
+
 with_tempfile(Fun) ->
     TempFile = lib:nonl(os:cmd("mktemp")),
     try Fun(TempFile)
