@@ -88,9 +88,8 @@ handle_call({fetch, From, Until, Now}, _From, State) ->
     File = State#state.fspath,
     case statser_whisper:fetch(File, From, Until, Now) of
         #series{} = Result ->
-            Cached = State#state.cache,
-            % TODO: merge
-            Merged = Result#series{values=Result#series.values ++ Cached},
+            Cache = State#state.cache,
+            Merged = merge_with_cache(Result, Cache),
             {reply, Merged, State};
         Error ->
             {reply, Error, State}
@@ -273,6 +272,30 @@ get_creation_metadata(Path) ->
     {RetValues, Agg, XFF}.
 
 
+merge_with_cache(Series, []) ->
+    Series;
+merge_with_cache(Series, Cache) ->
+    Values = merge_with_cache(Series#series.values, lists:reverse(Cache), []),
+    Series#series{values=lists:reverse(Values)}.
+
+merge_with_cache([], _Cache, Acc) -> Acc;
+merge_with_cache([{TS, null}=P | Ps], Cache, Acc) ->
+    % TODO: cope with timestamp alignment
+    case advance_cache(TS, Cache) of
+        [{TS, _}=C | Cs] -> merge_with_cache(Ps, Cs, [C | Acc]);
+        Cs -> merge_with_cache(Ps, Cs, [P | Acc])
+    end;
+
+merge_with_cache([P | Ps], Cache, Acc) ->
+    merge_with_cache(Ps, Cache, [P | Acc]).
+
+
+advance_cache(_TS, []) -> [];
+advance_cache(TS, [{TS1, _} | Cs]) when TS > TS1 ->
+    advance_cache(TS, Cs);
+advance_cache(_TS, Cache) -> Cache.
+
+
 cache_point(Value, TS, State) ->
     Cache = cache_sorted(Value, TS, State#state.cache),
     State#state{cache=Cache}.
@@ -331,5 +354,26 @@ cache_sorted_test_() ->
      ?_assertEqual([{120, 10}, {110, 11}],
                   cache_sorted(11, 110, [{120, 10}, {110, 10}]))
     ].
+
+
+merge_with_cache_test_() ->
+    Cache = cache_sorted(16, 160, [{120, 12}, {110, 11}, {100, 10}]),
+    Test = fun(Values) ->
+                   Series = #series{values=Values},
+                   merge_with_cache(Series, Cache)
+           end,
+    [?_assertEqual(#series{values=[{100, 10}, {110, 11}, {120, 12}]},
+                   Test([{100, 10}, {110, null}, {120, null}])),
+
+     ?_assertEqual(#series{values=[{100, 10}, {110, 11}, {120, 12}, {130, 13}]},
+                   Test([{100, 10}, {110, null}, {120, 12}, {130, 13}])),
+
+     ?_assertEqual(#series{values=[{100, 10}, {110, 11}, {120, 12}, {130, null}]},
+                   Test([{100, 10}, {110, null}, {120, 12}, {130, null}])),
+
+     ?_assertEqual(#series{values=[{100, 10}, {110, 11}, {120, 12}, {130, null}, {160, 16}]},
+                   Test([{100, 10}, {110, null}, {120, 12}, {130, null}, {160, null}]))
+    ].
+
 
 -endif. % TEST
