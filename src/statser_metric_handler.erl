@@ -274,9 +274,26 @@ get_creation_metadata(Path) ->
 
 
 cache_point(Value, TS, State) ->
-    % TODO: sort by timestamp?
-    Cache = State#state.cache,
-    State#state{cache=[{Value, TS} | Cache]}.
+    Cache = cache_sorted(Value, TS, State#state.cache),
+    State#state{cache=Cache}.
+
+
+cache_sorted(Value, TS, []) ->
+    [{TS, Value}];
+cache_sorted(Value, TS, Cache) ->
+    cache_sorted(Value, TS, Cache, []).
+
+cache_sorted(Value, TS, [], Acc) ->
+    lists:reverse(Acc) ++ [{TS, Value}];
+cache_sorted(Value, TS, [{TS1, _}=P | Ps]=Pss, Acc) ->
+    if TS == TS1 ->
+           lists:reverse(Acc) ++ [{TS, Value} | Ps];
+       TS > TS1 ->
+           lists:reverse(Acc) ++ [{TS, Value} | Pss];
+       true ->
+           cache_sorted(Value, TS, Ps, [P | Acc])
+    end.
+
 
 %%
 %% TESTS
@@ -300,6 +317,19 @@ to_file_test_() ->
 
     [?_assertEqual(<<"foo/bar/test.wsp">>, Test(<<"foo.bar.test">>)),
      ?_assertEqual(<<"foo.wsp">>, Test(<<"foo">>))
+    ].
+
+cache_sorted_test_() ->
+    [?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+                  cache_sorted(10, 120, [{110, 10}, {100, 10}])),
+     ?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+                  cache_sorted(10, 110, [{120, 10}, {100, 10}])),
+     ?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+                  cache_sorted(10, 100, [{120, 10}, {110, 10}])),
+     ?_assertEqual([{120, 11}, {110, 10}],
+                  cache_sorted(11, 120, [{120, 10}, {110, 10}])),
+     ?_assertEqual([{120, 10}, {110, 11}],
+                  cache_sorted(11, 110, [{120, 10}, {110, 10}]))
     ].
 
 -endif. % TEST
