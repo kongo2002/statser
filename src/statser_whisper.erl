@@ -219,7 +219,7 @@ prepare_metadata(Archives, Aggregation, XFF) ->
         {ok, ValidArchives} ->
             NumArchives = length(ValidArchives),
             InitialOffset = NumArchives * ?METADATA_ARCHIVE_HEADER_SIZE + ?METADATA_HEADER_SIZE,
-            {LastOffset, UpdArchives} = with_offsets(InitialOffset, ValidArchives),
+            {_, UpdArchives} = with_offsets(InitialOffset, ValidArchives),
             MaxRetention = max_retention_archive(UpdArchives),
             {ok, #whisper_metadata{aggregation=AggValue,
                                    retention=MaxRetention,
@@ -497,7 +497,7 @@ safe_last([{TS, _}]) -> TS;
 safe_last([_ | Xs]) -> safe_last(Xs).
 
 
-write_consecutive_points(IO, Archive, BaseInterval, [{TS, _} | _] = Points) ->
+write_consecutive_points(IO, Archive, BaseInterval, Points) ->
     Position = get_data_point_offset(Archive, safe_last(Points), BaseInterval),
     {Bytes, Length} = lists:foldl(fun ({T, Value}, {BS, Len0}) ->
                                           PointBytes = data_point(T, Value),
