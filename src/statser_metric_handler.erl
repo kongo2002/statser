@@ -115,7 +115,9 @@ handle_cast(prepare, State) ->
     Path = prepare_file(Dirs, File),
     lager:info("prepared path: ~p", [Path]),
 
-    {noreply, State#state{dirs=Dirs, file=File, fspath=Path}};
+    NewState = get_metadata(State#state{dirs=Dirs, file=File, fspath=Path}),
+
+    {noreply, NewState};
 
 handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
     lager:warning("received value ~w for '~p' for pre year 2000 - skipping value",
@@ -123,35 +125,34 @@ handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
     {noreply, State};
 
 handle_cast({line, _Path, Value, TS}, State) ->
-    File = State#state.fspath,
+    NewState = cache_point(Value, TS, State),
 
-    case statser_whisper:update_point(File, Value, TS) of
-        ok ->
-            statser_instrumentation:increment(<<"committed-points">>),
-            {noreply, State};
-        _Error ->
-            % archive is not existing (yet)
-            % so dispatch a creation via rate-limiter
-            gen_server:cast(create_limiter, {drain, create, self()}),
-            NewState = cache_point(Value, TS, State),
-            {noreply, NewState}
-    end;
+    % TODO: more dynamic flush interval
+    if length(NewState#state.cache) > 5 ->
+           gen_server:cast(self(), flush_cache);
+       true -> ok
+    end,
+
+    {noreply, NewState};
 
 handle_cast(flush_cache, State) ->
     case State#state.cache of
         [] -> {noreply, State};
         Cs ->
-            lager:info("flushing metric cache of ~p (~w entries)",
-                       [State#state.path, length(Cs)]),
+            lager:debug("flushing metric cache of ~p (~w entries)",
+                        [State#state.path, length(Cs)]),
 
-            % TODO: in here we could introduce some kind of bulk write
-            %       instead of writing every cached point separately
             File = State#state.fspath,
-            lists:foreach(fun({V, TS}) ->
-                                  ok = statser_whisper:update_point(File, V, TS),
-                                  statser_instrumentation:increment(<<"committed-points">>)
-                          end, Cs),
-            {noreply, State#state{cache=[]}}
+            case statser_whisper:update_points(File, Cs) of
+                ok ->
+                    statser_instrumentation:increment(<<"committed-points">>, length(Cs)),
+                    {noreply, State#state{cache=[]}};
+                _Error ->
+                    % archive is not existing (yet)
+                    % so dispatch a creation via rate-limiter
+                    gen_server:cast(create_limiter, {drain, create, self()}),
+                    {noreply, State}
+            end
     end;
 
 handle_cast(_Msg, State) ->
@@ -168,24 +169,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(create, State) ->
-    % now we make sure the file is created if not already
-    Path = State#state.fspath,
-    Metadata = case statser_whisper:read_metadata(Path) of
-        {ok, M} -> M;
-        {error, enoent} ->
-            lager:info("no archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = get_creation_metadata(State#state.path),
-            {ok, M} = statser_whisper:create(Path, As, A, XFF),
-            statser_instrumentation:increment(<<"creates">>),
-            M;
-        UnexpectedError ->
-            lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
-            lager:info("no valid archive existing for ~p - creating now", [State#state.path]),
-            {As, A, XFF} = get_creation_metadata(State#state.path),
-            {ok, M} = statser_whisper:create(Path, As, A, XFF),
-            statser_instrumentation:increment(<<"creates">>),
-            M
-    end,
+    Metadata = get_or_create_metadata(State#state.fspath, State#state.path),
 
     gen_server:cast(self(), flush_cache),
     {noreply, State#state{metadata=Metadata}};
@@ -230,6 +214,41 @@ get_whisper_file(Path) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_metadata(State) ->
+    case statser_whisper:read_metadata(State#state.fspath) of
+        {ok, M} ->
+            State#state{metadata=M};
+        _Error ->
+            % archive is not existing (yet)
+            % so dispatch a creation via rate-limiter
+            gen_server:cast(create_limiter, {drain, create, self()}),
+
+            {As, A, XFF} = get_creation_metadata(State#state.path),
+            {ok, M} = statser_whisper:prepare_metadata(As, A, XFF),
+            State#state{metadata=M}
+    end.
+
+
+get_or_create_metadata(FsPath, Path) ->
+    % now we make sure the file is created if not already
+    case statser_whisper:read_metadata(FsPath) of
+        {ok, M} -> M;
+        {error, enoent} ->
+            lager:info("no archive existing for ~p - creating now", [Path]),
+            {As, A, XFF} = get_creation_metadata(Path),
+            {ok, M} = statser_whisper:create(FsPath, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>),
+            M;
+        UnexpectedError ->
+            lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
+            lager:info("no valid archive existing for ~p - creating now", [Path]),
+            {As, A, XFF} = get_creation_metadata(Path),
+            {ok, M} = statser_whisper:create(FsPath, As, A, XFF),
+            statser_instrumentation:increment(<<"creates">>),
+            M
+    end.
+
 
 get_directory(Path) ->
     case binary:split(Path, <<".">>, [global, trim_all]) of
@@ -297,8 +316,14 @@ advance_cache(_TS, Cache) -> Cache.
 
 
 cache_point(Value, TS, State) ->
-    Cache = cache_sorted(Value, TS, State#state.cache),
-    State#state{cache=Cache}.
+    case State#state.metadata of
+        #whisper_metadata{archives=[A | _]} ->
+            AlignedTS = TS - (TS rem A#whisper_archive.seconds),
+            Cache = cache_sorted(Value, AlignedTS, State#state.cache),
+            State#state{cache=Cache};
+        _Otherwise ->
+            State
+    end.
 
 
 cache_sorted(Value, TS, []) ->

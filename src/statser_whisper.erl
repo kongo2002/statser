@@ -12,6 +12,7 @@
          aggregate/4,
          aggregation_type/1,
          aggregation_value/1,
+         prepare_metadata/3,
          fetch/3,
          fetch/4,
          update_point/3,
@@ -207,7 +208,8 @@ create(File, Archives, Aggregation, XFF) ->
     end.
 
 
-create_inner(IO, Archives, Aggregation, XFF) ->
+-spec prepare_metadata([{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
+prepare_metadata(Archives, Aggregation, XFF) ->
     GetDefault = fun([], Def) -> Def;
                     (Val, _) -> Val end,
     AggValue = GetDefault(Aggregation, average),
@@ -215,19 +217,34 @@ create_inner(IO, Archives, Aggregation, XFF) ->
 
     case validate_archives(Archives) of
         {ok, ValidArchives} ->
-            % archives are valid; write the header now
             NumArchives = length(ValidArchives),
             InitialOffset = NumArchives * ?METADATA_ARCHIVE_HEADER_SIZE + ?METADATA_HEADER_SIZE,
             {LastOffset, UpdArchives} = with_offsets(InitialOffset, ValidArchives),
             MaxRetention = max_retention_archive(UpdArchives),
-            ok = file:write(IO, write_header(AggValue, MaxRetention, XFFValue, NumArchives)),
-            ok = write_archive_info(IO, UpdArchives),
-            ok = write_empty_archives(IO, LastOffset - InitialOffset),
-
             {ok, #whisper_metadata{aggregation=AggValue,
                                    retention=MaxRetention,
                                    xff=XFFValue,
                                    archives=UpdArchives}};
+        error -> error
+    end.
+
+
+create_inner(IO, Archives, Aggregation, XFF) ->
+    case prepare_metadata(Archives, Aggregation, XFF) of
+        {ok, M} ->
+            % archives are valid; write the header now
+            As = M#whisper_metadata.archives,
+            NumArchives = length(As),
+            InitialOffset = NumArchives * ?METADATA_ARCHIVE_HEADER_SIZE + ?METADATA_HEADER_SIZE,
+            {LastOffset, _} = with_offsets(InitialOffset, As),
+            ok = file:write(IO, write_header(M#whisper_metadata.aggregation,
+                                             M#whisper_metadata.retention,
+                                             M#whisper_metadata.xff,
+                                             NumArchives)),
+            ok = write_archive_info(IO, As),
+            ok = write_empty_archives(IO, LastOffset - InitialOffset),
+
+            {ok, M};
         error -> error
     end.
 
