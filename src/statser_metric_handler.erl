@@ -22,6 +22,8 @@
 
 -define(EPOCH_SECONDS_2000, 946681200).
 
+-define(MIN_CACHE_ENTRIES, 5).
+
 -record(state, {path, dirs, file, fspath, metadata, cache=[]}).
 
 %%%===================================================================
@@ -128,7 +130,7 @@ handle_cast({line, _Path, Value, TS}, State) ->
     NewState = cache_point(Value, TS, State),
 
     % TODO: more dynamic flush interval
-    if length(NewState#state.cache) > 5 ->
+    if length(NewState#state.cache) > ?MIN_CACHE_ENTRIES ->
            gen_server:cast(self(), flush_cache);
        true -> ok
     end,
