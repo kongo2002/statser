@@ -377,8 +377,12 @@ point_at(IO, Offset) ->
 
 
 write_at(IO, Point, Offset) ->
-    {ok, _Position} = file:position(IO, {bof, Offset}),
-    file:write(IO, Point).
+    case file:position(IO, {bof, Offset}) of
+        {ok, _Position} -> file:write(IO, Point);
+        Error ->
+            lager:error("write_at failed at offset ~w [~p]", [Offset, Point]),
+            Error
+    end.
 
 
 mod(X, Y) when X > 0 -> X rem Y;
@@ -489,8 +493,12 @@ group_points_to_lower_archive(Archive, [{TS0, V} | Ps], [{TS1, _} | _]=Vs) ->
     end.
 
 
+safe_last([{TS, _}]) -> TS;
+safe_last([_ | Xs]) -> safe_last(Xs).
+
+
 write_consecutive_points(IO, Archive, BaseInterval, [{TS, _} | _] = Points) ->
-    LastPointPosition = get_data_point_offset(Archive, TS, BaseInterval),
+    Position = get_data_point_offset(Archive, safe_last(Points), BaseInterval),
     {Bytes, Length} = lists:foldl(fun ({T, Value}, {BS, Len0}) ->
                                           PointBytes = data_point(T, Value),
                                           Len = Len0 + ?POINT_SIZE,
@@ -500,22 +508,18 @@ write_consecutive_points(IO, Archive, BaseInterval, [{TS, _} | _] = Points) ->
                                           end
                                   end, {<<>>, 0}, Points),
 
-    % we have to adjust the initial position by the length of the bytes to write
-    % because this function gets its points passed in reverse order
-    FirstPointPosition = LastPointPosition - Length + ?POINT_SIZE,
-
     % we have to determine if this point sequence overlaps the archive's end
     ArchiveEnd = Archive#whisper_archive.offset + Archive#whisper_archive.size,
-    BytesOverlap = (FirstPointPosition + Length) - ArchiveEnd,
+    BytesOverlap = (Position + Length) - ArchiveEnd,
     if BytesOverlap > 0 ->
-           lager:debug("point-seq of len ~w overlaps by ~w bytes: ~p", [Length, BytesOverlap, Bytes]),
+           lager:debug("point-seq of len ~w overlaps by ~w bytes: ~p", [Length, BytesOverlap, Points]),
            FirstPart = binary:part(Bytes, 0, Length - BytesOverlap),
-           ok = write_at(IO, FirstPart, FirstPointPosition),
+           ok = write_at(IO, FirstPart, Position),
            LastPart = binary:part(Bytes, byte_size(Bytes), -BytesOverlap),
            ok = write_at(IO, LastPart, Archive#whisper_archive.offset);
        true ->
-           lager:debug("writing point-seq of len ~w: ~p", [Length, Bytes]),
-           ok = write_at(IO, Bytes, FirstPointPosition)
+           lager:debug("writing point-seq of len ~w: ~p", [Length, Points]),
+           ok = write_at(IO, Bytes, Position)
     end.
 
 
@@ -826,9 +830,11 @@ create_and_read_test_() ->
     ]).
 
 update_points_test_() ->
-    Check = fun(Points, From, To) ->
+    Archives1 = [{10, 60}],
+    Archives2 = [{10, 60}, {60, 600}],
+    Check = fun(Archives, Points, From, To) ->
                     WithF = fun(File) ->
-                                    {ok, _} = create(File, [{10, 60}], average, 0.5),
+                                    {ok, _} = create(File, Archives, average, 0.5),
                                     lists:foreach(fun({T, P}) -> ok = update_point(File, P, T) end, Points),
                                     Series1 = fetch(File, From, To),
                                     ok = update_points(File, Points),
@@ -839,9 +845,12 @@ update_points_test_() ->
                     [?_assertEqual(S1, S2)]
             end,
     Now = erlang:system_time(second),
-    lists:flatten([Check([{Now, 100}], Now, Now+60),
-                   Check([{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
-                   Check([{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60)
+    lists:flatten([Check(Archives1, [{Now, 100}], Now, Now+60),
+                   Check(Archives1, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
+                   Check(Archives1, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60),
+                   Check(Archives2, [{Now, 100}], Now, Now+60),
+                   Check(Archives2, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
+                   Check(Archives2, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60)
                   ]).
 
 with_tempfile(Fun) ->
