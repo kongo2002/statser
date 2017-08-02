@@ -5,7 +5,10 @@
   {mod, { statser_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    lager,
+    yamerl,
+    elli
    ]},
   {env,[]},
   {modules, []},
