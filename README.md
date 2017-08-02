@@ -93,6 +93,7 @@ on my roadmap below.
 * configurable storage rules
 * configurable aggregation schemes
 * throttling of archive creation
+* throttling of metrics updates (writes to disk)
 * basic [StatsD][statsd] interface (known to listen on UDP port `8125`)
     - support for counters, timers, gauges and sets
 * metrics API
@@ -178,9 +179,9 @@ udp:
 
 ### TODO
 
-* throttling of metrics updates (flushed to disk)
+* configurable amount of caching
+* blacklist/whitelist of metrics
 * support even more functions of `graphite-web` render API
-* configurable amount of caching (see above)
 * investigate into more elaborate archive write optimization
 
 
