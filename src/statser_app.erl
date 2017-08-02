@@ -8,7 +8,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, stop/1, prep_stop/1]).
 
 %%====================================================================
 %% API
@@ -24,8 +24,13 @@ start(_StartType, _StartArgs) ->
     statser_sup:start_link().
 
 %%--------------------------------------------------------------------
+prep_stop(_State) ->
+    lager:info("preparing statser application shutdown"),
+    ok.
+
+%%--------------------------------------------------------------------
 stop(_State) ->
-    lager:info("stopping statser application"),
+    lager:info("stopped statser application"),
     ok.
 
 %%====================================================================
