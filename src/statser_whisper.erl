@@ -39,7 +39,7 @@ aggregation_value(average_zero) -> 6.
 
 -spec read_metadata(binary()) -> tuple().
 read_metadata(File) ->
-    case file:open(File, [read, binary]) of
+    case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
             try read_metadata_inner(IO)
                 after file:close(IO)
@@ -97,7 +97,7 @@ fetch(File, From, Until) ->
 
 -spec fetch(binary(), integer(), integer(), integer()) -> #series{}.
 fetch(File, From, Until, Now) ->
-    case file:open(File, [read, binary]) of
+    case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
             try fetch_inner(IO, From, Until, Now)
                 after file:close(IO)
@@ -202,7 +202,7 @@ create(File, #whisper_metadata{archives=As, aggregation=Agg, xff=XFF}) ->
 
 -spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
 create(File, Archives, Aggregation, XFF) ->
-    {ok, IO} = file:open(File, [write, binary]),
+    {ok, IO} = file:open(File, [write, binary, raw]),
     try create_inner(IO, Archives, Aggregation, XFF)
         after file:close(IO)
     end.
@@ -418,7 +418,7 @@ update_points(File, Points) ->
     OrderedPoints = sort_by_newest(Points),
 
     % open file handle
-    case file:open(File, [write, read, binary]) of
+    case file:open(File, [write, read, binary, raw]) of
         {ok, IO} ->
             try do_update_points(IO, OrderedPoints, Now)
                 after file:close(IO)
@@ -566,7 +566,7 @@ distribute_points(Now, [{TS, _}=P | Ps]=Pss, [Archive | As]=Ass, APs, Acc) ->
 
 -spec update_point(binary(), number(), integer()) -> tuple().
 update_point(File, Value, TimeStamp) ->
-    case file:open(File, [write, read, binary]) of
+    case file:open(File, [write, read, binary, raw]) of
         {ok, IO} ->
             try do_update(IO, Value, TimeStamp)
                 after file:close(IO)
