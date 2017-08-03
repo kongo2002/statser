@@ -24,7 +24,7 @@
 
 -define(MIN_CACHE_ENTRIES, 5).
 
--record(state, {path, dirs, file, fspath, metadata, cache=[]}).
+-record(state, {path, dirs, file, fspath, metadata, cache=[], cache_size=0}).
 
 %%%===================================================================
 %%% API
@@ -130,7 +130,7 @@ handle_cast({line, _Path, Value, TS}, State) ->
     NewState = cache_point(Value, TS, State),
 
     % TODO: more dynamic flush interval
-    if length(NewState#state.cache) > ?MIN_CACHE_ENTRIES ->
+    if NewState#state.cache_size > ?MIN_CACHE_ENTRIES ->
            gen_server:cast(self(), flush_cache);
        true -> ok
     end,
@@ -142,13 +142,13 @@ handle_cast(flush_cache, State) ->
         [] -> {noreply, State};
         Cs ->
             lager:debug("flushing metric cache of ~p (~w entries)",
-                        [State#state.path, length(Cs)]),
+                        [State#state.path, State#state.cache_size]),
 
             File = State#state.fspath,
             case statser_whisper:update_points(File, Cs) of
                 ok ->
-                    statser_instrumentation:increment(<<"committed-points">>, length(Cs)),
-                    {noreply, State#state{cache=[]}};
+                    statser_instrumentation:increment(<<"committed-points">>, State#state.cache_size),
+                    {noreply, State#state{cache=[], cache_size=0}};
                 _Error ->
                     % archive is not existing (yet)
                     % so dispatch a creation via rate-limiter
@@ -321,25 +321,26 @@ cache_point(Value, TS, State) ->
     case State#state.metadata of
         #whisper_metadata{archives=[A | _]} ->
             AlignedTS = TS - (TS rem A#whisper_archive.seconds),
-            Cache = cache_sorted(Value, AlignedTS, State#state.cache),
-            State#state{cache=Cache};
+            {Cache, Added} = cache_sorted(Value, AlignedTS, State#state.cache),
+            CacheSize = State#state.cache_size + Added,
+            State#state{cache=Cache, cache_size=CacheSize};
         _Otherwise ->
             State
     end.
 
 
 cache_sorted(Value, TS, []) ->
-    [{TS, Value}];
+    {[{TS, Value}], 1};
 cache_sorted(Value, TS, Cache) ->
     cache_sorted(Value, TS, Cache, []).
 
 cache_sorted(Value, TS, [], Acc) ->
-    lists:reverse(Acc) ++ [{TS, Value}];
+    {lists:reverse(Acc) ++ [{TS, Value}], 1};
 cache_sorted(Value, TS, [{TS1, _}=P | Ps]=Pss, Acc) ->
     if TS == TS1 ->
-           lists:reverse(Acc) ++ [{TS, Value} | Ps];
+           {lists:reverse(Acc) ++ [{TS, Value} | Ps], 0};
        TS > TS1 ->
-           lists:reverse(Acc) ++ [{TS, Value} | Pss];
+           {lists:reverse(Acc) ++ [{TS, Value} | Pss], 1};
        true ->
            cache_sorted(Value, TS, Ps, [P | Acc])
     end.
@@ -370,21 +371,21 @@ to_file_test_() ->
     ].
 
 cache_sorted_test_() ->
-    [?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+    [?_assertEqual({[{120, 10}, {110, 10}, {100, 10}], 1},
                   cache_sorted(10, 120, [{110, 10}, {100, 10}])),
-     ?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+     ?_assertEqual({[{120, 10}, {110, 10}, {100, 10}], 1},
                   cache_sorted(10, 110, [{120, 10}, {100, 10}])),
-     ?_assertEqual([{120, 10}, {110, 10}, {100, 10}],
+     ?_assertEqual({[{120, 10}, {110, 10}, {100, 10}], 1},
                   cache_sorted(10, 100, [{120, 10}, {110, 10}])),
-     ?_assertEqual([{120, 11}, {110, 10}],
+     ?_assertEqual({[{120, 11}, {110, 10}], 0},
                   cache_sorted(11, 120, [{120, 10}, {110, 10}])),
-     ?_assertEqual([{120, 10}, {110, 11}],
+     ?_assertEqual({[{120, 10}, {110, 11}], 0},
                   cache_sorted(11, 110, [{120, 10}, {110, 10}]))
     ].
 
 
 merge_with_cache_test_() ->
-    Cache = cache_sorted(16, 160, [{120, 12}, {110, 11}, {100, 10}]),
+    {Cache, _} = cache_sorted(16, 160, [{120, 12}, {110, 11}, {100, 10}]),
     Test = fun(Values) ->
                    Series = #series{values=Values},
                    merge_with_cache(Series, Cache)
