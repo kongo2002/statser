@@ -202,9 +202,12 @@ create(File, #whisper_metadata{archives=As, aggregation=Agg, xff=XFF}) ->
 
 -spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
 create(File, Archives, Aggregation, XFF) ->
-    {ok, IO} = file:open(File, [write, binary, raw]),
-    try create_inner(IO, Archives, Aggregation, XFF)
-        after file:close(IO)
+    case file:open(File, [write, binary, raw]) of
+        {ok, IO} ->
+            try create_inner(IO, Archives, Aggregation, XFF)
+                after file:close(IO)
+            end;
+        Error -> Error
     end.
 
 

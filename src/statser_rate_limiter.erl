@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -13,7 +13,9 @@
          terminate/2,
          code_change/3]).
 
--record(state, {limit, remaining, timer, name}).
+-define(MILLIS_PER_SEC, 1000).
+
+-record(state, {limit, remaining, timer, name, pending}).
 
 %%%===================================================================
 %%% API
@@ -26,8 +28,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Type, Name) ->
-    gen_server:start_link({local, Type}, ?MODULE, [Type, Name], []).
+start_link(Type, Name, Limit) ->
+    gen_server:start_link({local, Type}, ?MODULE, [Type, Name, Limit], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -44,17 +46,21 @@ start_link(Type, Name) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Type, Name]) ->
-    % TODO: get from config based on `Type`
-    Limit = 50,
+init([Type, Name, LimitPerSec]) ->
+    lager:info("starting rate limiter [~w] with limit ~w/sec", [Type, LimitPerSec]),
 
-    lager:info("starting rate limiter [~w] with limit ~w/sec", [Type, Limit]),
+    % we want to distribute the `refill` as evenly as possible
+    % that's why we calculate the rate limit to a minimum interval of 100 ms
+    IntervalInMillis = max(?MILLIS_PER_SEC div LimitPerSec, 100),
+    LimitPerInterval = LimitPerSec div (?MILLIS_PER_SEC div IntervalInMillis),
 
-    % the rate limiter is per-second based
-    % that's why we will refill the capacity once every second
-    {ok, Timer} = timer:send_interval(1000, refill),
+    {ok, Timer} = timer:send_interval(IntervalInMillis, refill),
 
-    {ok, #state{limit=Limit, remaining=Limit, timer=Timer, name=Name}}.
+    {ok, #state{limit=LimitPerInterval,
+                remaining=LimitPerInterval,
+                timer=Timer,
+                name=Name,
+                pending=queue:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -93,13 +99,9 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({drain, Reply, To}, State) ->
-    case drain(State) of
-        {ok, NewState} ->
-            To ! Reply,
-            {noreply, NewState};
-        none ->
-            {noreply, State}
-    end;
+    NewState = drain(State, Reply, To),
+    {noreply, NewState};
+
 handle_cast(_Cast, State) ->
     {noreply, State}.
 
@@ -115,8 +117,10 @@ handle_cast(_Cast, State) ->
 %%--------------------------------------------------------------------
 handle_info(refill, State) ->
     Limit = State#state.limit,
-    NewState = State#state{remaining=Limit},
+    {Pending, Remaining} = drain_queue(State#state.pending, Limit),
+    NewState = State#state{remaining=Remaining, pending=Pending},
     {noreply, NewState};
+
 handle_info({drain, Reply, To}, State) ->
     case drain(State) of
         {ok, NewState} ->
@@ -161,7 +165,27 @@ code_change(_OldVsn, State, _Extra) ->
 
 drain(#state{remaining=Rem} = State) when Rem > 0 ->
     {ok, State#state{remaining=Rem-1}};
-drain(#state{limit=Limit, name=Name}) ->
-    lager:debug("request is dropped due to exhausted rate limiter [~w/sec]", [Limit]),
+
+drain(#state{name=Name}) ->
     statser_instrumentation:increment(<<Name/binary, "-dropped">>),
     none.
+
+
+drain(#state{remaining=Rem} = State, Reply, To) when Rem > 0 ->
+    To ! Reply,
+    State#state{remaining=Rem-1};
+
+drain(#state{name=Name} = State, Reply, To) ->
+    statser_instrumentation:increment(<<Name/binary, "-dropped">>),
+    Pending = queue:in({Reply, To}, State#state.pending),
+    State#state{pending=Pending}.
+
+
+drain_queue(Queue, 0) -> {Queue, 0};
+drain_queue(Queue, Remaining) ->
+    case queue:out(Queue) of
+        {empty, _Q} -> {Queue, Remaining};
+        {{value, {Reply, To}}, Q} ->
+            To ! Reply,
+            drain_queue(Q, Remaining-1)
+    end.

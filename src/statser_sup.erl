@@ -73,8 +73,11 @@ init([]) ->
                 ?CHILD(router, statser_router, worker, []),
                 ?CHILD(instrumentation, statser_instrumentation, worker, []),
                 % rate limiters
-                ?CHILD(create_limiter, statser_rate_limiter, worker, [create_limiter, <<"creates">>]),
-                ?CHILD(update_limiter, statser_rate_limiter, worker, [update_limiter, <<"updates">>]),
+                % TODO: configurable limits
+                ?CHILD(create_limiter, statser_rate_limiter, worker,
+                       [create_limiter, <<"creates">>, 10]),
+                ?CHILD(update_limiter, statser_rate_limiter, worker,
+                       [update_limiter, <<"updates">>, 50]),
                 % API
                 ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
                ],
