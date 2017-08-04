@@ -62,20 +62,20 @@ evaluate_call(<<"aliasByNode">>, [Series | Aliases], _From, _Until, _Now) ->
 
 % averageAbove
 evaluate_call(<<"averageAbove">>, [Series, Avg], _From, _Until, _Now) ->
-    lists:filter(fun(#series{values=Values}) -> safe_average(Values) >= Avg end, Series);
+    lists:filter(fun(#series{values=Values}) -> statser_calc:safe_average(Values) >= Avg end, Series);
 
 % averageBelow
 evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
-    lists:filter(fun(#series{values=Values}) -> safe_average(Values) =< Avg end, Series);
+    lists:filter(fun(#series{values=Values}) -> statser_calc:safe_average(Values) =< Avg end, Series);
 
 % averageOutsidePercentile
 evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now) when is_number(N0) ->
     N = upper_half(N0),
-    Avgs = lists:map(fun(#series{values=Values}) -> safe_average(Values) end, Series),
+    Avgs = lists:map(fun(#series{values=Values}) -> statser_calc:safe_average(Values) end, Series),
     LowPerc = percentile(Avgs, 100 - N),
     HighPerc = percentile(Avgs, N),
     lists:filter(fun(#series{values=Values}) ->
-                         Avg = safe_average(Values),
+                         Avg = statser_calc:safe_average(Values),
                          Avg =< LowPerc orelse Avg >= HighPerc
                  end, Series);
 
@@ -104,7 +104,7 @@ evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
 % invert
 evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values, fun safe_invert/1)}
+                      S#series{values=process_series_values(S#series.values, fun statser_calc:safe_invert/1)}
               end, Series);
 
 % limit
@@ -193,7 +193,8 @@ evaluate_call(<<"removeBelowValue">>, [Series, Val], _From, _Until, _Now) when i
 % squareRoot
 evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values, fun safe_square_root/1)}
+                      S#series{values=process_series_values(S#series.values,
+                                                            fun statser_calc:safe_square_root/1)}
               end, Series);
 
 % sumSeries
@@ -235,30 +236,6 @@ to_target(Parts) ->
            (A, B) -> <<A/binary, ".", B/binary>>
         end,
     lists:foldr(F, <<>>, Parts).
-
-
-safe_average(Values) ->
-    safe_average(Values, 1, 0.0).
-
-safe_average([], _Cnt, Avg) -> Avg;
-safe_average([{_TS, null} | Vs], Cnt, Avg) ->
-    safe_average(Vs, Cnt, Avg);
-safe_average([{_TS, Val} | Vs], Cnt, Avg) ->
-    NewAvg = Avg + (Val - Avg) / Cnt,
-    safe_average(Vs, Cnt + 1, NewAvg);
-safe_average([null | Vs], Cnt, Avg) ->
-    safe_average(Vs, Cnt, Avg);
-safe_average([Val | Vs], Cnt, Avg) ->
-    NewAvg = Avg + (Val - Avg) / Cnt,
-    safe_average(Vs, Cnt + 1, NewAvg).
-
-
-safe_invert(null) -> null;
-safe_invert(Value) -> math:pow(Value, -1).
-
-
-safe_square_root(null) -> null;
-safe_square_root(Value) -> math:pow(Value, 0.5).
 
 
 derivative(Values) ->
@@ -483,7 +460,7 @@ safe_diff([Value | Vs], Acc) ->
 
 square_sum([]) -> 0;
 square_sum(Values) ->
-    Avg = safe_average(Values),
+    Avg = statser_calc:safe_average(Values),
     square_sum(Values, Avg, 0, 0).
 
 square_sum([], _Avg, Sum, Len) ->
@@ -629,18 +606,6 @@ derivative_test_() ->
                    derivative(pseudo_values([null,1,2,3,4,5,null,6,7,8]))),
      ?_assertEqual(pseudo_values([null,1,2,2,2]),
                    derivative(pseudo_values([1,2,4,6,8])))
-    ].
-
-safe_average_test_() ->
-    [?_assertEqual(4.0, safe_average([4])),
-     ?_assertEqual(3.0, safe_average([2, 4])),
-     ?_assertEqual(3.0, safe_average([2, 4, 4, 2])),
-     ?_assertEqual(0.0, safe_average([])),
-     ?_assertEqual(0.0, safe_average([null])),
-     ?_assertEqual(3.0, safe_average([2, 4, null])),
-     ?_assertEqual(4.0, safe_average([null, 4, null])),
-     ?_assertEqual(3.0, safe_average([{0, 2}, {0, 4}, {0, null}])),
-     ?_assertEqual(4.0, safe_average([{0, null}, {0, 4}, {0, null}]))
     ].
 
 average_above_test_() ->
