@@ -94,6 +94,8 @@ handle_call({fetch, From, Until, Now}, _From, State) ->
             Merged = merge_with_cache(Result, Cache),
             {reply, Merged, State};
         Error ->
+            % TODO: in case we could not fetch any values we could
+            % at least return the currently cached values instead
             {reply, Error, State}
     end;
 
