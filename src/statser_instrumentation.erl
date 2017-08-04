@@ -10,7 +10,7 @@
 -export([start_link/0,
          increment/1,
          increment/2,
-         append/2]).
+         record/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -43,8 +43,8 @@ increment(Key, Amount) ->
     gen_server:cast(?MODULE, {increment, Key, Amount}).
 
 
-append(Key, Value) ->
-    gen_server:cast(?MODULE, {append, Key, Value}).
+record(Key, Value) ->
+    gen_server:cast(?MODULE, {record, Key, Value}).
 
 
 %%%===================================================================
@@ -114,8 +114,8 @@ handle_cast({increment, Key, Amount}, State) ->
     Map = increment_metrics(Key, Amount, State#state.metrics),
     {noreply, State#state{metrics=Map}};
 
-handle_cast({append, Key, Value}, State) ->
-    Map = append_metrics(Key, Value, State#state.metrics),
+handle_cast({record, Key, Value}, State) ->
+    Map = record_metrics(Key, Value, State#state.metrics),
     {noreply, State#state{metrics=Map}};
 
 handle_cast(_Msg, State) ->
@@ -137,10 +137,13 @@ handle_info(update_metrics, State) ->
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
-    % TODO: handle list values as well
     UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
                                  publish(K, V, Now, Path),
                                  maps:put(K, 0, Map);
+                            (K, Vs, Map) when is_list(Vs) ->
+                                 Avg = statser_calc:safe_average(Vs),
+                                 publish(K, Avg, Now, Path),
+                                 maps:put(K, [], Map);
                             (_K, _V, Map) -> Map
                          end, Metrics, Metrics),
 
@@ -193,11 +196,11 @@ increment_metrics(Key, Amount, Map) when is_number(Amount) ->
 increment_metrics(_Key, _Amount, Map) -> Map.
 
 
-append_metrics(Key, Value, Map) when is_number(Value) ->
+record_metrics(Key, Value, Map) when is_number(Value) ->
     Update = fun(Values) when is_list(Values) -> [Value | Values];
                 (Values) -> Values end,
     maps:update_with(Key, Update, [Value], Map);
-append_metrics(_Key, _Value, Map) -> Map.
+record_metrics(_Key, _Value, Map) -> Map.
 
 
 %%%===================================================================
@@ -214,11 +217,11 @@ increment_metrics_test_() ->
     ].
 
 
-append_metrics_test_() ->
-    [?_assertEqual(#{"foo" => [1]}, append_metrics("foo", 1, #{})),
-     ?_assertEqual(#{"foo" => [2, 1]}, append_metrics("foo", 2, #{"foo" => [1]})),
-     ?_assertEqual(#{"foo" => [8, 1], "bar" => 34}, append_metrics("foo", 8, #{"foo" => [1], "bar" => 34})),
-     ?_assertEqual(#{"foo" => 9}, append_metrics("foo", 9, #{"foo" => 9}))
+record_metrics_test_() ->
+    [?_assertEqual(#{"foo" => [1]}, record_metrics("foo", 1, #{})),
+     ?_assertEqual(#{"foo" => [2, 1]}, record_metrics("foo", 2, #{"foo" => [1]})),
+     ?_assertEqual(#{"foo" => [8, 1], "bar" => 34}, record_metrics("foo", 8, #{"foo" => [1], "bar" => 34})),
+     ?_assertEqual(#{"foo" => 9}, record_metrics("foo", 9, #{"foo" => 9}))
     ].
 
 
