@@ -22,7 +22,7 @@
 
 -define(EPOCH_SECONDS_2000, 946681200).
 
--define(MIN_CACHE_ENTRIES, 5).
+-define(MIN_CACHE_INTERVAL, 60).
 
 -record(state, {path, dirs, file, fspath, metadata, cache=[], cache_size=0}).
 
@@ -129,33 +129,19 @@ handle_cast({line, _, Value, TS}, State) when TS < ?EPOCH_SECONDS_2000 ->
 handle_cast({line, _Path, Value, TS}, State) ->
     NewState = cache_point(Value, TS, State),
 
-    % TODO: more dynamic flush interval
-    if NewState#state.cache_size > ?MIN_CACHE_ENTRIES ->
-           gen_server:cast(self(), flush_cache);
-       true -> ok
+    case State#state.metadata of
+        #whisper_metadata{archives=[A | _]} ->
+            MinInterval = A#whisper_archive.seconds,
+            MinCache = ?MIN_CACHE_INTERVAL div MinInterval,
+
+            if NewState#state.cache_size > MinCache ->
+                   request_flush();
+               true -> ok
+            end;
+        _Otherwise -> ok
     end,
 
     {noreply, NewState};
-
-handle_cast(flush_cache, State) ->
-    case State#state.cache of
-        [] -> {noreply, State};
-        Cs ->
-            lager:debug("flushing metric cache of ~p (~w entries)",
-                        [State#state.path, State#state.cache_size]),
-
-            File = State#state.fspath,
-            case statser_whisper:update_points(File, Cs) of
-                ok ->
-                    statser_instrumentation:increment(<<"committed-points">>, State#state.cache_size),
-                    {noreply, State#state{cache=[], cache_size=0}};
-                _Error ->
-                    % archive is not existing (yet)
-                    % so dispatch a creation via rate-limiter
-                    gen_server:cast(create_limiter, {drain, create, self()}),
-                    {noreply, State}
-            end
-    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -173,8 +159,29 @@ handle_cast(_Msg, State) ->
 handle_info(create, State) ->
     Metadata = get_or_create_metadata(State#state.fspath, State#state.path),
 
-    gen_server:cast(self(), flush_cache),
+    request_flush(),
     {noreply, State#state{metadata=Metadata}};
+
+handle_info(flush_cache, State) ->
+    case State#state.cache of
+        [] -> {noreply, State};
+        Cs ->
+            lager:debug("flushing metric cache of ~p (~w entries)",
+                        [State#state.path, State#state.cache_size]),
+
+            File = State#state.fspath,
+            case statser_whisper:update_points(File, Cs) of
+                ok ->
+                    statser_instrumentation:increment(<<"committed-points">>, State#state.cache_size),
+                    statser_instrumentation:increment(<<"writes">>),
+                    {noreply, State#state{cache=[], cache_size=0}};
+                _Error ->
+                    % archive is not existing (yet)
+                    % so dispatch a creation via rate-limiter
+                    request_create(),
+                    {noreply, State}
+            end
+    end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -217,6 +224,14 @@ get_whisper_file(Path) ->
 %%% Internal functions
 %%%===================================================================
 
+request_create() ->
+    gen_server:cast(create_limiter, {drain, create, self()}).
+
+
+request_flush() ->
+    gen_server:cast(update_limiter, {drain, flush_cache, self()}).
+
+
 get_metadata(State) ->
     case statser_whisper:read_metadata(State#state.fspath) of
         {ok, M} ->
@@ -224,7 +239,7 @@ get_metadata(State) ->
         _Error ->
             % archive is not existing (yet)
             % so dispatch a creation via rate-limiter
-            gen_server:cast(create_limiter, {drain, create, self()}),
+            request_create(),
 
             {As, A, XFF} = get_creation_metadata(State#state.path),
             {ok, M} = statser_whisper:prepare_metadata(As, A, XFF),

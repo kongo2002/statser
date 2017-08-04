@@ -77,7 +77,7 @@ init([]) ->
                 ?CHILD(create_limiter, statser_rate_limiter, worker,
                        [create_limiter, <<"creates">>, 10]),
                 ?CHILD(update_limiter, statser_rate_limiter, worker,
-                       [update_limiter, <<"updates">>, 50]),
+                       [update_limiter, <<"updates">>, 500]),
                 % API
                 ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
                ],

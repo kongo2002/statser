@@ -177,6 +177,8 @@ drain(#state{remaining=Rem} = State, Reply, To) when Rem > 0 ->
 
 drain(#state{name=Name} = State, Reply, To) ->
     statser_instrumentation:increment(<<Name/binary, "-dropped">>),
+
+    % TODO: handle duplicates!?
     Pending = queue:in({Reply, To}, State#state.pending),
     State#state{pending=Pending}.
 
