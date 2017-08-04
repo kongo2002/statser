@@ -115,8 +115,11 @@ handle_cast(_Cast, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(refill, State) ->
-    Limit = State#state.limit,
+handle_info(refill, #state{limit=Limit, name=Name} = State) ->
+    % XXX: in 'dev-mode' only? or keep track of queue-size?
+    statser_instrumentation:record(<<Name/binary, "-cache-size">>,
+                                   queue:len(State#state.pending)),
+
     {Pending, Remaining} = drain_queue(State#state.pending, Limit),
     NewState = State#state{remaining=Remaining, pending=Pending},
     {noreply, NewState};
@@ -176,11 +179,18 @@ drain(#state{remaining=Rem} = State, Reply, To) when Rem > 0 ->
     State#state{remaining=Rem-1};
 
 drain(#state{name=Name} = State, Reply, To) ->
+    Item = {Reply, To},
+
     statser_instrumentation:increment(<<Name/binary, "-dropped">>),
 
-    % TODO: handle duplicates!?
-    Pending = queue:in({Reply, To}, State#state.pending),
-    State#state{pending=Pending}.
+    % XXX: not sure about this one yet - it has O(n) complexity
+    case queue:member(Item, State#state.pending) of
+        true ->
+            State;
+        _ ->
+            Pending = queue:in(Item, State#state.pending),
+            State#state{pending=Pending}
+    end.
 
 
 drain_queue(Queue, 0) -> {Queue, 0};
