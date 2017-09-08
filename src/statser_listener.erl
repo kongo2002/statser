@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {socket, pattern}).
+-record(state, {socket, pattern, filters}).
 
 %%%===================================================================
 %%% API
@@ -48,10 +48,11 @@ init(Socket) ->
     lager:debug("starting new listener instance [~w]", [self()]),
 
     Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
+    Filters = statser_config:get_metric_filters(),
 
     gen_server:cast(self(), accept),
 
-    {ok, #state{socket=Socket, pattern=Pattern}}.
+    {ok, #state{socket=Socket, pattern=Pattern, filters=Filters}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,7 +107,9 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({tcp, _Sock, Data}, State) ->
-    case process_line(State#state.pattern, Data) of
+    case process_line(State, Data) of
+        {skip, _, _} ->
+            statser_instrumentation:increment(<<"metrics-blacklisted">>);
         {Path, {ok, Value}, {ok, TimeStamp}} ->
             Line = {line, Path, Value, TimeStamp},
             gen_server:cast(statser_router, Line),
@@ -162,22 +165,28 @@ code_change(_OldVsn, State, _Extra) ->
 listen(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
-process_line(Pattern, Data) ->
+process_line(#state{pattern=Pattern, filters=Filters}, Data) ->
     case binary:split(Data, Pattern, [global, trim_all]) of
         % usual graphite format: 'path value timestamp'
         [Path, ValueBS, TimeStampBS] ->
             Value = statser_util:to_number(ValueBS),
             TimeStamp = to_epoch(TimeStampBS),
-            {Path, Value, TimeStamp};
+            {filter_path(Path, Filters), Value, TimeStamp};
 
         % graphite format w/o timestamp: 'path value'
         [Path, ValueBS] ->
             Value = statser_util:to_number(ValueBS),
             TimeStamp = erlang:system_time(second),
-            {Path, Value, {ok, TimeStamp}};
+            {filter_path(Path, Filters), Value, {ok, TimeStamp}};
 
         _Otherwise ->
             error
+    end.
+
+filter_path(Path, Filters) ->
+    case statser_config:metric_passes_filters(Path, Filters) of
+        true -> Path;
+        false -> skip
     end.
 
 to_epoch(Binary) ->

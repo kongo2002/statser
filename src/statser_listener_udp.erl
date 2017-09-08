@@ -20,7 +20,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {config, counters, timers, gauges, sets, timer}).
+-record(state, {config, counters, timers, gauges, sets, timer, filters}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -57,13 +57,15 @@ start_link(Config) ->
 init(#udp_config{port=Port, interval=Interval} = Config) ->
     lager:info("starting UDP listener at port ~w with flush interval ~w ms", [Port, Interval]),
 
+    Filters = statser_config:get_metric_filters(),
     gen_server:cast(self(), accept),
 
     {ok, #state{config=Config,
                 counters=maps:new(),
                 timers=maps:new(),
                 gauges=maps:new(),
-                sets=maps:new()}}.
+                sets=maps:new(),
+                filters=Filters}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -132,6 +134,8 @@ handle_info(flush, #state{config=Config} = State) ->
     PerSecond = Config#udp_config.interval / 1000,
 
     % TODO: configurable if values should be reset or removed
+    % in any case we should retire non-updated keys after some
+    % (configurable) time of inactivity
 
     % flush counters
     Counters = maps:map(fun(K, V) ->
@@ -275,11 +279,17 @@ handle(Packet, State) ->
 handle_packet(Packet, State) ->
     case binary:split(Packet, ?DELIMITER_COLON, [global, trim_all]) of
         [Metric | Rest] ->
-            lists:foldl(fun (_Bit, error) -> error;
-                            (Bit, {ok, S0}) ->
-                                Split = binary:split(Bit, ?DELIMITER_PIPE, [global, trim_all]),
-                                handle_metric(S0, Metric, Split)
-                        end, {ok, State}, Rest);
+            case statser_config:metric_passes_filters(Metric, State#state.filters) of
+                true ->
+                    lists:foldl(fun (_Bit, error) -> error;
+                                    (Bit, {ok, S0}) ->
+                                        Split = binary:split(Bit, ?DELIMITER_PIPE, [global, trim_all]),
+                                        handle_metric(S0, Metric, Split)
+                                end, {ok, State}, Rest);
+                false ->
+                    statser_instrumentation:increment(<<"metrics-blacklisted">>),
+                    {ok, State}
+            end;
         _ ->
             % TODO: check for valid metrics name
             handle_metric(State, Packet)
@@ -395,7 +405,8 @@ handle_packet_test_() ->
     EmptyState = #state{counters=maps:new(),
                         timers=maps:new(),
                         gauges=maps:new(),
-                        sets=maps:new()},
+                        sets=maps:new(),
+                        filters=#metric_filters{}},
     HandleSuccess = fun(P) ->
                             case handle_packet(P, EmptyState) of
                                 {ok, _} -> ok;

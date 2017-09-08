@@ -67,6 +67,6 @@
          }).
 
 -record(metric_filters, {
-          whitelist :: [#metric_pattern{}],
-          blacklist :: [#metric_pattern{}]
+          whitelist=[] :: [#metric_pattern{}],
+          blacklist=[] :: [#metric_pattern{}]
          }).
