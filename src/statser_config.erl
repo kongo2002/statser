@@ -11,8 +11,7 @@
          get_metadata/1,
          get_udp_config/0,
          get_data_dir/0,
-         get_blacklist/0,
-         get_whitelist/0,
+         get_metric_filters/0,
          udp_is_enabled/1]).
 
 
@@ -32,6 +31,8 @@
 -define(FALLBACK_AGGREGATION, #aggregation_definition{name="fallback",
                                                       aggregation=average,
                                                       factor=0.5}).
+
+-define(FALLBACK_METRIC_FILTERS, #metric_filters{whitelist=[], blacklist=[]}).
 
 
 -spec load_config() -> ok.
@@ -54,8 +55,7 @@ load_config(ConfigFile) ->
 
     update(storages, Storages),
     update(aggregations, Aggregations),
-    update(whitelist, WL),
-    update(blacklist, BL),
+    update(metric_filters, #metric_filters{whitelist=WL, blacklist=BL}),
     update(udp_config, Udp),
     update(data_dir, DataDir).
 
@@ -70,12 +70,8 @@ get_metadata(Path) ->
     {StorDefinition, AggDefinition}.
 
 
-get_whitelist() ->
-    application:get_env(statser, whitelist, []).
-
-
-get_blacklist() ->
-    application:get_env(statser, blacklist, []).
+get_metric_filters() ->
+    application:get_env(statser, metric_filters, ?FALLBACK_METRIC_FILTERS).
 
 
 get_udp_config() ->
