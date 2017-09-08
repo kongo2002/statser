@@ -159,11 +159,13 @@ load_document(Doc) ->
     Aggregations = load_aggregation(proplists:get_value("aggregation", Doc, [])),
     lager:info("loaded ~w aggregation definitions", [length(Aggregations)]),
 
+    GetFilter = fun(#metric_pattern{name=Name}) -> Name end,
+
     WhiteList = load_list_expressions(proplists:get_value("whitelist", Doc)),
-    lager:info("loaded whitelist: ~p", [WhiteList]),
+    lager:info("loaded whitelist: ~p", [lists:map(GetFilter, WhiteList)]),
 
     BlackList = load_list_expressions(proplists:get_value("blacklist", Doc)),
-    lager:info("loaded blacklist: ~p", [BlackList]),
+    lager:info("loaded blacklist: ~p", [lists:map(GetFilter, BlackList)]),
 
     Udp = load_udp_config(proplists:get_value("udp", Doc, [])),
     lager:info("loaded UDP config: ~p", [Udp]),
@@ -211,7 +213,7 @@ load_list_expressions([Expr | Rst], Acc) when is_list(Expr) ->
 
     case re:compile(Expr, [no_auto_capture]) of
         {ok, Regex} ->
-            New = #metric_pattern{pattern=Regex},
+            New = #metric_pattern{pattern=Regex, name=Expr},
             load_list_expressions(Rst, [New | Acc]);
         {error, Err} ->
             lager:warning("skipping invalid metric pattern '~w': ~p", [Expr, Err]),
@@ -536,7 +538,7 @@ parse_retentions_test_() ->
 to_filters(WhiteList, BlackList) ->
     ToPattern = fun(Pattern) ->
                         {ok, Pat} = re:compile(Pattern, [no_auto_capture]),
-                        #metric_pattern{pattern=Pat}
+                        #metric_pattern{pattern=Pat, name=Pattern}
                 end,
     #metric_filters{whitelist=lists:map(ToPattern, WhiteList),
                     blacklist=lists:map(ToPattern, BlackList)}.

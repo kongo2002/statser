@@ -63,6 +63,7 @@
          }).
 
 -record(metric_pattern, {
+          name :: nonempty_string(),
           pattern :: tuple()
          }).
 
