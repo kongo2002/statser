@@ -11,6 +11,8 @@
          get_metadata/1,
          get_udp_config/0,
          get_data_dir/0,
+         get_blacklist/0,
+         get_whitelist/0,
          udp_is_enabled/1]).
 
 
@@ -48,10 +50,12 @@ load_config(ConfigFile) ->
            end,
 
     % parse contents
-    {Storages, Aggregations, Udp, DataDir} = load_documents(Docs),
+    {Storages, Aggregations, WL, BL, Udp, DataDir} = load_documents(Docs),
 
     update(storages, Storages),
     update(aggregations, Aggregations),
+    update(whitelist, WL),
+    update(blacklist, BL),
     update(udp_config, Udp),
     update(data_dir, DataDir).
 
@@ -64,6 +68,14 @@ get_metadata(Path) ->
     AggDefinition = first_aggregation(Path, Aggregations),
 
     {StorDefinition, AggDefinition}.
+
+
+get_whitelist() ->
+    application:get_env(statser, whitelist, []).
+
+
+get_blacklist() ->
+    application:get_env(statser, blacklist, []).
 
 
 get_udp_config() ->
@@ -113,7 +125,7 @@ update(Type, Values) ->
 
 
 load_documents([Document]) -> load_document(Document);
-load_documents([]) -> {[], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR}.
+load_documents([]) -> {[], [], [], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR}.
 
 
 load_document(Doc) ->
@@ -123,13 +135,19 @@ load_document(Doc) ->
     Aggregations = load_aggregation(proplists:get_value("aggregation", Doc, [])),
     lager:info("loaded ~w aggregation definitions", [length(Aggregations)]),
 
+    WhiteList = load_list_expressions(proplists:get_value("whitelist", Doc)),
+    lager:info("loaded whitelist: ~p", [WhiteList]),
+
+    BlackList = load_list_expressions(proplists:get_value("blacklist", Doc)),
+    lager:info("loaded blacklist: ~p", [BlackList]),
+
     Udp = load_udp_config(proplists:get_value("udp", Doc, [])),
     lager:info("loaded UDP config: ~p", [Udp]),
 
     DataDir = load_data_dir(proplists:get_value("data_dir", Doc)),
     lager:info("loaded data directory config: ~p", [DataDir]),
 
-    {Storages, Aggregations, Udp, DataDir}.
+    {Storages, Aggregations, WhiteList, BlackList, Udp, DataDir}.
 
 
 load_data_dir(Value) when is_list(Value) ->
@@ -158,6 +176,28 @@ load_udp_config(_Invalid, Config) -> Config.
 udp_is_enabled(#udp_config{port=Port}) when is_number(Port) ->
     Port > 0;
 udp_is_enabled(_) -> false.
+
+
+load_list_expressions(Ls) ->
+    load_list_expressions(Ls, []).
+
+load_list_expressions([], Acc) -> lists:reverse(Acc);
+load_list_expressions([Expr | Rst], Acc) when is_list(Expr) ->
+    lager:debug("found regex pattern: ~p", [Expr]),
+
+    case re:compile(Expr, [no_auto_capture]) of
+        {ok, Regex} ->
+            New = #metric_pattern{pattern=Regex},
+            load_list_expressions(Rst, [New | Acc]);
+        {error, Err} ->
+            lager:warning("skipping invalid metric pattern '~w': ~p", [Expr, Err]),
+            load_list_expressions(Rst, Acc)
+    end;
+
+load_list_expressions([_Expr | Rst], Acc) ->
+    load_list_expressions(Rst, Acc);
+
+load_list_expressions(_Other, Acc) -> Acc.
 
 
 load_storage(Ss) -> load_storage(Ss, []).
@@ -323,7 +363,7 @@ load_from_string(Str, Func) ->
 
 
 load_aggregation_from_string_test_() ->
-    GetAggregation = fun({_Storage, Aggs, _Udp, _Dir}) -> Aggs end,
+    GetAggregation = fun({_Storage, Aggs, _WL, _BL, _Udp, _Dir}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetAggregation)),
@@ -346,8 +386,32 @@ load_aggregate_from_file_test_() ->
      ]}.
 
 
+load_whitelist_from_string_test_() ->
+    GetWL = fun({_Storage, _Aggs, WL, _BL, _Udp, _Dir}) -> WL end,
+    {setup, fun setup/0,
+     [?_assertEqual([], load_from_string("", GetWL)),
+      ?_assertEqual([], load_from_string("whitelist:", GetWL)),
+      ?_assertEqual([], load_from_string("whitelist: invalid", GetWL)),
+      ?_assertEqual([], load_from_string("whitelist:\n - inv**alid", GetWL)),
+      ?_assertEqual(1, length(load_from_string("whitelist:\n - ^stats\.", GetWL))),
+      ?_assertEqual(2, length(load_from_string("whitelist:\n - ^stats\.\n - \.mean$", GetWL)))
+    ]}.
+
+
+load_blacklist_from_string_test_() ->
+    GetBL = fun({_Storage, _Aggs, _WL, BL, _Udp, _Dir}) -> BL end,
+    {setup, fun setup/0,
+     [?_assertEqual([], load_from_string("", GetBL)),
+      ?_assertEqual([], load_from_string("blacklist:", GetBL)),
+      ?_assertEqual([], load_from_string("blacklist: invalid", GetBL)),
+      ?_assertEqual([], load_from_string("blacklist:\n - inv**alid", GetBL)),
+      ?_assertEqual(1, length(load_from_string("blacklist:\n - ^stats\.", GetBL))),
+      ?_assertEqual(2, length(load_from_string("blacklist:\n - ^stats\.\n - \.mean$", GetBL)))
+    ]}.
+
+
 load_udp_config_from_string_test_() ->
-    GetUdp = fun({_Storage, _Aggs, Udp, _Dir}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
@@ -358,7 +422,7 @@ load_udp_config_from_string_test_() ->
 
 
 load_data_dir_from_string_test_() ->
-    GetDir = fun({_Storage, _Aggs, _Udp, Dir}) -> Dir end,
+    GetDir = fun({_Storage, _Aggs, _WL, _BL, _Udp, Dir}) -> Dir end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("", GetDir)),
       ?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("data_dir:", GetDir)),
@@ -369,7 +433,7 @@ load_data_dir_from_string_test_() ->
 
 
 udp_is_enabled_test_() ->
-    GetUdp = fun({_Storage, _Aggs, Udp, _Dir}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
       ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
@@ -378,7 +442,7 @@ udp_is_enabled_test_() ->
 
 
 load_storage_from_string_test_() ->
-    GetStorage = fun({Storage, _Aggs, _Udp, _Dir}) -> Storage end,
+    GetStorage = fun({Storage, _Aggs, _WL, _BL, _Udp, _Dir}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetStorage)),

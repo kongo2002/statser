@@ -61,3 +61,7 @@
           until :: integer(),
           aggregation :: aggregation()
          }).
+
+-record(metric_pattern, {
+          pattern :: tuple()
+         }).
