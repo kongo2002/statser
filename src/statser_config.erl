@@ -12,6 +12,7 @@
          get_udp_config/0,
          get_data_dir/0,
          get_metric_filters/0,
+         metric_passes_filters/2,
          udp_is_enabled/1]).
 
 
@@ -82,9 +83,36 @@ get_data_dir() ->
     application:get_env(statser, data_dir, ?FALLBACK_METRICS_DATA_DIR).
 
 
+metric_passes_filters(Metric, Filters) ->
+    WhiteList = Filters#metric_filters.whitelist,
+    BlackList = Filters#metric_filters.blacklist,
+    passes_blacklist(Metric, BlackList) andalso passes_whitelist(Metric, WhiteList).
+
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+passes_whitelist(_Metric, []) -> true;
+passes_whitelist(Metric, WL) ->
+    passes_whitelist_inner(Metric, WL).
+
+
+passes_whitelist_inner(_Metric, []) -> false;
+passes_whitelist_inner(Metric, [#metric_pattern{pattern=Pattern} | Ps]) ->
+    case re:run(Metric, Pattern) of
+        {match, _} -> true;
+        _Otherwise -> passes_whitelist_inner(Metric, Ps)
+    end.
+
+
+passes_blacklist(_Metric, []) -> true;
+passes_blacklist(Metric, [#metric_pattern{pattern=Pattern} | Ps]) ->
+    case re:run(Metric, Pattern) of
+        {match, _} -> false;
+        _Otherwise -> passes_blacklist(Metric, Ps)
+    end.
+
 
 first_or_fallback(_GetPattern, Fallback, _Path, []) -> Fallback;
 first_or_fallback(GetPattern, Fallback, Path, [C | Cs]) ->
@@ -502,6 +530,30 @@ parse_retentions_test_() ->
                        seconds=3600,
                        points=8760
                       }], parse_retentions(["1h:1y"]))
+    ].
+
+
+to_filters(WhiteList, BlackList) ->
+    ToPattern = fun(Pattern) ->
+                        {ok, Pat} = re:compile(Pattern, [no_auto_capture]),
+                        #metric_pattern{pattern=Pat}
+                end,
+    #metric_filters{whitelist=lists:map(ToPattern, WhiteList),
+                    blacklist=lists:map(ToPattern, BlackList)}.
+
+
+metric_passes_filters_test_() ->
+    [?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters([], []))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters(["^foo\."], []))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters(["\.bar$"], []))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters(["ba"], []))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters(["^bar", "bar"], []))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters(["^foo"], ["^stats"]))),
+     ?_assertEqual(false, metric_passes_filters(<<"foo.bar">>, to_filters(["^bar\."], []))),
+     ?_assertEqual(false, metric_passes_filters(<<"foo.bar">>, to_filters(["^foo"], ["bar$"]))),
+     ?_assertEqual(false, metric_passes_filters(<<"foo.bar">>, to_filters([], ["bar$"]))),
+     ?_assertEqual(true, metric_passes_filters(<<"foo.bar">>, to_filters([], ["foo$"]))),
+     ?_assertEqual(false, metric_passes_filters(<<"foo.bar">>, to_filters([], ["foo$", "foo"])))
     ].
 
 -endif. % TEST
