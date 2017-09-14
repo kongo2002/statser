@@ -18,7 +18,8 @@
 
 -record(udp_config, {
           port :: integer(),
-          interval :: integer()}).
+          interval :: integer(),
+          prune_after :: integer()}).
 
 -record(whisper_archive, {
           offset :: integer(),

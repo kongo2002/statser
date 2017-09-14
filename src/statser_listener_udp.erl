@@ -20,7 +20,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {config, counters, timers, gauges, sets, timer, filters}).
+-record(state, {config, counters, timers, gauges, sets, flush_timer, prune_timer, filters}).
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
@@ -103,11 +103,14 @@ handle_cast(accept, #state{config=Config} = State) ->
 
     % TODO: maybe we want to synchronize the flush interval with
     % the wall clock time matching with the graphite aggregation
-    {ok, Timer} = timer:send_interval(Config#udp_config.interval, flush),
+    {ok, FTimer} = timer:send_interval(Config#udp_config.interval, flush),
+
+    % start prune timer (if configured)
+    PTimer = start_prune_timer(Config),
 
     % TODO: handle exit/failure
     spawn_link(?MODULE, listen, [Self, Socket]),
-    {noreply, State#state{timer=Timer}};
+    {noreply, State#state{flush_timer=FTimer, prune_timer=PTimer}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -128,24 +131,38 @@ handle_info({msg, Binary}, State) ->
 
     {noreply, NewState};
 
+handle_info(prune, #state{config=Config} = State) ->
+    lager:debug("udp: start pruning entries"),
+
+    PruneAfterSecs = Config#udp_config.prune_after div 1000,
+    PruneBefore = seconds() - PruneAfterSecs,
+
+    Counters = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.counters),
+    Timers = maps:filter(fun(_, {TS, _, _}) -> TS < PruneBefore end, State#state.timers),
+    Gauges = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.gauges),
+    Sets = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.sets),
+
+    lager:debug("udp: finished pruning entries"),
+
+    {noreply, State#state{counters=Counters,
+                          timers=Timers,
+                          gauges=Gauges,
+                          sets=Sets}};
+
 handle_info(flush, #state{config=Config} = State) ->
     Start = erlang:monotonic_time(millisecond),
-    Now = erlang:system_time(second),
+    Now = seconds(),
     PerSecond = Config#udp_config.interval / 1000,
 
-    % TODO: configurable if values should be reset or removed
-    % in any case we should retire non-updated keys after some
-    % (configurable) time of inactivity
-
     % flush counters
-    Counters = maps:map(fun(K, V) ->
+    Counters = maps:map(fun(K, {TS, V}) ->
                                 publish(<<"counters.", K/binary, ".count">>, V, Now),
                                 publish(<<"counters.", K/binary, ".rate">>, V / PerSecond, Now),
-                                0
+                                {TS, 0}
                         end, State#state.counters),
 
     % flush timers
-    Timers = maps:map(fun(K, {Vs, Cnt}) ->
+    Timers = maps:map(fun(K, {TS, Vs, Cnt}) ->
                               {Min, Max, Mean, Median, StdDev, Sum, SquaredSum} = calculate_timer(Vs),
 
                               publish(<<"timers.", K/binary, ".min">>, Min, Now),
@@ -157,19 +174,19 @@ handle_info(flush, #state{config=Config} = State) ->
                               publish(<<"timers.", K/binary, ".sum_squares">>, SquaredSum, Now),
                               publish(<<"timers.", K/binary, ".count">>, Cnt, Now),
 
-                              {[], 0}
+                              {TS, [], 0}
                       end, State#state.timers),
 
     % flush gauges
-    Gauges = maps:map(fun(K, V) ->
+    Gauges = maps:map(fun(K, {TS, V}) ->
                                 publish(<<"gauges.", K/binary>>, V, Now),
-                                0
+                                {TS, 0}
                         end, State#state.gauges),
 
     % flush sets
-    Sets = maps:map(fun(K, V) ->
+    Sets = maps:map(fun(K, {TS, V}) ->
                             publish(<<"sets.", K/binary>>, sets:size(sets:from_list(V)), Now),
-                            []
+                            {TS, []}
                     end, State#state.sets),
 
     % TODO: expose duration as instrumentation/metric
@@ -195,9 +212,10 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{timer=Timer}) ->
+terminate(_Reason, #state{flush_timer=FTimer, prune_timer=PTimer}) ->
     lager:info("terminating UDP listener service at ~w", [self()]),
-    timer:cancel(Timer),
+    timer:cancel(FTimer),
+    timer:cancel(PTimer),
     ok.
 
 %%--------------------------------------------------------------------
@@ -215,6 +233,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+seconds() ->
+    erlang:system_time(second).
+
+
 listen(Parent, Socket) ->
     {ok, {_Addr, _Port, Packet}} = gen_udp:recv(Socket, 0),
     Parent ! {msg, Packet},
@@ -226,6 +248,13 @@ publish(Key, Value, TS) ->
     GlobalPrefix = <<"stats.">>,
     Metric = <<GlobalPrefix/binary, Key/binary>>,
     gen_server:cast(statser_router, {line, Metric, Value, TS}).
+
+
+start_prune_timer(#udp_config{prune_after=Interval}) when is_number(Interval) andalso Interval > 0 ->
+    {ok, Timer} = timer:send_interval(Interval, prune),
+    lager:info("udp: start prune timer with interval ~p sec", [Interval div 1000]),
+    Timer;
+start_prune_timer(_Config) -> none.
 
 
 calculate_timer([]) ->
@@ -335,30 +364,33 @@ handle_metric(_State, _Metric, _Value, _Type, error) ->
 handle_metric(State, Metric, {ok, Value}, <<"c">>, {ok, Sample}) ->
     lager:debug("handle counter: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
+    Now = seconds(),
     Counters0 = State#state.counters,
-    Update = fun(X) -> X + (Value * (1 / Sample)) end,
-    Counters = maps:update_with(Metric, Update, (Value * (1 / Sample)), Counters0),
+    Update = fun({_, X}) -> {Now, X + (Value * (1 / Sample))} end,
+    Counters = maps:update_with(Metric, Update, {Now, (Value * (1 / Sample))}, Counters0),
 
     {ok, State#state{counters=Counters}};
 
 handle_metric(State, Metric, {ok, Value}, <<"ms">>, {ok, Sample}) ->
     lager:debug("handle timer: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
+    Now = seconds(),
     Inc = 1 / Sample,
     Timers0 = State#state.timers,
-    Update = fun({Xs, Cnt}) -> {[Value | Xs], Cnt + Inc} end,
-    Timers = maps:update_with(Metric, Update, {[Value], Inc}, Timers0),
+    Update = fun({_, Xs, Cnt}) -> {Now, [Value | Xs], Cnt + Inc} end,
+    Timers = maps:update_with(Metric, Update, {Now, [Value], Inc}, Timers0),
 
     {ok, State#state{timers=Timers}};
 
 handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
     lager:debug("handle gauge: ~p:~w ~w", [Metric, Mod, Value]),
 
+    Now = seconds(),
     {Update, Initial} =
     case Mod of
-        set -> {fun(_) -> Value end, Value};
-        inc -> {fun(X) -> X + Value end, Value};
-        dec -> {fun(X) -> X - Value end, -Value}
+        set -> {fun(_) -> {Now, Value} end, {Now, Value}};
+        inc -> {fun({_, X}) -> {Now, X + Value} end, {Now, Value}};
+        dec -> {fun({_, X}) -> {Now, X - Value} end, {Now, -Value}}
     end,
 
     Gauges0 = State#state.gauges,
@@ -369,9 +401,10 @@ handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
 handle_metric(State, Metric, {ok, Value}, <<"s">>, _Sample) ->
     lager:debug("handle set: ~p:~w", [Metric, Value]),
 
+    Now = seconds(),
     Sets0 = State#state.sets,
-    Update = fun(Xs) -> [Value | Xs] end,
-    Sets = maps:update_with(Metric, Update, [Value], Sets0),
+    Update = fun({_, Xs}) -> {Now, [Value | Xs]} end,
+    Sets = maps:update_with(Metric, Update, {Now, [Value]}, Sets0),
 
     {ok, State#state{sets=Sets}};
 

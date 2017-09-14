@@ -20,7 +20,7 @@
 
 -define(FALLBACK_METRICS_DATA_DIR, <<".">>).
 
--define(FALLBACK_UDP_CONFIG, #udp_config{port=none, interval=10000}).
+-define(FALLBACK_UDP_CONFIG, #udp_config{port=none, interval=10000, prune_after=300000}).
 
 -define(FALLBACK_RETENTIONS, [#retention_definition{raw="1m:1d",
                                                     seconds=60,
@@ -191,7 +191,12 @@ load_udp_config([{"port", Port} | Xs], Config) when is_number(Port) ->
     load_udp_config(Xs, Config#udp_config{port=Port});
 
 load_udp_config([{"interval", Interval} | Xs], Config) when is_number(Interval) ->
-    load_udp_config(Xs, Config#udp_config{interval=Interval});
+    % config value is expected to be in seconds
+    load_udp_config(Xs, Config#udp_config{interval=Interval * 1000});
+
+load_udp_config([{"prune_after", Interval} | Xs], Config) when is_number(Interval) ->
+    % config value is expected to be in seconds
+    load_udp_config(Xs, Config#udp_config{prune_after=Interval * 1000});
 
 load_udp_config([_ | Xs], Config) ->
     load_udp_config(Xs, Config);
@@ -442,8 +447,8 @@ load_udp_config_from_string_test_() ->
      [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp: invalid", GetUdp)),
-      ?_assertEqual(#udp_config{port=8000, interval=15000},
-                    load_from_string("udp:\n port: 8000\n interval: 15000", GetUdp))
+      ?_assertEqual(#udp_config{port=8000, interval=15000, prune_after=60000},
+                    load_from_string("udp:\n port: 8000\n interval: 15\n prune_after: 60", GetUdp))
      ]}.
 
 

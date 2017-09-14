@@ -173,8 +173,16 @@ aggregation:
 
 # StatsD compatible adapter (disabled by default)
 udp:
+  # udp port to listen on
+  # omit this setting to disable 'StatsD-like' functionality
   port: 8125
-  interval: 10000
+
+  # metrics flush interval (in seconds)
+  interval: 10
+
+  # prune inactive metrics keys after x seconds
+  # 0 to never prune metrics at all
+  prune_after: 300
 
 # you may configure a blacklist and/or whitelist to configure
 # what metrics you really care about
