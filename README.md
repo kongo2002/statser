@@ -94,6 +94,7 @@ on my roadmap below.
 * configurable aggregation schemes
 * throttling of archive creation
 * throttling of metrics updates (writes to disk)
+* configurable blacklist/whitelist of metrics
 * basic [StatsD][statsd] interface (known to listen on UDP port `8125`)
     - support for counters, timers, gauges and sets
 * metrics API
