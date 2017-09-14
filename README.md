@@ -174,13 +174,23 @@ aggregation:
 udp:
   port: 8125
   interval: 10000
+
+# you may configure a blacklist and/or whitelist to configure
+# what metrics you really care about
+# every metric that enters the system will be checked against
+# the regexes you defined
+blacklist:
+  - \.sum_squares$
+  - \.localhost\.
+
+whitelist:
+  - ^stats\.
 ```
 
 
 ### TODO
 
 * configurable amount of caching
-* blacklist/whitelist of metrics
 * support even more functions of `graphite-web` render API
 * investigate into more elaborate archive write optimization
 
