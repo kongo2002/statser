@@ -148,6 +148,9 @@ handle_info(update_metrics, State) ->
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
+    % TODO: output proper values
+    Subs = notify(State#state.subscribers, Metrics),
+
     UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
                                  publish(K, V, Now, Path),
                                  maps:put(K, 0, Map);
@@ -157,9 +160,6 @@ handle_info(update_metrics, State) ->
                                  maps:put(K, [], Map);
                             (_K, _V, Map) -> Map
                          end, Metrics, Metrics),
-
-    % TODO: output proper values
-    Subs = notify(State#state.subscribers, UpdatedM),
 
     {noreply, State#state{metrics=UpdatedM, subscribers=Subs}};
 

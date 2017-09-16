@@ -11,7 +11,7 @@
 -define(DOCROOT, <<"assets">>).
 
 
-handle('GET', [], Req) ->
+handle('GET', [], _Req) ->
     file:read_file(filename:join([?DOCROOT, "index.html"]));
 
 handle('GET', [<<"stream">>], Req) ->
@@ -19,7 +19,7 @@ handle('GET', [<<"stream">>], Req) ->
 
     {chunk, [{<<"Content-Type">>, <<"text/event-stream">>}]};
 
-handle('GET', Path, Req) ->
+handle('GET', Path, _Req) ->
     Filepath = filename:join([?DOCROOT | Path]),
     valid_path(Filepath) orelse throw({403, [], <<"Permission denied">>}),
 
