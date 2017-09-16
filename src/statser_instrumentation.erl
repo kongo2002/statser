@@ -12,6 +12,8 @@
          increment/2,
          record/2]).
 
+-export([add_subscriber/1]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -20,7 +22,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, path, timer}).
+-record(state, {metrics, path, timer, subscribers}).
 
 %%%===================================================================
 %%% API
@@ -47,6 +49,10 @@ record(Key, Value) ->
     gen_server:cast(?MODULE, {record, Key, Value}).
 
 
+add_subscriber(Ref) ->
+    gen_server:cast(?MODULE, {add_subscriber, Ref}).
+
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -66,7 +72,7 @@ init([]) ->
     lager:info("starting instrumentation service at ~p", [self()]),
     gen_server:cast(self(), prepare),
 
-    {ok, #state{metrics=maps:new()}}.
+    {ok, #state{metrics=maps:new(), subscribers=[]}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -118,6 +124,11 @@ handle_cast({record, Key, Value}, State) ->
     Map = record_metrics(Key, Value, State#state.metrics),
     {noreply, State#state{metrics=Map}};
 
+handle_cast({add_subscriber, Ref}, State) ->
+    Subs = State#state.subscribers,
+    notify([Ref], State#state.metrics),
+    {noreply, State#state{subscribers=[Ref | Subs]}};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -147,7 +158,10 @@ handle_info(update_metrics, State) ->
                             (_K, _V, Map) -> Map
                          end, Metrics, Metrics),
 
-    {noreply, State#state{metrics=UpdatedM}};
+    % TODO: output proper values
+    Subs = notify(State#state.subscribers, UpdatedM),
+
+    {noreply, State#state{metrics=UpdatedM, subscribers=Subs}};
 
 handle_info(Info, State) ->
     lager:warning("instrumentation: unhandled message ~p", [Info]),
@@ -202,6 +216,18 @@ record_metrics(Key, Value, Map) when is_number(Value) ->
     maps:update_with(Key, Update, [Value], Map);
 record_metrics(_Key, _Value, Map) -> Map.
 
+
+notify(Subs, Values) ->
+    Data = lists:map(fun({K, V}) -> {[{type, K}, {value, V}]} end, maps:to_list(Values)),
+    Chunk = iolist_to_binary(["data: ", jiffy:encode({[{stats, Data}]}), "\n\n"]),
+    lists:flatmap(
+      fun (Sub) ->
+              case elli_request:send_chunk(Sub, Chunk) of
+                  ok -> [Sub];
+                  {error, closed} -> [];
+                  {error, timeout} -> []
+              end
+      end, Subs).
 
 %%%===================================================================
 %%% Tests

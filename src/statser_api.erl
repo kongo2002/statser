@@ -48,6 +48,9 @@ handle('POST', [<<"render">>], Req) ->
             {400, [], <<"unsupported format '", Unsupported/binary, "'">>}
     end;
 
+handle('GET', [<<".statser">> | Path], Req) ->
+    statser_dashboard:handle('GET', Path, Req);
+
 handle(_, _, _Req) ->
     {404, [], <<"not found">>}.
 
