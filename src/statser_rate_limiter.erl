@@ -181,13 +181,13 @@ drain(#state{remaining=Rem} = State, Reply, To) when Rem > 0 ->
 drain(#state{name=Name} = State, Reply, To) ->
     Item = {Reply, To},
 
-    statser_instrumentation:increment(<<Name/binary, "-dropped">>),
-
     % XXX: not sure about this one yet - it has O(n) complexity
     case queue:member(Item, State#state.pending) of
         true ->
             State;
         _ ->
+            statser_instrumentation:increment(<<Name/binary, "-dropped">>),
+
             Pending = queue:in(Item, State#state.pending),
             State#state{pending=Pending}
     end.
