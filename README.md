@@ -199,6 +199,7 @@ whitelist:
 
 ### TODO
 
+* [docker][docker] image
 * configurable amount of caching
 * support even more functions of `graphite-web` render API
 * investigate into more elaborate archive write optimization
@@ -209,3 +210,4 @@ whitelist:
 [grafana]: https://grafana.com/
 [travis]: https://travis-ci.org/kongo2002/statser/
 [statsd]: https://github.com/etsy/statsd/
+[docker]: https://www.docker.com/
