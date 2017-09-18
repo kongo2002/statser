@@ -10,6 +10,7 @@
 
 %% API
 -export([start_link/1,
+         start_link/2,
          get_whisper_file/1]).
 
 %% gen_server callbacks
@@ -38,7 +39,11 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(Path) ->
-    gen_server:start_link(?MODULE, Path, []).
+    gen_server:start_link(?MODULE, {Path, none}, []).
+
+
+start_link(Path, Metadata) ->
+    gen_server:start_link(?MODULE, {Path, Metadata}, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -55,7 +60,7 @@ start_link(Path) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init(Path) ->
+init({Path, Metadata}) ->
     lager:info("initializing metric handler for path ~p [~w]", [Path, self()]),
 
     % let's try to register ourselves
@@ -64,7 +69,7 @@ init(Path) ->
             % we could register ourself, let's continue
             % TODO: not quite sure of this additional `prepare` step
             %       we could do that in here as well...
-            gen_server:cast(self(), prepare),
+            gen_server:cast(self(), {prepare, Metadata}),
             {ok, #state{path=Path}};
         false ->
             % there is a metric handler already for this path
@@ -113,13 +118,12 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(prepare, State) ->
+handle_cast({prepare, Metadata}, State) ->
     % first we have to determine the proper path and file to use
     {ok, Dirs, File} = get_directory(State#state.path),
-    Path = prepare_file(Dirs, File),
-    lager:info("prepared path: ~p", [Path]),
 
-    NewState = get_metadata(State#state{dirs=Dirs, file=File, fspath=Path}),
+    Path = prepare_file(Dirs, File),
+    NewState = get_metadata(State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}),
 
     {noreply, NewState};
 
@@ -159,7 +163,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(create, State) ->
-    Metadata = get_or_create_metadata(State#state.fspath, State#state.path),
+    Metadata = get_or_create_metadata(State#state.fspath, State#state.path, State#state.metadata),
 
     request_flush(),
     {noreply, State#state{metadata=Metadata}};
@@ -235,6 +239,8 @@ request_flush() ->
 
 
 get_metadata(State) ->
+    % if a file already exists we will choose that metadata
+    % no matter what is specified in `State#state.metadata`
     case statser_whisper:read_metadata(State#state.fspath) of
         {ok, M} ->
             State#state{metadata=M};
@@ -243,27 +249,34 @@ get_metadata(State) ->
             % so dispatch a creation via rate-limiter
             request_create(),
 
-            {As, A, XFF} = get_creation_metadata(State#state.path),
-            {ok, M} = statser_whisper:prepare_metadata(As, A, XFF),
-            State#state{metadata=M}
+            % we either choose the metadata config already specified
+            % in `State#state.metadata` or we determine it based on
+            % its path and the storage/aggregation rules
+            case State#state.metadata of
+                none ->
+                    {As, A, XFF} = get_creation_metadata(State#state.path),
+                    {ok, M} = statser_whisper:prepare_metadata(As, A, XFF),
+                    State#state{metadata=M};
+                Else ->
+                    lager:debug("~p: using pre-configured metadata: ~p", [State#state.path, Else]),
+                    State
+            end
     end.
 
 
-get_or_create_metadata(FsPath, Path) ->
+get_or_create_metadata(FsPath, Path, Metadata) ->
     % now we make sure the file is created if not already
     case statser_whisper:read_metadata(FsPath) of
         {ok, M} -> M;
         {error, enoent} ->
             lager:info("no archive existing for ~p - creating now", [Path]),
-            {As, A, XFF} = get_creation_metadata(Path),
-            {ok, M} = statser_whisper:create(FsPath, As, A, XFF),
+            {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
             M;
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
             lager:info("no valid archive existing for ~p - creating now", [Path]),
-            {As, A, XFF} = get_creation_metadata(Path),
-            {ok, M} = statser_whisper:create(FsPath, As, A, XFF),
+            {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
             M
     end.
@@ -299,7 +312,7 @@ get_creation_metadata(Path) ->
     {Storage, Aggregation} = statser_config:get_metadata(Path),
     Retentions = Storage#storage_definition.retentions,
 
-    lager:info("creating new archive with definition: ~p ~p", [Retentions, Aggregation]),
+    lager:info("~p: determined archive definition: ~p ~p", [Path, Retentions, Aggregation]),
 
     RetValues = lists:map(fun (#retention_definition{seconds=S, points=P}) -> {S, P} end,
                           Retentions),
