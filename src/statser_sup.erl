@@ -13,9 +13,13 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--define(CHILD(Id, Mod, Type, Args),
+-define(WORKER(Id, Mod, Args),
         {Id, {Mod, start_link, Args},
-         permanent, 5000, Type, [Mod]}).
+         permanent, 5000, worker, [Mod]}).
+
+-define(SUP(Id, Mod, Args),
+        {Id, {Mod, start_link, Args},
+         permanent, infinity, supervisor, [Mod]}).
 
 %%%===================================================================
 %%% API functions
@@ -62,24 +66,24 @@ init([]) ->
     UdpConfig = statser_config:get_udp_config(),
     UdpChild =
     case statser_config:udp_is_enabled(UdpConfig) of
-        true -> [?CHILD(udp_listener, statser_listener_udp, worker, [UdpConfig])];
+        true -> [?WORKER(udp_listener, statser_listener_udp, [UdpConfig])];
         false -> []
     end,
 
     lager:info("start listening for API requests on port ~w", [ApiPort]),
 
-    Children = [?CHILD(listeners, statser_listeners_sup, supervisor, []),
-                ?CHILD(metrics, statser_metrics_sup, supervisor, []),
-                ?CHILD(router, statser_router, worker, []),
-                ?CHILD(instrumentation, statser_instrumentation, worker, []),
+    Children = [?SUP(listeners, statser_listeners_sup, []),
+                ?SUP(metrics, statser_metrics_sup, []),
+                ?WORKER(router, statser_router, []),
+                ?WORKER(instrumentation, statser_instrumentation, []),
                 % rate limiters
                 % TODO: configurable limits
-                ?CHILD(create_limiter, statser_rate_limiter, worker,
+                ?WORKER(create_limiter, statser_rate_limiter,
                        [create_limiter, <<"creates">>, 10]),
-                ?CHILD(update_limiter, statser_rate_limiter, worker,
+                ?WORKER(update_limiter, statser_rate_limiter,
                        [update_limiter, <<"updates">>, 500]),
                 % API
-                ?CHILD(api, elli, worker, [[{callback, statser_api}, {port, ApiPort}]])
+                ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
                ],
 
     {ok, {{one_for_one, 5, 10}, Children ++ UdpChild}}.
