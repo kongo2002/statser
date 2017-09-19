@@ -22,7 +22,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, path, timer, subscribers}).
+-record(state, {metrics, path, interval, timer, subscribers}).
 
 %%%===================================================================
 %%% API
@@ -114,7 +114,7 @@ handle_cast(prepare, State) ->
     lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),
 
     {ok, Timer} = timer:send_interval(Interval, update_metrics),
-    {noreply, State#state{path=Path, timer=Timer}};
+    {noreply, State#state{path=Path, timer=Timer, interval=Interval}};
 
 handle_cast({increment, Key, Amount}, State) ->
     Map = increment_metrics(Key, Amount, State#state.metrics),
@@ -126,7 +126,7 @@ handle_cast({record, Key, Value}, State) ->
 
 handle_cast({add_subscriber, Ref}, State) ->
     Subs = State#state.subscribers,
-    notify([Ref], State#state.metrics),
+    notify([Ref], State#state.interval, State#state.metrics),
     {noreply, State#state{subscribers=[Ref | Subs]}};
 
 handle_cast(_Msg, State) ->
@@ -148,8 +148,7 @@ handle_info(update_metrics, State) ->
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
-    % TODO: output proper values
-    Subs = notify(State#state.subscribers, Metrics),
+    Subs = notify(State#state.subscribers, State#state.interval, Metrics),
 
     UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
                                  publish(K, V, Now, Path),
@@ -217,9 +216,25 @@ record_metrics(Key, Value, Map) when is_number(Value) ->
 record_metrics(_Key, _Value, Map) -> Map.
 
 
-notify(Subs, Values) ->
-    Data = lists:map(fun({K, V}) -> {[{type, K}, {value, V}]} end, maps:to_list(Values)),
-    Chunk = iolist_to_binary(["data: ", jiffy:encode({[{stats, Data}]}), "\n\n"]),
+notify(Subs, Interval, ValueMap) ->
+    IntervalSecs = Interval div 1000,
+    Stats = lists:map(fun({K, V}) when is_number(V) ->
+                               PerSecond = V / IntervalSecs,
+                               {[{name, K}, {value, PerSecond}, {type, counter}]};
+                          ({K, Vs}) when is_list(Vs) ->
+                               Avg = statser_calc:safe_average(Vs),
+                               {[{name, K}, {value, Avg}, {type, average}]}
+                       end, maps:to_list(ValueMap)),
+
+    % TODO: include remaining services
+    Health = [{[{name, <<"instrumentation">>}, {good, true}]},
+              {[{name, <<"server">>}, {good, true}]}],
+
+    Json = jiffy:encode({[{stats, Stats},
+                          {interval, IntervalSecs},
+                          {health, Health}]}),
+    Chunk = iolist_to_binary(["data: ", Json, "\n\n"]),
+
     lists:flatmap(
       fun (Sub) ->
               case elli_request:send_chunk(Sub, Chunk) of
