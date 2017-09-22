@@ -15,7 +15,7 @@ handle('GET', [], _Req) ->
     file:read_file(filename:join([?DOCROOT, "index.html"]));
 
 handle('GET', [<<"stream">>], Req) ->
-    statser_instrumentation:add_subscriber(elli_request:chunk_ref(Req)),
+    statser_health:subscribe(elli_request:chunk_ref(Req)),
 
     {chunk, [{<<"Content-Type">>, <<"text/event-stream">>}]};
 

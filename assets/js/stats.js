@@ -1,10 +1,11 @@
 $(document).ready(function() {
   var healthRow = function(elem) {
     var good = elem.good === true;
+    var ts = (elem.timestamp) ? (new Date(elem.timestamp * 1000)).toUTCString() : '-';
     var icon = good ? 'oi-circle-check text-success' : 'oi-circle-x text-danger';
     var title = good ? 'good' : 'bad';
     var name = '<dt class="col-sm-4">'+elem.name+'</dt>';
-    var descr = '<dd class="col-sm-8"><span class="oi '+icon+'" title="'+title+'" aria-hidden="true"></span></dd>';
+    var descr = '<dd class="col-sm-8"><span class="oi '+icon+'" title="'+title+'" aria-hidden="true"></span><span class="small"> last reported in: '+ts+'</span></dd>';
 
     return name + descr;
   };

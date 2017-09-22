@@ -74,6 +74,7 @@ init([]) ->
 
     Children = [?SUP(listeners, statser_listeners_sup, []),
                 ?SUP(metrics, statser_metrics_sup, []),
+                ?WORKER(health, statser_health, []),
                 ?WORKER(router, statser_router, []),
                 ?WORKER(instrumentation, statser_instrumentation, []),
                 % rate limiters

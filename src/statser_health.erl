@@ -1,4 +1,4 @@
--module(statser_instrumentation).
+-module(statser_health).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -8,9 +8,8 @@
 
 %% API
 -export([start_link/0,
-         increment/1,
-         increment/2,
-         record/2]).
+         alive/1,
+         subscribe/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -20,7 +19,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, path, interval, timer}).
+-record(state, {subscribers=[], timer, interval, metrics, services}).
 
 %%%===================================================================
 %%% API
@@ -37,14 +36,13 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
-increment(Key) -> increment(Key, 1).
-
-increment(Key, Amount) ->
-    gen_server:cast(?MODULE, {increment, Key, Amount}).
+subscribe(Ref) ->
+    gen_server:cast(?MODULE, {subscribe, Ref}).
 
 
-record(Key, Value) ->
-    gen_server:cast(?MODULE, {record, Key, Value}).
+alive(Name) ->
+    Now = erlang:system_time(second),
+    gen_server:cast(?MODULE, {alive, Name, Now}).
 
 
 %%%===================================================================
@@ -63,10 +61,17 @@ record(Key, Value) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    lager:info("starting instrumentation service at ~p", [self()]),
-    gen_server:cast(self(), prepare),
+    Interval = 60,
 
-    {ok, #state{metrics=maps:new()}}.
+    lager:info("starting health service with update interval of ~w sec", [Interval]),
+
+    {ok, Timer} = timer:send_interval(Interval * 1000, refresh),
+
+    {ok, #state{subscribers=[],
+                metrics=maps:new(),
+                services=maps:new(),
+                timer=Timer,
+                interval=Interval}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -96,27 +101,17 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(prepare, State) ->
-    % TODO: sanitize hostname
-    {ok, Hostname} = inet:gethostname(),
-    HostnameBS = list_to_binary(Hostname),
-    Path = <<"statser.instrumentation.", HostnameBS/binary, ".">>,
+handle_cast({subscribe, Ref}, State) ->
+    Subs = State#state.subscribers,
+    notify([Ref], State#state.interval, State#state.metrics, State#state.services),
+    {noreply, State#state{subscribers=[Ref | Subs]}};
 
-    % TODO: determine interval from configuration
-    Interval = 60 * 1000,
+handle_cast({alive, Name, Time}, #state{services=Srv} = State) ->
+    Services = maps:put(Name, Time, Srv),
+    {noreply, State#state{services=Services}};
 
-    lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),
-
-    {ok, Timer} = timer:send_interval(Interval, update_metrics),
-    {noreply, State#state{path=Path, timer=Timer, interval=Interval}};
-
-handle_cast({increment, Key, Amount}, State) ->
-    Map = increment_metrics(Key, Amount, State#state.metrics),
-    {noreply, State#state{metrics=Map}};
-
-handle_cast({record, Key, Value}, State) ->
-    Map = record_metrics(Key, Value, State#state.metrics),
-    {noreply, State#state{metrics=Map}};
+handle_cast({metrics, Metrics}, State) ->
+    {noreply, State#state{metrics=Metrics}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -131,29 +126,17 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(update_metrics, State) ->
-    Now = erlang:system_time(second),
-    Path = State#state.path,
+handle_info(refresh, State) ->
+    Subscribers = State#state.subscribers,
+    Interval = State#state.interval,
     Metrics = State#state.metrics,
-    lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
+    Services = State#state.services,
 
-    statser_health:alive(instrumentation),
-    gen_server:cast(statser_health, {metrics, Metrics}),
-
-    UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
-                                 publish(K, V, Now, Path),
-                                 maps:put(K, 0, Map);
-                            (K, Vs, Map) when is_list(Vs) ->
-                                 Avg = statser_calc:safe_average(Vs),
-                                 publish(K, Avg, Now, Path),
-                                 maps:put(K, [], Map);
-                            (_K, _V, Map) -> Map
-                         end, Metrics, Metrics),
-
-    {noreply, State#state{metrics=UpdatedM}};
+    Subs = notify(Subscribers, Interval, Metrics, Services),
+    {noreply, State#state{subscribers=Subs}};
 
 handle_info(Info, State) ->
-    lager:warning("instrumentation: unhandled message ~p", [Info]),
+    lager:warning("health: unhandled message ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -168,7 +151,7 @@ handle_info(Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{timer=Timer}) ->
-    lager:info("terminating instrumentation service at ~w", [self()]),
+    lager:info("terminating health service at ~w", [self()]),
     timer:cancel(Timer),
     ok.
 
@@ -187,45 +170,35 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-publish(Key, Value, TS, Path) ->
-    Metric = <<Path/binary, Key/binary>>,
-    gen_server:cast(statser_router, {line, Metric, Value, TS}).
+notify(Subs, Interval, Metrics, Services) ->
+    Now = erlang:system_time(second),
+    Stats = lists:map(fun({K, V}) when is_number(V) ->
+                               PerSecond = V / Interval,
+                               {[{name, K}, {value, PerSecond}, {type, counter}]};
+                          ({K, Vs}) when is_list(Vs) ->
+                               Avg = statser_calc:safe_average(Vs),
+                               {[{name, K}, {value, Avg}, {type, average}]}
+                       end, maps:to_list(Metrics)),
 
+    SrvHealth = lists:map(fun({K, V}) ->
+                                  Good = (Now - V) < 120,
+                                  {[{name, K}, {timestamp, V}, {good, Good}]}
+                          end, maps:to_list(Services)),
 
-increment_metrics(Key, Amount, Map) when is_number(Amount) ->
-    Update = fun(Value) when is_number(Value) -> Value + Amount;
-                (Value) -> Value end,
-    maps:update_with(Key, Update, Amount, Map);
-increment_metrics(_Key, _Amount, Map) -> Map.
+    Health = [{[{name, <<"health">>}, {good, true}, {timestamp, Now}]},
+              {[{name, <<"server">>}, {good, true}, {timestamp, Now}]}],
 
+    Json = jiffy:encode({[{stats, Stats},
+                          {interval, Interval},
+                          {health, Health ++ SrvHealth}]}),
+    Chunk = iolist_to_binary(["data: ", Json, "\n\n"]),
 
-record_metrics(Key, Value, Map) when is_number(Value) ->
-    Update = fun(Values) when is_list(Values) -> [Value | Values];
-                (Values) -> Values end,
-    maps:update_with(Key, Update, [Value], Map);
-record_metrics(_Key, _Value, Map) -> Map.
+    lists:flatmap(
+      fun (Sub) ->
+              case elli_request:send_chunk(Sub, Chunk) of
+                  ok -> [Sub];
+                  {error, closed} -> [];
+                  {error, timeout} -> []
+              end
+      end, Subs).
 
-
-%%%===================================================================
-%%% Tests
-%%%===================================================================
-
--ifdef(TEST).
-
-increment_metrics_test_() ->
-    [?_assertEqual(#{"foo" => 1}, increment_metrics("foo", 1, #{})),
-     ?_assertEqual(#{"foo" => 36}, increment_metrics("foo", 2, #{"foo" => 34})),
-     ?_assertEqual(#{"foo" => 20, "bar" => 25}, increment_metrics("foo", 10, #{"bar" => 25, "foo" => 10})),
-     ?_assertEqual(#{"bar" => 25}, increment_metrics("foo", none, #{"bar" => 25}))
-    ].
-
-
-record_metrics_test_() ->
-    [?_assertEqual(#{"foo" => [1]}, record_metrics("foo", 1, #{})),
-     ?_assertEqual(#{"foo" => [2, 1]}, record_metrics("foo", 2, #{"foo" => [1]})),
-     ?_assertEqual(#{"foo" => [8, 1], "bar" => 34}, record_metrics("foo", 8, #{"foo" => [1], "bar" => 34})),
-     ?_assertEqual(#{"foo" => 9}, record_metrics("foo", 9, #{"foo" => 9}))
-    ].
-
-
--endif. % TEST
