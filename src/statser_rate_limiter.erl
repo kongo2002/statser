@@ -15,7 +15,7 @@
 
 -define(MILLIS_PER_SEC, 1000).
 
--record(state, {limit, remaining, timer, name, pending}).
+-record(state, {limit, remaining, timer, name, pending, health}).
 
 %%%===================================================================
 %%% API
@@ -55,11 +55,13 @@ init([Type, Name, LimitPerSec]) ->
     LimitPerInterval = LimitPerSec div (?MILLIS_PER_SEC div IntervalInMillis),
 
     {ok, Timer} = timer:send_interval(IntervalInMillis, refill),
+    Health = statser_health:health_timer(),
 
     {ok, #state{limit=LimitPerInterval,
                 remaining=LimitPerInterval,
                 timer=Timer,
                 name=Name,
+                health=Health,
                 pending=queue:new()}}.
 
 %%--------------------------------------------------------------------
@@ -132,6 +134,11 @@ handle_info({drain, Reply, To}, State) ->
         none ->
             {noreply, State}
     end;
+
+handle_info(health, #state{name=Name} = State) ->
+    statser_health:alive(<<Name/binary, "-rate-limiter">>),
+    {noreply, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -149,6 +156,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, State) ->
     lager:info("terminating rate limiter at ~w", [self()]),
     timer:cancel(State#state.timer),
+    timer:cancel(State#state.health),
     ok.
 
 %%--------------------------------------------------------------------

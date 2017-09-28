@@ -9,6 +9,7 @@
 %% API
 -export([start_link/0,
          alive/1,
+         health_timer/0,
          subscribe/1]).
 
 %% gen_server callbacks
@@ -18,6 +19,8 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
+
+-define(DEFAULT_HEALTH_TIMER_INTERVAL, 30000).
 
 -record(state, {subscribers=[], timer, interval, metrics, services}).
 
@@ -43,6 +46,12 @@ subscribe(Ref) ->
 alive(Name) ->
     Now = erlang:system_time(second),
     gen_server:cast(?MODULE, {alive, Name, Now}).
+
+
+health_timer() ->
+    {ok, Timer} = timer:send_interval(?DEFAULT_HEALTH_TIMER_INTERVAL, health),
+    self() ! health,
+    Timer.
 
 
 %%%===================================================================

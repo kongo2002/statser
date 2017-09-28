@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
+-record(state, {health}).
 
 %%%===================================================================
 %%% API
@@ -46,8 +46,9 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     lager:debug("starting router instance at ~p", [self()]),
+    Timer = statser_health:health_timer(),
 
-    {ok, #state{}}.
+    {ok, #state{health=Timer}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -94,6 +95,10 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(health, State) ->
+    statser_health:alive(router),
+    {noreply, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -108,8 +113,9 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{health=Timer}) ->
     lager:info("terminating statser_router"),
+    timer:cancel(Timer),
     ok.
 
 %%--------------------------------------------------------------------
