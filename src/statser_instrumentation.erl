@@ -65,6 +65,7 @@ record(Key, Value) ->
 init([]) ->
     lager:info("starting instrumentation service at ~p", [self()]),
     gen_server:cast(self(), prepare),
+    statser_health:alive(instrumentation),
 
     {ok, #state{metrics=maps:new()}}.
 
@@ -137,7 +138,6 @@ handle_info(update_metrics, State) ->
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
 
-    statser_health:alive(instrumentation),
     gen_server:cast(statser_health, {metrics, Metrics}),
 
     UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
@@ -151,6 +151,10 @@ handle_info(update_metrics, State) ->
                          end, Metrics, Metrics),
 
     {noreply, State#state{metrics=UpdatedM}};
+
+handle_info(health, State) ->
+    statser_health:alive(instrumentation),
+    {noreply, State};
 
 handle_info(Info, State) ->
     lager:warning("instrumentation: unhandled message ~p", [Info]),
