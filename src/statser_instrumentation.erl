@@ -105,11 +105,11 @@ handle_cast(prepare, State) ->
 
     % TODO: determine interval from configuration
     Interval = 60 * 1000,
+    State0 = State#state{interval=Interval, path=Path},
 
     lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),
 
-    {ok, Timer} = timer:send_interval(Interval, update_metrics),
-    {noreply, State#state{path=Path, timer=Timer, interval=Interval}};
+    {noreply, schedule_update_metrics(State0)};
 
 handle_cast({increment, Key, Amount}, State) ->
     Map = increment_metrics(Key, Amount, State#state.metrics),
@@ -150,7 +150,8 @@ handle_info(update_metrics, State) ->
                             (_K, _V, Map) -> Map
                          end, Metrics, Metrics),
 
-    {noreply, State#state{metrics=UpdatedM}};
+    State0 = schedule_update_metrics(State),
+    {noreply, State0#state{metrics=UpdatedM}};
 
 handle_info(health, State) ->
     statser_health:alive(instrumentation),
@@ -173,7 +174,7 @@ handle_info(Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{timer=Timer}) ->
     lager:info("terminating instrumentation service at ~w", [self()]),
-    timer:cancel(Timer),
+    erlang:cancel_timer(Timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -190,6 +191,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+schedule_update_metrics(#state{interval=Interval}=State) ->
+    Timer = erlang:send_after(Interval, self(), update_metrics),
+    State#state{timer=Timer}.
+
 
 publish(Key, Value, TS, Path) ->
     Metric = <<Path/binary, Key/binary>>,

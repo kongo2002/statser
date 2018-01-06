@@ -15,7 +15,7 @@
 
 -define(MILLIS_PER_SEC, 1000).
 
--record(state, {limit, remaining, timer, name, pending}).
+-record(state, {limit, remaining, interval, timer, name, pending}).
 
 %%%===================================================================
 %%% API
@@ -54,14 +54,14 @@ init([Type, Name, LimitPerSec]) ->
     IntervalInMillis = max(?MILLIS_PER_SEC div LimitPerSec, 100),
     LimitPerInterval = LimitPerSec div (?MILLIS_PER_SEC div IntervalInMillis),
 
-    {ok, Timer} = timer:send_interval(IntervalInMillis, refill),
-    alive(Name),
+    State = #state{limit=LimitPerInterval,
+                   remaining=LimitPerInterval,
+                   interval=IntervalInMillis,
+                   name=Name,
+                   pending=queue:new()},
 
-    {ok, #state{limit=LimitPerInterval,
-                remaining=LimitPerInterval,
-                timer=Timer,
-                name=Name,
-                pending=queue:new()}}.
+    alive(Name),
+    {ok, schedule_refill(State)}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -123,7 +123,7 @@ handle_info(refill, #state{limit=Limit, name=Name} = State) ->
 
     {Pending, Remaining} = drain_queue(State#state.pending, Limit),
     NewState = State#state{remaining=Remaining, pending=Pending},
-    {noreply, NewState};
+    {noreply, schedule_refill(NewState)};
 
 handle_info({drain, Reply, To}, State) ->
     case drain(State) of
@@ -155,7 +155,7 @@ handle_info(Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     lager:info("terminating rate limiter at ~w", [self()]),
-    timer:cancel(State#state.timer),
+    erlang:cancel_timer(State#state.timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -174,6 +174,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 alive(Name) ->
     statser_health:alive(<<Name/binary, "-rate-limiter">>).
+
+
+schedule_refill(#state{interval=Interval} = State) ->
+    Timer = erlang:send_after(Interval, self(), refill),
+    State#state{timer=Timer}.
 
 
 drain(#state{remaining=Rem} = State) when Rem > 0 ->

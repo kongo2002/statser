@@ -24,6 +24,7 @@
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
+-define(BASE_TIMER_CORRECTION, 25).
 
 %%%===================================================================
 %%% API
@@ -101,16 +102,11 @@ handle_cast(accept, #state{config=Config} = State) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, false}]),
     lager:info("UDP listener opened port at ~w [~p]", [Port, Socket]),
 
-    % TODO: maybe we want to synchronize the flush interval with
-    % the wall clock time matching with the graphite aggregation
-    {ok, FTimer} = timer:send_interval(Config#udp_config.interval, flush),
-
-    % start prune timer (if configured)
-    PTimer = start_prune_timer(Config),
-
     % TODO: handle exit/failure
     spawn_link(?MODULE, listen, [Self, Socket]),
-    {noreply, State#state{flush_timer=FTimer, prune_timer=PTimer}};
+
+    State0 = schedule_flush(State),
+    {noreply, schedule_prune(State0)};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -144,10 +140,12 @@ handle_info(prune, #state{config=Config} = State) ->
 
     lager:debug("udp: finished pruning entries"),
 
-    {noreply, State#state{counters=Counters,
-                          timers=Timers,
-                          gauges=Gauges,
-                          sets=Sets}};
+    State0 = State#state{counters=Counters,
+                         timers=Timers,
+                         gauges=Gauges,
+                         sets=Sets},
+
+    {noreply, schedule_prune(State0)};
 
 handle_info(flush, #state{config=Config} = State) ->
     Start = erlang:monotonic_time(millisecond),
@@ -193,10 +191,12 @@ handle_info(flush, #state{config=Config} = State) ->
     Duration = erlang:monotonic_time(millisecond) - Start,
     lager:debug("flush duration: ~w ms", [Duration]),
 
-    {noreply, State#state{counters=Counters,
-                          timers=Timers,
-                          gauges=Gauges,
-                          sets=Sets}};
+    State0 = State#state{counters=Counters,
+                         timers=Timers,
+                         gauges=Gauges,
+                         sets=Sets},
+
+    {noreply, schedule_flush(State0, Duration)};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -214,8 +214,8 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{flush_timer=FTimer, prune_timer=PTimer}) ->
     lager:info("terminating UDP listener service at ~w", [self()]),
-    timer:cancel(FTimer),
-    timer:cancel(PTimer),
+    erlang:cancel_timer(FTimer, [{async, true}]),
+    erlang:cancel_timer(PTimer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -248,13 +248,6 @@ publish(Key, Value, TS) ->
     GlobalPrefix = <<"stats.">>,
     Metric = <<GlobalPrefix/binary, Key/binary>>,
     gen_server:cast(statser_router, {line, Metric, Value, TS}).
-
-
-start_prune_timer(#udp_config{prune_after=Interval}) when is_number(Interval) andalso Interval > 0 ->
-    {ok, Timer} = timer:send_interval(Interval, prune),
-    lager:info("udp: start prune timer with interval ~p sec", [Interval div 1000]),
-    Timer;
-start_prune_timer(_Config) -> none.
 
 
 calculate_timer([]) ->
@@ -426,6 +419,24 @@ parse_gauge_value(Mod, Value) ->
         {ok, Val} -> {ok, Mod, Val};
         error -> error
     end.
+
+
+schedule_flush(State) ->
+    schedule_flush(State, 0).
+
+schedule_flush(#state{config=Config} = State, Correction) ->
+    % TODO: maybe we want to synchronize the flush interval with
+    % the wall clock time matching with the graphite aggregation
+    Duration = Config#udp_config.interval - Correction - ?BASE_TIMER_CORRECTION,
+    Timer = erlang:send_after(Duration, self(), flush),
+    State#state{flush_timer=Timer}.
+
+
+schedule_prune(#state{config=#udp_config{prune_after=Interval}} = State) when is_number(Interval) andalso Interval > 0 ->
+    Timer = erlang:send_after(Interval, self(), prune),
+    State#state{prune_timer=Timer};
+
+schedule_prune(State) -> State.
 
 
 %%

@@ -44,7 +44,7 @@ subscribe(Ref) ->
 
 alive(Name) ->
     % schedule next health heartbeat
-    timer:send_after(?DEFAULT_HEALTH_TIMER_INTERVAL, health),
+    erlang:send_after(?DEFAULT_HEALTH_TIMER_INTERVAL, self(), health),
 
     % and send an alive report immediately
     Now = erlang:system_time(second),
@@ -72,13 +72,12 @@ init([]) ->
 
     lager:info("starting health service with update interval of ~w sec", [Interval]),
 
-    {ok, Timer} = timer:send_interval(Interval * 1000, refresh),
+    State = #state{subscribers=[],
+                   metrics=maps:new(),
+                   services=maps:new(),
+                   interval=Interval * 1000},
 
-    {ok, #state{subscribers=[],
-                metrics=maps:new(),
-                services=maps:new(),
-                timer=Timer,
-                interval=Interval}}.
+    {ok, schedule_refresh(State)}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -140,7 +139,9 @@ handle_info(refresh, State) ->
     Services = State#state.services,
 
     Subs = notify(Subscribers, Interval, Metrics, Services),
-    {noreply, State#state{subscribers=Subs}};
+    State0 = State#state{subscribers=Subs},
+
+    {noreply, schedule_refresh(State0)};
 
 handle_info(Info, State) ->
     lager:warning("health: unhandled message ~p", [Info]),
@@ -159,7 +160,7 @@ handle_info(Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{timer=Timer}) ->
     lager:info("terminating health service at ~w", [self()]),
-    timer:cancel(Timer),
+    erlang:cancel_timer(Timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -176,6 +177,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+schedule_refresh(#state{interval=Interval} = State) ->
+    Timer = erlang:send_after(Interval, self(), refresh),
+    State#state{timer=Timer}.
+
 
 notify(Subs, Interval, Metrics, Services) ->
     Now = erlang:system_time(second),
