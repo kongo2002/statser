@@ -24,7 +24,7 @@
 
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
--define(BASE_TIMER_CORRECTION, 25).
+-define(BASE_TIMER_CORRECTION, 50).
 
 %%%===================================================================
 %%% API
@@ -189,14 +189,13 @@ handle_info(flush, #state{config=Config} = State) ->
 
     % TODO: expose duration as instrumentation/metric
     Duration = erlang:monotonic_time(millisecond) - Start,
-    lager:debug("flush duration: ~w ms", [Duration]),
 
     State0 = State#state{counters=Counters,
                          timers=Timers,
                          gauges=Gauges,
                          sets=Sets},
 
-    {noreply, schedule_flush(State0, Duration)};
+    {noreply, schedule_flush(State0)};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -421,13 +420,13 @@ parse_gauge_value(Mod, Value) ->
     end.
 
 
-schedule_flush(State) ->
-    schedule_flush(State, 0).
+schedule_flush(#state{config=Config} = State) ->
+    % here we calculate the interval for the next scheduled `flush`
+    % in order to best match up with the metric's retention
+    Now = erlang:system_time(millisecond),
+    OffsetToRetention = Now rem Config#udp_config.interval,
+    Duration = Config#udp_config.interval - OffsetToRetention + ?BASE_TIMER_CORRECTION,
 
-schedule_flush(#state{config=Config} = State, Correction) ->
-    % TODO: maybe we want to synchronize the flush interval with
-    % the wall clock time matching with the graphite aggregation
-    Duration = Config#udp_config.interval - Correction - ?BASE_TIMER_CORRECTION,
     Timer = erlang:send_after(Duration, self(), flush),
     State#state{flush_timer=Timer}.
 
