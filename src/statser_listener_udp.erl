@@ -187,8 +187,8 @@ handle_info(flush, #state{config=Config} = State) ->
                             {TS, []}
                     end, State#state.sets),
 
-    % TODO: expose duration as instrumentation/metric
     Duration = erlang:monotonic_time(millisecond) - Start,
+    statser_instrumentation:record(<<"udp.processing-time">>, Duration),
 
     State0 = State#state{counters=Counters,
                          timers=Timers,
