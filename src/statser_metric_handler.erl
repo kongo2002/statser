@@ -25,7 +25,7 @@
 
 -define(MIN_CACHE_INTERVAL, 60).
 
--record(state, {path, dirs, file, fspath, metadata, cache=[], cache_size=0}).
+-record(state, {path, fspath, metadata, cache=[], cache_size=0}).
 
 %%%===================================================================
 %%% API
@@ -123,7 +123,7 @@ handle_cast({prepare, Metadata}, State) ->
     {ok, Dirs, File} = get_directory(State#state.path),
 
     Path = prepare_file(Dirs, File),
-    NewState = get_metadata(State#state{dirs=Dirs, file=File, fspath=Path, metadata=Metadata}),
+    NewState = get_metadata(State#state{fspath=Path, metadata=Metadata}),
 
     {noreply, NewState};
 
