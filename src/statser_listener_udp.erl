@@ -133,10 +133,10 @@ handle_info(prune, #state{config=Config} = State) ->
     PruneAfterSecs = Config#udp_config.prune_after div 1000,
     PruneBefore = seconds() - PruneAfterSecs,
 
-    Counters = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.counters),
-    Timers = maps:filter(fun(_, {TS, _, _}) -> TS < PruneBefore end, State#state.timers),
-    Gauges = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.gauges),
-    Sets = maps:filter(fun(_, {TS, _}) -> TS < PruneBefore end, State#state.sets),
+    Counters = maps:filter(fun(_, {TS, _}) -> TS > PruneBefore end, State#state.counters),
+    Timers = maps:filter(fun(_, {TS, _, _}) -> TS > PruneBefore end, State#state.timers),
+    Gauges = maps:filter(fun(_, {TS, _}) -> TS > PruneBefore end, State#state.gauges),
+    Sets = maps:filter(fun(_, {TS, _}) -> TS > PruneBefore end, State#state.sets),
 
     lager:debug("udp: finished pruning entries"),
 
