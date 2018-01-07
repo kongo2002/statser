@@ -270,12 +270,14 @@ get_or_create_metadata(FsPath, Path, Metadata) ->
         {ok, M} -> M;
         {error, enoent} ->
             lager:info("no archive existing for ~p - creating now", [Path]),
+            ok = filelib:ensure_dir(FsPath),
             {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
             M;
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
             lager:info("no valid archive existing for ~p - creating now", [Path]),
+            ok = filelib:ensure_dir(FsPath),
             {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
             M
@@ -303,9 +305,7 @@ to_file(Parts) ->
 
 prepare_file(Dirs, File) ->
     BaseDir = statser_config:get_data_dir(),
-    Path = to_file([BaseDir | Dirs ++ [File]]),
-    ok = filelib:ensure_dir(Path),
-    Path.
+    to_file([BaseDir | Dirs ++ [File]]).
 
 
 get_creation_metadata(Path) ->
