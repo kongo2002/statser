@@ -210,7 +210,6 @@ whitelist:
 ### TODO
 
 * [docker][docker] image
-* configurable amount of caching
 * support even more functions of `graphite-web` render API
 * investigate into more elaborate archive write optimization
 
