@@ -6,6 +6,8 @@
 
 -behaviour(gen_server).
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/0,
          increment/1,
@@ -104,7 +106,7 @@ handle_cast(prepare, State) ->
     Path = <<"statser.instrumentation.", HostnameBS/binary, ".">>,
 
     % TODO: determine interval from configuration
-    Interval = 60 * 1000,
+    Interval = 60 * ?MILLIS_PER_SEC,
     State0 = State#state{interval=Interval, path=Path},
 
     lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),

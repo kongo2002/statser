@@ -11,6 +11,8 @@
 % default write chunk size of 4kb
 -define(WRITE_CHUNK_SIZE, 4096).
 
+-define(MILLIS_PER_SEC, 1000).
+
 
 -type aggregation() :: average | sum | last | max | min | average_zero.
 

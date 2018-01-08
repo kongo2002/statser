@@ -130,7 +130,7 @@ handle_info({msg, Binary}, State) ->
 handle_info(prune, #state{config=Config} = State) ->
     lager:debug("udp: start pruning entries"),
 
-    PruneAfterSecs = Config#udp_config.prune_after div 1000,
+    PruneAfterSecs = Config#udp_config.prune_after div ?MILLIS_PER_SEC,
     PruneBefore = seconds() - PruneAfterSecs,
 
     Counters = maps:filter(fun(_, {TS, _}) -> TS > PruneBefore end, State#state.counters),
@@ -150,7 +150,7 @@ handle_info(prune, #state{config=Config} = State) ->
 handle_info(flush, #state{config=Config} = State) ->
     Start = erlang:monotonic_time(millisecond),
     Now = seconds(),
-    PerSecond = Config#udp_config.interval / 1000,
+    PerSecond = Config#udp_config.interval / ?MILLIS_PER_SEC,
 
     % flush counters
     Counters = maps:map(fun(K, {TS, V}) ->

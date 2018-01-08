@@ -6,6 +6,8 @@
 
 -behaviour(gen_server).
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/0,
          alive/1,
@@ -75,7 +77,7 @@ init([]) ->
     State = #state{subscribers=[],
                    metrics=maps:new(),
                    services=maps:new(),
-                   interval=Interval * 1000},
+                   interval=Interval * ?MILLIS_PER_SEC},
 
     {ok, schedule_refresh(State)}.
 

@@ -2,6 +2,8 @@
 
 -behaviour(gen_server).
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/3]).
 
@@ -13,7 +15,6 @@
          terminate/2,
          code_change/3]).
 
--define(MILLIS_PER_SEC, 1000).
 
 -record(state, {limit, remaining, interval, timer, name, pending, members, len}).
 

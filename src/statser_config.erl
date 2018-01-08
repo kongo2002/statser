@@ -192,11 +192,11 @@ load_udp_config([{"port", Port} | Xs], Config) when is_number(Port) ->
 
 load_udp_config([{"interval", Interval} | Xs], Config) when is_number(Interval) ->
     % config value is expected to be in seconds
-    load_udp_config(Xs, Config#udp_config{interval=Interval * 1000});
+    load_udp_config(Xs, Config#udp_config{interval=Interval * ?MILLIS_PER_SEC});
 
 load_udp_config([{"prune_after", Interval} | Xs], Config) when is_number(Interval) ->
     % config value is expected to be in seconds
-    load_udp_config(Xs, Config#udp_config{prune_after=Interval * 1000});
+    load_udp_config(Xs, Config#udp_config{prune_after=Interval * ?MILLIS_PER_SEC});
 
 load_udp_config([_ | Xs], Config) ->
     load_udp_config(Xs, Config);
