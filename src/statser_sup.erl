@@ -7,6 +7,8 @@
 
 -behaviour(supervisor).
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -61,9 +63,12 @@ init([]) ->
     % TODO: investigate into 'read_concurrency'
     ets:new(metrics, [set, named_table, public]),
 
+    % TODO: configurable API port
     ApiPort = application:get_env(statser, api_port, 8080),
 
+    Limits = statser_config:get_rate_limits(),
     UdpConfig = statser_config:get_udp_config(),
+
     UdpChild =
     case statser_config:udp_is_enabled(UdpConfig) of
         true -> [?WORKER(udp_listener, statser_listener_udp, [UdpConfig])];
@@ -74,15 +79,17 @@ init([]) ->
 
     Children = [?SUP(listeners, statser_listeners_sup, []),
                 ?SUP(metrics, statser_metrics_sup, []),
+                % health endpoint
                 ?WORKER(health, statser_health, []),
+                % metrics router
                 ?WORKER(router, statser_router, []),
+                % instrumentation service
                 ?WORKER(instrumentation, statser_instrumentation, []),
                 % rate limiters
-                % TODO: configurable limits
                 ?WORKER(create_limiter, statser_rate_limiter,
-                       [create_limiter, <<"creates">>, 10]),
+                       [create_limiter, <<"creates">>, Limits#rate_limit_config.creates_per_sec]),
                 ?WORKER(update_limiter, statser_rate_limiter,
-                       [update_limiter, <<"updates">>, 500]),
+                       [update_limiter, <<"updates">>, Limits#rate_limit_config.updates_per_sec]),
                 % API
                 ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
                ],

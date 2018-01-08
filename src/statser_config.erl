@@ -12,6 +12,7 @@
          get_udp_config/0,
          get_data_dir/0,
          get_metric_filters/0,
+         get_rate_limits/0,
          metric_passes_filters/2,
          udp_is_enabled/1]).
 
@@ -20,7 +21,12 @@
 
 -define(FALLBACK_METRICS_DATA_DIR, <<".">>).
 
--define(FALLBACK_UDP_CONFIG, #udp_config{port=none, interval=10000, prune_after=300000}).
+-define(FALLBACK_RATE_LIMITS, #rate_limit_config{creates_per_sec=25,
+                                                 updates_per_sec=500}).
+
+-define(FALLBACK_UDP_CONFIG, #udp_config{port=none,
+                                         interval=10000,
+                                         prune_after=300000}).
 
 -define(FALLBACK_RETENTIONS, [#retention_definition{raw="1m:1d",
                                                     seconds=60,
@@ -52,13 +58,14 @@ load_config(ConfigFile) ->
            end,
 
     % parse contents
-    {Storages, Aggregations, WL, BL, Udp, DataDir} = load_documents(Docs),
+    {Storages, Aggregations, WL, BL, Udp, DataDir, RateLimits} = load_documents(Docs),
 
     update(storages, Storages),
     update(aggregations, Aggregations),
     update(metric_filters, #metric_filters{whitelist=WL, blacklist=BL}),
     update(udp_config, Udp),
-    update(data_dir, DataDir).
+    update(data_dir, DataDir),
+    update(rate_limits, RateLimits).
 
 
 get_metadata(Path) ->
@@ -81,6 +88,10 @@ get_udp_config() ->
 
 get_data_dir() ->
     application:get_env(statser, data_dir, ?FALLBACK_METRICS_DATA_DIR).
+
+
+get_rate_limits() ->
+    application:get_env(statser, rate_limits, ?FALLBACK_RATE_LIMITS).
 
 
 metric_passes_filters(Metric, Filters) ->
@@ -148,8 +159,10 @@ update(Type, Values) ->
 -endif. % TEST
 
 
-load_documents([Document]) -> load_document(Document);
-load_documents([]) -> {[], [], [], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR}.
+load_documents([Document]) ->
+    load_document(Document);
+load_documents([]) ->
+    {[], [], [], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR, ?FALLBACK_RATE_LIMITS}.
 
 
 load_document(Doc) ->
@@ -173,7 +186,10 @@ load_document(Doc) ->
     DataDir = load_data_dir(proplists:get_value("data_dir", Doc)),
     lager:info("loaded data directory config: ~p", [DataDir]),
 
-    {Storages, Aggregations, WhiteList, BlackList, Udp, DataDir}.
+    RateLimits = load_rate_limits(proplists:get_value("rate_limits", Doc)),
+    lager:info("loaded rate limits: ~p", [RateLimits]),
+
+    {Storages, Aggregations, WhiteList, BlackList, Udp, DataDir, RateLimits}.
 
 
 load_data_dir(Value) when is_list(Value) ->
@@ -182,6 +198,22 @@ load_data_dir(Value) when is_list(Value) ->
         false -> ?FALLBACK_METRICS_DATA_DIR
     end;
 load_data_dir(_) -> ?FALLBACK_METRICS_DATA_DIR.
+
+
+load_rate_limits(Xs) ->
+    load_rate_limits(Xs, ?FALLBACK_RATE_LIMITS).
+
+load_rate_limits([{"creates", PerSec} | Xs], Limits) when is_number(PerSec) ->
+    load_rate_limits(Xs, Limits#rate_limit_config{creates_per_sec=PerSec});
+
+load_rate_limits([{"updates", PerSec} | Xs], Limits) when is_number(PerSec) ->
+    load_rate_limits(Xs, Limits#rate_limit_config{updates_per_sec=PerSec});
+
+load_rate_limits([_ | Xs], Limits) ->
+    load_rate_limits(Xs, Limits);
+
+load_rate_limits(_Invalid, Limits) ->
+    Limits.
 
 
 load_udp_config(Xs) ->
@@ -394,7 +426,7 @@ load_from_string(Str, Func) ->
 
 
 load_aggregation_from_string_test_() ->
-    GetAggregation = fun({_Storage, Aggs, _WL, _BL, _Udp, _Dir}) -> Aggs end,
+    GetAggregation = fun({_Storage, Aggs, _WL, _BL, _Udp, _Dir, _RL}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetAggregation)),
@@ -418,7 +450,7 @@ load_aggregate_from_file_test_() ->
 
 
 load_whitelist_from_string_test_() ->
-    GetWL = fun({_Storage, _Aggs, WL, _BL, _Udp, _Dir}) -> WL end,
+    GetWL = fun({_Storage, _Aggs, WL, _BL, _Udp, _Dir, _RL}) -> WL end,
     {setup, fun setup/0,
      [?_assertEqual([], load_from_string("", GetWL)),
       ?_assertEqual([], load_from_string("whitelist:", GetWL)),
@@ -430,7 +462,7 @@ load_whitelist_from_string_test_() ->
 
 
 load_blacklist_from_string_test_() ->
-    GetBL = fun({_Storage, _Aggs, _WL, BL, _Udp, _Dir}) -> BL end,
+    GetBL = fun({_Storage, _Aggs, _WL, BL, _Udp, _Dir, _RL}) -> BL end,
     {setup, fun setup/0,
      [?_assertEqual([], load_from_string("", GetBL)),
       ?_assertEqual([], load_from_string("blacklist:", GetBL)),
@@ -441,8 +473,19 @@ load_blacklist_from_string_test_() ->
     ]}.
 
 
+load_rate_limits_from_string_test_() ->
+    GetLimits = fun({_Storage, _Aggs, _WL, _BL, _Udp, _Dir, RL}) -> RL end,
+    {setup, fun setup/0,
+     [?_assertEqual(?FALLBACK_RATE_LIMITS, load_from_string("", GetLimits)),
+      ?_assertEqual(?FALLBACK_RATE_LIMITS, load_from_string("rate_limits:", GetLimits)),
+      ?_assertEqual(?FALLBACK_RATE_LIMITS, load_from_string("rate_limits: invalid", GetLimits)),
+      ?_assertEqual(#rate_limit_config{creates_per_sec=13, updates_per_sec=202},
+                    load_from_string("rate_limits:\n creates: 13\n updates: 202", GetLimits))
+     ]}.
+
+
 load_udp_config_from_string_test_() ->
-    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir, _RL}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
@@ -453,7 +496,7 @@ load_udp_config_from_string_test_() ->
 
 
 load_data_dir_from_string_test_() ->
-    GetDir = fun({_Storage, _Aggs, _WL, _BL, _Udp, Dir}) -> Dir end,
+    GetDir = fun({_Storage, _Aggs, _WL, _BL, _Udp, Dir, _RL}) -> Dir end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("", GetDir)),
       ?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("data_dir:", GetDir)),
@@ -464,7 +507,7 @@ load_data_dir_from_string_test_() ->
 
 
 udp_is_enabled_test_() ->
-    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir, _RL}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
       ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
@@ -473,7 +516,7 @@ udp_is_enabled_test_() ->
 
 
 load_storage_from_string_test_() ->
-    GetStorage = fun({Storage, _Aggs, _WL, _BL, _Udp, _Dir}) -> Storage end,
+    GetStorage = fun({Storage, _Aggs, _WL, _BL, _Udp, _Dir, _RL}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetStorage)),

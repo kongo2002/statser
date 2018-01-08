@@ -21,14 +21,21 @@
 -record(udp_config, {
           port :: integer(),
           interval :: integer(),
-          prune_after :: integer()}).
+          prune_after :: integer()
+         }).
+
+-record(rate_limit_config, {
+          creates_per_sec :: integer(),
+          updates_per_sec :: integer()
+         }).
 
 -record(whisper_archive, {
           offset :: integer(),
           seconds :: integer(),
           points :: integer(),
           retention :: integer(),
-          size :: integer()}).
+          size :: integer()
+         }).
 
 -record(whisper_metadata, {
           aggregation :: aggregation(),
