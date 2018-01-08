@@ -134,6 +134,16 @@ via a YAML file (`statser.yaml` in the working directory):
 # defaults to the current working directory
 data_dir: /opt/whisper/storage
 
+# IO consuming operations like updates and archive creations
+# are by default (and should be) rate limited to some extent:
+rate_limits:
+
+  # max. archive creations per second (default: 25)
+  creates: 25
+
+  # max. archive updates per second (default: 500)
+  updates: 500
+
 # configuration of storage rules and archive retentions
 #
 # this contains basically what you might know of `storage-schemas.conf`
