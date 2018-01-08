@@ -15,7 +15,7 @@
 
 -define(MILLIS_PER_SEC, 1000).
 
--record(state, {limit, remaining, interval, timer, name, pending}).
+-record(state, {limit, remaining, interval, timer, name, pending, members, len}).
 
 %%%===================================================================
 %%% API
@@ -58,7 +58,9 @@ init([Type, Name, LimitPerSec]) ->
                    remaining=LimitPerInterval,
                    interval=IntervalInMillis,
                    name=Name,
-                   pending=queue:new()},
+                   pending=queue:new(),
+                   members=sets:new(),
+                   len=0},
 
     alive(Name),
     {ok, schedule_refill(State)}.
@@ -117,12 +119,18 @@ handle_cast(_Cast, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(refill, #state{limit=Limit, name=Name} = State) ->
-    % XXX: in 'dev-mode' only? or keep track of queue-size?
-    statser_instrumentation:record(<<Name/binary, "-cache-size">>,
-                                   queue:len(State#state.pending)),
+    statser_instrumentation:record(<<Name/binary, "-cache-size">>, State#state.len),
 
-    {Pending, Remaining} = drain_queue(State#state.pending, Limit),
-    NewState = State#state{remaining=Remaining, pending=Pending},
+    Members = State#state.members,
+    {Pending, Members0, Remaining} = drain_queue(State#state.pending, Members, Limit),
+    Drained = Limit - Remaining,
+    NewLen = State#state.len - Drained,
+
+    NewState = State#state{remaining=Remaining,
+                           pending=Pending,
+                           members=Members0,
+                           len=NewLen},
+
     {noreply, schedule_refill(NewState)};
 
 handle_info({drain, Reply, To}, State) ->
@@ -185,7 +193,7 @@ drain(#state{remaining=Rem} = State) when Rem > 0 ->
     {ok, State#state{remaining=Rem-1}};
 
 drain(#state{name=Name}) ->
-    statser_instrumentation:increment(<<Name/binary, "-dropped">>),
+    dropped(Name),
     none.
 
 
@@ -193,26 +201,33 @@ drain(#state{remaining=Rem} = State, Reply, To) when Rem > 0 ->
     To ! Reply,
     State#state{remaining=Rem-1};
 
-drain(#state{name=Name} = State, Reply, To) ->
-    Item = {Reply, To},
 
-    % XXX: not sure about this one yet - it has O(n) complexity
-    case queue:member(Item, State#state.pending) of
-        true ->
-            State;
-        _ ->
-            statser_instrumentation:increment(<<Name/binary, "-dropped">>),
+drain(#state{name=Name, members=Members} = State, Reply, To) ->
+    case sets:is_element(To, Members) of
+        false ->
+            dropped(Name),
 
+            Item = {Reply, To},
             Pending = queue:in(Item, State#state.pending),
-            State#state{pending=Pending}
+            NewLen = State#state.len + 1,
+            Members0 = sets:add_element(To, Members),
+            State#state{pending=Pending, members=Members0, len=NewLen};
+        true ->
+            State
     end.
 
 
-drain_queue(Queue, 0) -> {Queue, 0};
-drain_queue(Queue, Remaining) ->
+dropped(Name) ->
+    statser_instrumentation:increment(<<Name/binary, "-dropped">>).
+
+
+drain_queue(Queue, Members, 0) -> {Queue, Members, 0};
+drain_queue(Queue, Members, Remaining) ->
     case queue:out(Queue) of
-        {empty, _Q} -> {Queue, Remaining};
+        {empty, _Q} ->
+            {Queue, Members, Remaining};
         {{value, {Reply, To}}, Q} ->
             To ! Reply,
-            drain_queue(Q, Remaining-1)
+            Members0 = sets:del_element(To, Members),
+            drain_queue(Q, Members0, Remaining-1)
     end.
