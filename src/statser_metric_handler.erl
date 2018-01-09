@@ -25,7 +25,9 @@
 
 -define(MIN_CACHE_INTERVAL, 60).
 
--record(state, {path, fspath, metadata, cache=[], cache_size=0}).
+-define(INACTIVITY_FACTOR, 5).
+
+-record(state, {path, fspath, metadata, cache=[], cache_size=0, inactivity=none}).
 
 %%%===================================================================
 %%% API
@@ -70,7 +72,7 @@ init({Path, Metadata}) ->
             % TODO: not quite sure of this additional `prepare` step
             %       we could do that in here as well...
             gen_server:cast(self(), {prepare, Metadata}),
-            {ok, #state{path=Path}};
+            {ok, #state{path=Path, inactivity=none}};
         false ->
             % there is a metric handler already for this path
             % let's shut down now
@@ -147,7 +149,7 @@ handle_cast({line, _Path, Value, TS}, State) ->
         _Otherwise -> ok
     end,
 
-    {noreply, NewState};
+    {noreply, reset_inactivity(NewState)};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -169,25 +171,13 @@ handle_info(create, State) ->
     {noreply, State#state{metadata=Metadata}};
 
 handle_info(flush_cache, State) ->
-    case State#state.cache of
-        [] -> {noreply, State};
-        Cs ->
-            lager:debug("flushing metric cache of ~p (~w entries)",
-                        [State#state.path, State#state.cache_size]),
+    State0 = flush(State),
+    {noreply, State0};
 
-            File = State#state.fspath,
-            case statser_whisper:update_points(File, Cs) of
-                ok ->
-                    statser_instrumentation:increment(<<"committed-points">>, State#state.cache_size),
-                    statser_instrumentation:increment(<<"writes">>),
-                    {noreply, State#state{cache=[], cache_size=0}};
-                _Error ->
-                    % archive is not existing (yet)
-                    % so dispatch a creation via rate-limiter
-                    request_create(),
-                    {noreply, State}
-            end
-    end;
+handle_info(inactivity, State) ->
+    Path = State#state.path,
+    lager:info("stopping metrics handler for ~p due to inactivity", [Path]),
+    {stop, normal, State#state{inactivity=none}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -205,8 +195,15 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     Path = State#state.path,
-    ets:delete(metrics, Path),
     lager:info("terminating metric handler of '~p'", [Path]),
+
+    case State#state.inactivity of
+        none -> ok;
+        TimerRef -> erlang:cancel_timer(TimerRef, [{async, true}])
+    end,
+
+    flush(State),
+    ets:delete(metrics, Path),
     ok.
 
 %%--------------------------------------------------------------------
@@ -373,6 +370,43 @@ cache_sorted(Value, TS, [{TS1, _}=P | Ps]=Pss, Acc) ->
            {lists:reverse(Acc) ++ [{TS, Value} | Pss], 1};
        true ->
            cache_sorted(Value, TS, Ps, [P | Acc])
+    end.
+
+
+flush(#state{cache=[]} = State) ->
+    State;
+flush(#state{cache=Cache, fspath=File} = State) ->
+    lager:debug("flushing metric cache of ~p (~w entries)",
+                [State#state.path, State#state.cache_size]),
+
+    case statser_whisper:update_points(File, Cache) of
+        ok ->
+            statser_instrumentation:increment(<<"committed-points">>, State#state.cache_size),
+            statser_instrumentation:increment(<<"writes">>),
+            State#state{cache=[], cache_size=0};
+        _Error ->
+            % archive is not existing (yet)
+            % so dispatch a creation via rate-limiter
+            request_create(),
+            State
+    end.
+
+
+reset_inactivity(#state{inactivity=Inactive} = State) ->
+    % reset pending timer (if necessary)
+    case Inactive of
+        none -> ok;
+        TimerRef -> erlang:cancel_timer(TimerRef, [{async, true}])
+    end,
+
+    % schedule new timer
+    case State#state.metadata of
+        #whisper_metadata{archives=[A | _]} ->
+            IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR * ?MILLIS_PER_SEC,
+            Timer = erlang:send_after(IntervalMillis, self(), inactivity),
+            State#state{inactivity=Timer};
+        _Otherwise ->
+            State#state{inactivity=none}
     end.
 
 
