@@ -120,7 +120,7 @@ handle_cast(_Cast, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(refill, #state{limit=Limit, name=Name} = State) ->
-    statser_instrumentation:record(<<Name/binary, "-cache-size">>, State#state.len),
+    statser_instrumentation:record(<<Name/binary, "-queue-size">>, State#state.len),
 
     Members = State#state.members,
     {Pending, Members0, Remaining} = drain_queue(State#state.pending, Members, Limit),
