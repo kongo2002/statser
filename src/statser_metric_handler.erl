@@ -27,7 +27,7 @@
 
 -define(INACTIVITY_FACTOR, 5).
 
--record(state, {path, fspath, metadata, cache=[], cache_size=0, inactivity=none}).
+-record(state, {path, fspath, metadata, cache=[], cache_size=0, heartbeat}).
 
 %%%===================================================================
 %%% API
@@ -72,7 +72,7 @@ init({Path, Metadata}) ->
             % TODO: not quite sure of this additional `prepare` step
             %       we could do that in here as well...
             gen_server:cast(self(), {prepare, Metadata}),
-            {ok, #state{path=Path, inactivity=none}};
+            {ok, set_heartbeat(#state{path=Path})};
         false ->
             % there is a metric handler already for this path
             % let's shut down now
@@ -149,7 +149,24 @@ handle_cast({line, _Path, Value, TS}, State) ->
         _Otherwise -> ok
     end,
 
-    {noreply, reset_inactivity(NewState)};
+    {noreply, set_heartbeat(NewState)};
+
+handle_cast(check_heartbeat, #state{path=Path, heartbeat=HB} = State) ->
+    % schedule new timer
+    case State#state.metadata of
+        #whisper_metadata{archives=[A | _]} ->
+            Now = erlang:system_time(second),
+            IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR,
+            Expired = Now - IntervalMillis,
+
+            if HB < Expired ->
+                   lager:info("stopping metrics handler for ~p due to inactivity", [Path]),
+                   {stop, normal, State};
+               true -> {noreply, State}
+            end;
+        _Otherwise ->
+            {noreply, State}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -174,11 +191,6 @@ handle_info(flush_cache, State) ->
     State0 = flush(State),
     {noreply, State0};
 
-handle_info(inactivity, State) ->
-    Path = State#state.path,
-    lager:info("stopping metrics handler for ~p due to inactivity", [Path]),
-    {stop, normal, State#state{inactivity=none}};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -196,11 +208,6 @@ handle_info(_Info, State) ->
 terminate(_Reason, State) ->
     Path = State#state.path,
     lager:info("terminating metric handler of '~p'", [Path]),
-
-    case State#state.inactivity of
-        none -> ok;
-        TimerRef -> erlang:cancel_timer(TimerRef, [{async, true}])
-    end,
 
     flush(State),
     ets:delete(metrics, Path),
@@ -392,22 +399,8 @@ flush(#state{cache=Cache, fspath=File} = State) ->
     end.
 
 
-reset_inactivity(#state{inactivity=Inactive} = State) ->
-    % reset pending timer (if necessary)
-    case Inactive of
-        none -> ok;
-        TimerRef -> erlang:cancel_timer(TimerRef, [{async, true}])
-    end,
-
-    % schedule new timer
-    case State#state.metadata of
-        #whisper_metadata{archives=[A | _]} ->
-            IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR * ?MILLIS_PER_SEC,
-            Timer = erlang:send_after(IntervalMillis, self(), inactivity),
-            State#state{inactivity=Timer};
-        _Otherwise ->
-            State#state{inactivity=none}
-    end.
+set_heartbeat(State) ->
+    State#state{heartbeat=erlang:system_time(second)}.
 
 
 %%
