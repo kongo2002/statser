@@ -1,4 +1,4 @@
--module(statser_router).
+-module(statser_metrics_watcher).
 
 -include("statser.hrl").
 
@@ -15,7 +15,10 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
+-record(state, {timer}).
+
+-define(HEARTBEAT_INTERVAL_SECONDS, 60).
+
 
 %%%===================================================================
 %%% API
@@ -47,10 +50,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    lager:debug("starting router instance at ~p", [self()]),
-    statser_health:alive(router),
-
-    {ok, #state{}}.
+    {ok, schedule_heartbeat_timer(#state{})}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -80,10 +80,6 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({line, _Path, _Val, _TS} = Line, State) ->
-    dispatch(Line),
-    {noreply, State};
-
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -97,12 +93,18 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(health, State) ->
-    statser_health:alive(router),
-    {noreply, State};
+handle_info(heartbeat, State) ->
+    Handlers = ets:tab2list(metrics),
 
-handle_info(Info, State) ->
-    lager:warning("router: unhandled message ~p", [Info]),
+    lager:debug("checking ~p metric handlers' heartbeats", [length(Handlers)]),
+
+    lists:foreach(fun({_Path, Pid}) ->
+                          gen_server:cast(Pid, check_heartbeat)
+                  end, Handlers),
+
+    {noreply, schedule_heartbeat_timer(State)};
+
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -117,7 +119,6 @@ handle_info(Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    lager:info("terminating statser_router"),
     ok.
 
 %%--------------------------------------------------------------------
@@ -135,18 +136,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-dispatch({line, Path, _, _} = Line) ->
-    Target = case ets:lookup(metrics, Path) of
-        [] ->
-            case statser_metrics_sup:start_handler(Path) of
-                {ok, Pid} ->
-                    Pid;
-                {error, Reason} ->
-                    lager:error("failed to start metric handler: ~p", [Reason]),
-                    [{Path, Pid}] = ets:lookup(metrics, Path),
-                    Pid
-            end;
-        [{Path, Pid}] ->
-            Pid
-    end,
-    gen_server:cast(Target, Line).
+schedule_heartbeat_timer(State) ->
+    Interval = ?HEARTBEAT_INTERVAL_SECONDS * ?MILLIS_PER_SEC,
+    Timer = erlang:send_after(Interval, self(), heartbeat),
+    State#state{timer=Timer}.
+

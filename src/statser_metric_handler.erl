@@ -63,7 +63,7 @@ start_link(Path, Metadata) ->
 %% @end
 %%--------------------------------------------------------------------
 init({Path, Metadata}) ->
-    lager:info("initializing metric handler for path ~p [~w]", [Path, self()]),
+    lager:debug("initializing metric handler for path '~s' [~w]", [Path, self()]),
 
     % let's try to register ourselves
     case ets:insert_new(metrics, {Path, self()}) of
@@ -160,7 +160,7 @@ handle_cast(check_heartbeat, #state{path=Path, heartbeat=HB} = State) ->
             Expired = Now - IntervalMillis,
 
             if HB < Expired ->
-                   lager:info("stopping metrics handler for ~p due to inactivity", [Path]),
+                   lager:info("stopping metrics handler for '~s' due to inactivity", [Path]),
                    {stop, normal, State};
                true -> {noreply, State}
             end;
@@ -207,7 +207,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     Path = State#state.path,
-    lager:info("terminating metric handler of '~p'", [Path]),
+    lager:debug("terminating metric handler of '~s'", [Path]),
 
     flush(State),
     ets:delete(metrics, Path),

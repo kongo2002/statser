@@ -85,6 +85,8 @@ init([]) ->
                 ?WORKER(router, statser_router, []),
                 % instrumentation service
                 ?WORKER(instrumentation, statser_instrumentation, []),
+                % metrics watcher
+                ?WORKER(metrics_watcher, statser_metrics_watcher, []),
                 % rate limiters
                 ?WORKER(create_limiter, statser_rate_limiter,
                        [create_limiter, <<"creates">>, Limits#rate_limit_config.creates_per_sec]),
