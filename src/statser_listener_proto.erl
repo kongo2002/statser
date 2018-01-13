@@ -2,6 +2,8 @@
 
 -behaviour(gen_server).
 
+-include("carbon.hrl").
+
 %% API
 -export([start_link/1]).
 
@@ -13,7 +15,9 @@
          terminate/2,
          code_change/3]).
 
--record(state, {socket}).
+-record(state, {socket, filters}).
+
+-define(LENGTH_SIZE, 4).
 
 %%%===================================================================
 %%% API
@@ -47,6 +51,8 @@ start_link(Socket) ->
 init(Socket) ->
     lager:debug("starting new protobuf listener instance [~w]", [self()]),
 
+    gen_server:cast(self(), accept),
+
     {ok, #state{socket=Socket}}.
 
 %%--------------------------------------------------------------------
@@ -77,6 +83,19 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(accept, State) ->
+    % accept connection
+    {ok, Socket} = gen_tcp:accept(State#state.socket),
+
+    Filters = statser_config:get_metric_filters(),
+
+    % trigger new listener
+    statser_listeners_sup:start_listener(protobuf_listeners),
+
+    self() ! read,
+
+    {noreply, State#state{socket=Socket, filters=Filters}};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -90,6 +109,27 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(read, #state{socket=Socket} = State) ->
+    Length = read_length(Socket),
+    {ok, Data} = gen_tcp:recv(Socket, Length),
+
+    Payload = carbon:decode_msg(Data, 'Payload'),
+    lager:debug("read data: ~p", [Payload]),
+
+    lists:foreach(fun(#'Metric'{metric=M, points=Ps}) ->
+                          Metric = list_to_binary(M),
+                          lists:foreach(fun(#'Point'{value=V, timestamp=TS}) ->
+                                                gen_server:cast(statser_router, {line, Metric, V, TS})
+                                        end, Ps)
+                  end, Payload#'Payload'.metrics),
+
+    self() ! read,
+    {noreply, State};
+
+handle_info({tcp_closed, Sock}, State) ->
+    lager:debug("socket ~w closed [~w]", [Sock, self()]),
+    {stop, normal, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -122,3 +162,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+read_length(Socket) ->
+    {ok, <<Length:32/unsigned-integer-big>> = Data} = gen_udp:recv(Socket, ?LENGTH_SIZE),
+    lager:debug("read length: ~p (~p)", [Length, Data]),
+    Length.

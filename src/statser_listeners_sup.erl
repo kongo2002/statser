@@ -37,7 +37,7 @@ init(Config) ->
                [MetricsPort, ChildName]),
 
     % open listening socket
-    ListenParams = [{active, false}, binary, {packet, line}],
+    ListenParams = [{active, false}, binary] ++ Config#listener_config.options,
     {ok, ListenSocket} = gen_tcp:listen(MetricsPort, ListenParams),
 
     % spawn initial pool of listeners

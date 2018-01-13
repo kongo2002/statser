@@ -97,7 +97,8 @@ init([]) ->
                          child_name=statser_listener,
                          % TODO: configurable
                          port=2003,
-                         listeners=20
+                         listeners=20,
+                         options=[{packet, line}]
                         }]),
                 ?SUP(metrics, statser_metrics_sup, []),
                 % health endpoint

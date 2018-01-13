@@ -32,7 +32,8 @@
           listeners :: integer(),
           port :: integer(),
           supervisor :: atom(),
-          child_name :: atom()
+          child_name :: atom(),
+          options=[] :: [atom() | tuple()]
          }).
 
 -record(rate_limit_config, {

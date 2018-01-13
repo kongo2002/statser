@@ -47,12 +47,9 @@ start_link(Socket) ->
 init(Socket) ->
     lager:debug("starting new listener instance [~w]", [self()]),
 
-    Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
-    Filters = statser_config:get_metric_filters(),
-
     gen_server:cast(self(), accept),
 
-    {ok, #state{socket=Socket, pattern=Pattern, filters=Filters}}.
+    {ok, #state{socket=Socket}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -88,10 +85,13 @@ handle_cast(accept, State) ->
 
     listen(Socket),
 
-    % trigger new listener
-    statser_listeners_sup:start_listener(),
+    Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
+    Filters = statser_config:get_metric_filters(),
 
-    {noreply, State#state{socket=Socket}};
+    % trigger new listener
+    statser_listeners_sup:start_listener(listeners),
+
+    {noreply, State#state{socket=Socket, pattern=Pattern, filters=Filters}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
