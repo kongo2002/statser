@@ -13,8 +13,10 @@
          get_data_dir/0,
          get_metric_filters/0,
          get_rate_limits/0,
+         get_protobuf_config/0,
          metric_passes_filters/2,
-         udp_is_enabled/1]).
+         udp_is_enabled/1,
+         protobuf_is_enabled/1]).
 
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
@@ -27,6 +29,8 @@
 -define(FALLBACK_UDP_CONFIG, #udp_config{port=none,
                                          interval=10000,
                                          prune_after=300000}).
+
+-define(FALLBACK_PROTOBUF_CONFIG, #protobuf_config{port=0}).
 
 -define(FALLBACK_RETENTIONS, [#retention_definition{raw="1m:1d",
                                                     seconds=60,
@@ -58,12 +62,13 @@ load_config(ConfigFile) ->
            end,
 
     % parse contents
-    {Storages, Aggregations, WL, BL, Udp, DataDir, RateLimits} = load_documents(Docs),
+    {Storages, Aggregations, WL, BL, Udp, Protobuf, DataDir, RateLimits} = load_documents(Docs),
 
     update(storages, Storages),
     update(aggregations, Aggregations),
     update(metric_filters, #metric_filters{whitelist=WL, blacklist=BL}),
     update(udp_config, Udp),
+    update(protobuf_config, Protobuf),
     update(data_dir, DataDir),
     update(rate_limits, RateLimits).
 
@@ -84,6 +89,10 @@ get_metric_filters() ->
 
 get_udp_config() ->
     application:get_env(statser, udp_config, ?FALLBACK_UDP_CONFIG).
+
+
+get_protobuf_config() ->
+    application:get_env(statser, protobuf_config, ?FALLBACK_PROTOBUF_CONFIG).
 
 
 get_data_dir() ->
@@ -162,7 +171,12 @@ update(Type, Values) ->
 load_documents([Document]) ->
     load_document(Document);
 load_documents([]) ->
-    {[], [], [], [], ?FALLBACK_UDP_CONFIG, ?FALLBACK_METRICS_DATA_DIR, ?FALLBACK_RATE_LIMITS}.
+    {[], [], [], [],
+     ?FALLBACK_UDP_CONFIG,
+     ?FALLBACK_PROTOBUF_CONFIG,
+     ?FALLBACK_METRICS_DATA_DIR,
+     ?FALLBACK_RATE_LIMITS
+    }.
 
 
 load_document(Doc) ->
@@ -183,13 +197,16 @@ load_document(Doc) ->
     Udp = load_udp_config(proplists:get_value("udp", Doc, [])),
     lager:info("loaded UDP config: ~p", [Udp]),
 
+    Protobuf = load_protobuf_config(proplists:get_value("protobuf", Doc, [])),
+    lager:info("loaded protobuf config: ~p", [Protobuf]),
+
     DataDir = load_data_dir(proplists:get_value("data_dir", Doc)),
     lager:info("loaded data directory config: ~p", [DataDir]),
 
     RateLimits = load_rate_limits(proplists:get_value("rate_limits", Doc)),
     lager:info("loaded rate limits: ~p", [RateLimits]),
 
-    {Storages, Aggregations, WhiteList, BlackList, Udp, DataDir, RateLimits}.
+    {Storages, Aggregations, WhiteList, BlackList, Udp, Protobuf, DataDir, RateLimits}.
 
 
 load_data_dir(Value) when is_list(Value) ->
@@ -239,6 +256,22 @@ load_udp_config(_Invalid, Config) -> Config.
 udp_is_enabled(#udp_config{port=Port}) when is_number(Port) ->
     Port > 0;
 udp_is_enabled(_) -> false.
+
+
+load_protobuf_config(Xs) ->
+    load_protobuf_config(Xs, ?FALLBACK_PROTOBUF_CONFIG).
+
+load_protobuf_config([{"port", Port} | Xs], Config) when is_number(Port) ->
+    load_protobuf_config(Xs, Config#protobuf_config{port=Port});
+load_protobuf_config([_ | Xs], Config) ->
+    load_protobuf_config(Xs, Config);
+load_protobuf_config(_Invalid, Config) ->
+    Config.
+
+
+protobuf_is_enabled(#protobuf_config{port=Port}) when is_number(Port) ->
+    Port > 0;
+protobuf_is_enabled(_Other) -> false.
 
 
 load_list_expressions(Ls) ->
@@ -426,7 +459,7 @@ load_from_string(Str, Func) ->
 
 
 load_aggregation_from_string_test_() ->
-    GetAggregation = fun({_Storage, Aggs, _WL, _BL, _Udp, _Dir, _RL}) -> Aggs end,
+    GetAggregation = fun({_Storage, Aggs, _WL, _BL, _Udp, _PB, _Dir, _RL}) -> Aggs end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetAggregation)),
@@ -450,7 +483,7 @@ load_aggregate_from_file_test_() ->
 
 
 load_whitelist_from_string_test_() ->
-    GetWL = fun({_Storage, _Aggs, WL, _BL, _Udp, _Dir, _RL}) -> WL end,
+    GetWL = fun({_Storage, _Aggs, WL, _BL, _Udp, _PB, _Dir, _RL}) -> WL end,
     {setup, fun setup/0,
      [?_assertEqual([], load_from_string("", GetWL)),
       ?_assertEqual([], load_from_string("whitelist:", GetWL)),
@@ -462,7 +495,7 @@ load_whitelist_from_string_test_() ->
 
 
 load_blacklist_from_string_test_() ->
-    GetBL = fun({_Storage, _Aggs, _WL, BL, _Udp, _Dir, _RL}) -> BL end,
+    GetBL = fun({_Storage, _Aggs, _WL, BL, _Udp, _PB, _Dir, _RL}) -> BL end,
     {setup, fun setup/0,
      [?_assertEqual([], load_from_string("", GetBL)),
       ?_assertEqual([], load_from_string("blacklist:", GetBL)),
@@ -474,7 +507,7 @@ load_blacklist_from_string_test_() ->
 
 
 load_rate_limits_from_string_test_() ->
-    GetLimits = fun({_Storage, _Aggs, _WL, _BL, _Udp, _Dir, RL}) -> RL end,
+    GetLimits = fun({_Storage, _Aggs, _WL, _BL, _Udp, _PB, _Dir, RL}) -> RL end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_RATE_LIMITS, load_from_string("", GetLimits)),
       ?_assertEqual(?FALLBACK_RATE_LIMITS, load_from_string("rate_limits:", GetLimits)),
@@ -485,7 +518,7 @@ load_rate_limits_from_string_test_() ->
 
 
 load_udp_config_from_string_test_() ->
-    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir, _RL}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _PB, _Dir, _RL}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("", GetUdp)),
       ?_assertEqual(?FALLBACK_UDP_CONFIG, load_from_string("udp:", GetUdp)),
@@ -495,8 +528,19 @@ load_udp_config_from_string_test_() ->
      ]}.
 
 
+load_protobuf_config_from_string_test_() ->
+    GetPB = fun({_Storage, _Aggs, _WL, _BL, Udp, PB, _Dir, _RL}) -> PB end,
+    {setup, fun setup/0,
+     [?_assertEqual(?FALLBACK_PROTOBUF_CONFIG, load_from_string("", GetPB)),
+      ?_assertEqual(?FALLBACK_PROTOBUF_CONFIG, load_from_string("protobuf:", GetPB)),
+      ?_assertEqual(?FALLBACK_PROTOBUF_CONFIG, load_from_string("protobuf: invalid", GetPB)),
+      ?_assertEqual(#protobuf_config{port=10010},
+                    load_from_string("protobuf:\n port: 10010", GetPB))
+     ]}.
+
+
 load_data_dir_from_string_test_() ->
-    GetDir = fun({_Storage, _Aggs, _WL, _BL, _Udp, Dir, _RL}) -> Dir end,
+    GetDir = fun({_Storage, _Aggs, _WL, _BL, _Udp, _PB, Dir, _RL}) -> Dir end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("", GetDir)),
       ?_assertEqual(?FALLBACK_METRICS_DATA_DIR, load_from_string("data_dir:", GetDir)),
@@ -507,7 +551,7 @@ load_data_dir_from_string_test_() ->
 
 
 udp_is_enabled_test_() ->
-    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _Dir, _RL}) -> Udp end,
+    GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _PB, _Dir, _RL}) -> Udp end,
     {setup, fun setup/0,
      [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
       ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
@@ -516,7 +560,7 @@ udp_is_enabled_test_() ->
 
 
 load_storage_from_string_test_() ->
-    GetStorage = fun({Storage, _Aggs, _WL, _BL, _Udp, _Dir, _RL}) -> Storage end,
+    GetStorage = fun({Storage, _Aggs, _WL, _BL, _Udp, _PB, _Dir, _RL}) -> Storage end,
     {setup, fun setup/0,
      [% empty or stub configurations
       ?_assertEqual([], load_from_string("", GetStorage)),

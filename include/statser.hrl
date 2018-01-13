@@ -24,6 +24,10 @@
           prune_after :: integer()
          }).
 
+-record(protobuf_config, {
+          port :: integer()
+         }).
+
 -record(rate_limit_config, {
           creates_per_sec :: integer(),
           updates_per_sec :: integer()
