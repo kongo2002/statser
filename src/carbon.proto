@@ -1,0 +1,19 @@
+// carbon's protobuf definition
+// see: https://github.com/graphite-project/carbon
+
+syntax = "proto3";
+package carbon;
+
+message Point {
+  uint32 timestamp = 1;
+  double value = 2;
+}
+
+message Metric {
+  string metric = 1;
+  repeated Point points = 2;
+}
+
+message Payload {
+  repeated Metric metrics = 1;
+}
