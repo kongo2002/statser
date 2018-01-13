@@ -529,7 +529,7 @@ load_udp_config_from_string_test_() ->
 
 
 load_protobuf_config_from_string_test_() ->
-    GetPB = fun({_Storage, _Aggs, _WL, _BL, Udp, PB, _Dir, _RL}) -> PB end,
+    GetPB = fun({_Storage, _Aggs, _WL, _BL, _Udp, PB, _Dir, _RL}) -> PB end,
     {setup, fun setup/0,
      [?_assertEqual(?FALLBACK_PROTOBUF_CONFIG, load_from_string("", GetPB)),
       ?_assertEqual(?FALLBACK_PROTOBUF_CONFIG, load_from_string("protobuf:", GetPB)),
