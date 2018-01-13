@@ -28,6 +28,13 @@
           port :: integer()
          }).
 
+-record(listener_config, {
+          listeners :: integer(),
+          port :: integer(),
+          supervisor :: atom(),
+          child_name :: atom()
+         }).
+
 -record(rate_limit_config, {
           creates_per_sec :: integer(),
           updates_per_sec :: integer()

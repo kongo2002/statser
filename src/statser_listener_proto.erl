@@ -1,4 +1,4 @@
--module(statser_listener).
+-module(statser_listener_proto).
 
 -behaviour(gen_server).
 
@@ -13,7 +13,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {socket, pattern, filters}).
+-record(state, {socket}).
 
 %%%===================================================================
 %%% API
@@ -45,14 +45,9 @@ start_link(Socket) ->
 %% @end
 %%--------------------------------------------------------------------
 init(Socket) ->
-    lager:debug("starting new listener instance [~w]", [self()]),
+    lager:debug("starting new protobuf listener instance [~w]", [self()]),
 
-    Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
-    Filters = statser_config:get_metric_filters(),
-
-    gen_server:cast(self(), accept),
-
-    {ok, #state{socket=Socket, pattern=Pattern, filters=Filters}}.
+    {ok, #state{socket=Socket}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -82,17 +77,6 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(accept, State) ->
-    % accept connection
-    {ok, Socket} = gen_tcp:accept(State#state.socket),
-
-    listen(Socket),
-
-    % trigger new listener
-    statser_listeners_sup:start_listener(),
-
-    {noreply, State#state{socket=Socket}};
-
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -106,28 +90,6 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({tcp, _Sock, Data}, State) ->
-    case process_line(State, Data) of
-        {skip, _, _} ->
-            statser_instrumentation:increment(<<"metrics-blacklisted">>);
-        {Path, {ok, Value}, {ok, TimeStamp}} ->
-            Line = {line, Path, Value, TimeStamp},
-            gen_server:cast(statser_router, Line),
-
-            statser_instrumentation:increment(<<"metrics-received">>),
-            lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]);
-        _Error ->
-            statser_instrumentation:increment(<<"invalid-metrics">>),
-            lager:warning("invalid metric received: ~p", [Data])
-    end,
-
-    listen(State#state.socket),
-    {noreply, State};
-
-handle_info({tcp_closed, Sock}, State) ->
-    lager:debug("socket ~w closed [~w]", [Sock, self()]),
-    {stop, normal, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -143,7 +105,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    statser_listeners_sup:start_listener(listeners),
+    statser_listeners_sup:start_listener(protobuf_listeners),
     ok.
 
 %%--------------------------------------------------------------------
@@ -160,38 +122,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-listen(Socket) ->
-    inet:setopts(Socket, [{active, once}]).
-
-process_line(#state{pattern=Pattern, filters=Filters}, Data) ->
-    case binary:split(Data, Pattern, [global, trim_all]) of
-        % usual graphite format: 'path value timestamp'
-        [Path, ValueBS, TimeStampBS] ->
-            Value = statser_util:to_number(ValueBS),
-            TimeStamp = to_epoch(TimeStampBS),
-            {filter_path(Path, Filters), Value, TimeStamp};
-
-        % graphite format w/o timestamp: 'path value'
-        [Path, ValueBS] ->
-            Value = statser_util:to_number(ValueBS),
-            TimeStamp = erlang:system_time(second),
-            {filter_path(Path, Filters), Value, {ok, TimeStamp}};
-
-        _Otherwise ->
-            error
-    end.
-
-filter_path(Path, Filters) ->
-    case statser_config:metric_passes_filters(Path, Filters) of
-        true -> Path;
-        false -> skip
-    end.
-
-to_epoch(Binary) ->
-    List = binary_to_list(Binary),
-    case string:to_integer(List) of
-        {error, _} -> error;
-        {Result, _Rest} -> {ok, Result}
-    end.
-

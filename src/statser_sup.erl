@@ -68,6 +68,7 @@ init([]) ->
 
     Limits = statser_config:get_rate_limits(),
     UdpConfig = statser_config:get_udp_config(),
+    ProtobufConfig = statser_config:get_protobuf_config(),
 
     UdpChild =
     case statser_config:udp_is_enabled(UdpConfig) of
@@ -75,9 +76,29 @@ init([]) ->
         false -> []
     end,
 
+    ProtobufSup =
+    case statser_config:protobuf_is_enabled(ProtobufConfig) of
+        true ->
+            [?SUP(protobuf_listeners, statser_listeners_sup,
+                  [#listener_config{
+                      supervisor=protobuf_listeners,
+                      child_name=statser_listener_proto,
+                      port=ProtobufConfig#protobuf_config.port,
+                      listeners=10
+                     }])];
+        false -> []
+    end,
+
     lager:info("start listening for API requests on port ~w", [ApiPort]),
 
-    Children = [?SUP(listeners, statser_listeners_sup, []),
+    Children = [?SUP(listeners, statser_listeners_sup,
+                     [#listener_config{
+                         supervisor=listeners,
+                         child_name=statser_listener,
+                         % TODO: configurable
+                         port=2003,
+                         listeners=20
+                        }]),
                 ?SUP(metrics, statser_metrics_sup, []),
                 % health endpoint
                 ?WORKER(health, statser_health, []),
@@ -96,7 +117,7 @@ init([]) ->
                 ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
                ],
 
-    {ok, {{one_for_one, 5, 10}, Children ++ UdpChild}}.
+    {ok, {{one_for_one, 5, 10}, Children ++ UdpChild ++ ProtobufSup}}.
 
 %%%===================================================================
 %%% Internal functions
