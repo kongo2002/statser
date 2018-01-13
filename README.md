@@ -209,6 +209,9 @@ whitelist:
 
 ### TODO
 
+* graphite 1.1 features
+  - tag support
+  - [open metrics format][openmetrics]
 * [docker][docker] image
 * support even more functions of `graphite-web` render API
 * investigate into more elaborate archive write optimization
@@ -220,3 +223,4 @@ whitelist:
 [travis]: https://travis-ci.org/kongo2002/statser/
 [statsd]: https://github.com/etsy/statsd/
 [docker]: https://www.docker.com/
+[openmetrics]: https://github.com/RichiH/OpenMetrics/blob/master/metric_exposition_format.md
