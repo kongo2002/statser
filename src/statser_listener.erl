@@ -47,9 +47,9 @@ start_link(Socket) ->
 init(Socket) ->
     lager:debug("starting new listener instance [~w]", [self()]),
 
-    gen_server:cast(self(), accept),
+    gen_server:cast(self(), {accept, Socket}),
 
-    {ok, #state{socket=Socket}}.
+    {ok, #state{socket=none}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -79,11 +79,11 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(accept, State) ->
+handle_cast({accept, Socket}, State) ->
     % accept connection
-    {ok, Socket} = gen_tcp:accept(State#state.socket),
+    {ok, LSocket} = gen_tcp:accept(Socket),
 
-    listen(Socket),
+    listen(LSocket),
 
     Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
     Filters = statser_config:get_metric_filters(),
@@ -91,7 +91,7 @@ handle_cast(accept, State) ->
     % trigger new listener
     statser_listeners_sup:start_listener(listeners),
 
-    {noreply, State#state{socket=Socket, pattern=Pattern, filters=Filters}};
+    {noreply, State#state{socket=LSocket, pattern=Pattern, filters=Filters}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -128,7 +128,8 @@ handle_info({tcp_closed, Sock}, State) ->
     lager:debug("socket ~w closed [~w]", [Sock, self()]),
     {stop, normal, State};
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    lager:warning("expected message in protobuf listener: ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -142,7 +143,11 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    case State#state.socket of
+        none -> ok;
+        Socket -> gen_tcp:close(Socket)
+    end,
     statser_listeners_sup:start_listener(listeners),
     ok.
 
