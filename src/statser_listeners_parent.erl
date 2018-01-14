@@ -18,6 +18,8 @@
 
 -record(state, {config, socket}).
 
+-define(MAX_PREPARE_ATTEMPTS, 10).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -55,7 +57,7 @@ init(Config) ->
     Type = Config#listener_config.child_name,
     lager:debug("initializing parent for listeners of type ~p", [Type]),
 
-    gen_server:cast(self(), prepare),
+    self() ! {prepare, ?MAX_PREPARE_ATTEMPTS},
 
     {ok, #state{config=Config, socket=none}}.
 
@@ -87,24 +89,6 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(prepare, #state{config=Config} = State) ->
-    SelfType = Config#listener_config.supervisor,
-    Port = Config#listener_config.port,
-    ChildName = Config#listener_config.child_name,
-
-    lager:info("start listening for metrics on port ~w [type ~p]",
-               [Port, ChildName]),
-
-    % open listening socket
-    ListenParams = [{active, false}, binary] ++ Config#listener_config.options,
-    {ok, Socket} = gen_tcp:listen(Port, ListenParams),
-
-    % start initial batch of listeners
-    lists:foreach(fun(_) -> start_listener(SelfType) end,
-                  lists:seq(1, Config#listener_config.listeners)),
-
-    {noreply, State#state{socket=Socket}};
-
 handle_cast(start, #state{config=Config} = State) ->
     Module = Config#listener_config.child_name,
     {ok, _Pid} = gen_server:start_link(Module, State#state.socket, []),
@@ -124,6 +108,36 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({prepare, Attempts}, State) when Attempts < 1 ->
+    {stop, {error, listen_attempts_exceeded}, State};
+
+handle_info({prepare, Attempts}, #state{config=Config} = State) ->
+    SelfType = Config#listener_config.supervisor,
+    Port = Config#listener_config.port,
+    ChildName = Config#listener_config.child_name,
+
+    % open listening socket
+    ListenParams = [{active, false}, binary] ++ Config#listener_config.options,
+    case gen_tcp:listen(Port, ListenParams) of
+        {ok, Socket} ->
+            lager:info("start listening for metrics on port ~w [type ~p]",
+                       [Port, ChildName]),
+
+            % start initial batch of listeners
+            lists:foreach(fun(_) -> start_listener(SelfType) end,
+                          lists:seq(1, Config#listener_config.listeners)),
+            {noreply, State#state{socket=Socket}};
+        % we only handle this error in here
+        % because it's a common scenario in development scenarios
+        % when quickly restarting the service
+        {error, eaddrinuse} ->
+            AttemptsLeft = Attempts - 1,
+            lager:warning("address already in use - ~w attempts left", [AttemptsLeft]),
+            RescheduleInMillis = (?MAX_PREPARE_ATTEMPTS - AttemptsLeft) * ?MILLIS_PER_SEC,
+            erlang:send_after(RescheduleInMillis, self(), {prepare, AttemptsLeft}),
+            {noreply, State}
+    end;
+
 handle_info(Info, #state{config=Config} = State) ->
     Type = Config#listener_config.child_name,
     lager:warning("unexpected message in listener parent for ~p: ~p", [Type, Info]),
