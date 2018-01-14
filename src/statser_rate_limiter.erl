@@ -2,6 +2,10 @@
 
 -behaviour(gen_server).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -include("statser.hrl").
 
 %% API
@@ -135,13 +139,8 @@ handle_info(refill, #state{limit=Limit, name=Name} = State) ->
     {noreply, schedule_refill(NewState)};
 
 handle_info({drain, Reply, To}, State) ->
-    case drain(State) of
-        {ok, NewState} ->
-            To ! Reply,
-            {noreply, NewState};
-        none ->
-            {noreply, State}
-    end;
+    NewState = drain(State, Reply, To),
+    {noreply, NewState};
 
 handle_info(health, #state{name=Name} = State) ->
     alive(Name),
@@ -232,3 +231,88 @@ drain_queue(Queue, Members, Remaining) ->
             Members0 = sets:del_element(To, Members),
             drain_queue(Q, Members0, Remaining-1)
     end.
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+setup() ->
+    process_flag(trap_exit, true),
+    {ok, Pid} = gen_server:start_link(?MODULE, [test, <<"test">>, 2], []),
+    Pid.
+
+
+cleanup(Pid) ->
+    exit(Pid, kill),
+    ?assertEqual(false, is_process_alive(Pid)).
+
+
+rate_limiter_test_() ->
+    {foreach, fun setup/0, fun cleanup/1,
+     [fun drain_possible/1,
+      fun drain_exceeded/1,
+      fun drain_callback_info/1,
+      fun drain_callback_cast/1
+     ]}.
+
+
+drain_possible(Pid) ->
+    fun() ->
+            % limiter is configured with 2/sec
+            ?assertEqual(ok, gen_server:call(Pid, drain)),
+            timer:sleep(600),
+            ?assertEqual(ok, gen_server:call(Pid, drain))
+    end.
+
+
+drain_exceeded(Pid) ->
+    fun() ->
+            % limiter is configured with 2/sec
+            ?assertEqual(ok, gen_server:call(Pid, drain)),
+            timer:sleep(600),
+            ?assertEqual(ok, gen_server:call(Pid, drain)),
+            % this one should fail
+            ?assertEqual(none, gen_server:call(Pid, drain))
+    end.
+
+
+drain_callback_info(Pid) ->
+    ReceiveWithin = fun(Timeout, Cmd) ->
+                            Pid ! {drain, Cmd, self()},
+                            receive
+                                Resp when Resp == Cmd ->
+                                    Cmd
+                            after Timeout ->
+                                      none
+                            end
+                    end,
+    fun() ->
+            % basically immediate response expected
+            ?assertEqual(foo, ReceiveWithin(100, foo)),
+            % at least 500 ms
+            ?assertEqual(foo, ReceiveWithin(600, foo)),
+            % shouldn't get a response that fast
+            ?assertEqual(none, ReceiveWithin(100, foo))
+    end.
+
+drain_callback_cast(Pid) ->
+    fun() ->
+            Self = self(),
+            ExpectCmd = fun() ->
+                                gen_server:cast(Pid, {drain, foo, self()}),
+                                receive
+                                    Resp when Resp == foo ->
+                                        Self ! ok
+                                after 1600 ->
+                                          none
+                                end
+                        end,
+
+            [spawn_link(ExpectCmd) || _P <- lists:seq(1, 3)],
+            Results = [receive ok -> ok after 1600 -> none end || _P <- lists:seq(1, 3)],
+
+            ?assertEqual([ok, ok, ok], Results)
+    end.
+-endif.
