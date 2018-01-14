@@ -204,6 +204,7 @@ notify(Subs, Interval, Metrics, Services) ->
               {[{name, <<"server">>}, {good, true}, {timestamp, Now}]}],
 
     Json = jiffy:encode({[{stats, Stats},
+                          {timestamp, Now},
                           {interval, Interval},
                           {health, Health ++ SrvHealth}]}),
     Chunk = iolist_to_binary(["data: ", Json, "\n\n"]),
