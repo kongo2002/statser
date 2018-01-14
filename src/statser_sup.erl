@@ -79,27 +79,27 @@ init([]) ->
     ProtobufSup =
     case statser_config:protobuf_is_enabled(ProtobufConfig) of
         true ->
-            [?SUP(protobuf_listeners, statser_listeners_sup,
-                  [#listener_config{
-                      supervisor=protobuf_listeners,
-                      child_name=statser_listener_proto,
-                      port=ProtobufConfig#protobuf_config.port,
-                      listeners=10
-                     }])];
+            [?WORKER(protobuf_listeners, statser_listeners_parent,
+                     [#listener_config{
+                         supervisor=protobuf_listeners,
+                         child_name=statser_listener_proto,
+                         port=ProtobufConfig#protobuf_config.port,
+                         listeners=10
+                        }])];
         false -> []
     end,
 
     lager:info("start listening for API requests on port ~w", [ApiPort]),
 
-    Children = [?SUP(listeners, statser_listeners_sup,
-                     [#listener_config{
-                         supervisor=listeners,
-                         child_name=statser_listener,
-                         % TODO: configurable
-                         port=2003,
-                         listeners=20,
-                         options=[{packet, line}]
-                        }]),
+    Children = [?WORKER(listeners, statser_listeners_parent,
+                        [#listener_config{
+                            supervisor=listeners,
+                            child_name=statser_listener,
+                            % TODO: configurable
+                            port=2003,
+                            listeners=20,
+                            options=[{packet, line}]
+                           }]),
                 ?SUP(metrics, statser_metrics_sup, []),
                 % health endpoint
                 ?WORKER(health, statser_health, []),

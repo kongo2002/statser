@@ -90,7 +90,7 @@ handle_cast({accept, Socket}, State) ->
     Filters = statser_config:get_metric_filters(),
 
     % trigger new listener
-    statser_listeners_sup:start_listener(protobuf_listeners),
+    statser_listeners_parent:start_listener(protobuf_listeners),
 
     self() ! read,
 
@@ -151,10 +151,11 @@ handle_info(Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     case State#state.socket of
-        none -> ok;
-        Socket -> gen_tcp:close(Socket)
+        none ->
+            statser_listeners_parent:start_listener(protobuf_listeners);
+        Socket ->
+            gen_tcp:close(Socket)
     end,
-    statser_listeners_sup:start_listener(protobuf_listeners),
     ok.
 
 %%--------------------------------------------------------------------

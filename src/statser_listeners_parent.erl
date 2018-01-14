@@ -1,9 +1,12 @@
--module(statser_listener).
+-module(statser_listeners_parent).
 
 -behaviour(gen_server).
 
+-include("statser.hrl").
+
 %% API
--export([start_link/1]).
+-export([start_link/1,
+         start_listener/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -13,7 +16,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {socket, pattern, filters}).
+-record(state, {config, socket}).
 
 %%%===================================================================
 %%% API
@@ -26,8 +29,12 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Socket) ->
-    gen_server:start_link(?MODULE, Socket, []).
+start_link(#listener_config{supervisor=Supervisor} = Config) ->
+    gen_server:start_link({local, Supervisor}, ?MODULE, Config, []).
+
+
+start_listener(Supervisor) ->
+    gen_server:cast(Supervisor, start).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -44,12 +51,13 @@ start_link(Socket) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init(Socket) ->
-    lager:debug("starting new listener instance [~w]", [self()]),
+init(Config) ->
+    Type = Config#listener_config.child_name,
+    lager:debug("initializing parent for listeners of type ~p", [Type]),
 
-    gen_server:cast(self(), {accept, Socket}),
+    gen_server:cast(self(), prepare),
 
-    {ok, #state{socket=none}}.
+    {ok, #state{config=Config, socket=none}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -79,19 +87,29 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({accept, Socket}, State) ->
-    % accept connection
-    {ok, LSocket} = gen_tcp:accept(Socket),
+handle_cast(prepare, #state{config=Config} = State) ->
+    SelfType = Config#listener_config.supervisor,
+    Port = Config#listener_config.port,
+    ChildName = Config#listener_config.child_name,
 
-    listen(LSocket),
+    lager:info("start listening for metrics on port ~w [type ~p]",
+               [Port, ChildName]),
 
-    Pattern = binary:compile_pattern([<<" ">>, <<"\t">>]),
-    Filters = statser_config:get_metric_filters(),
+    % open listening socket
+    ListenParams = [{active, false}, binary] ++ Config#listener_config.options,
+    {ok, Socket} = gen_tcp:listen(Port, ListenParams),
 
-    % trigger new listener
-    statser_listeners_parent:start_listener(listeners),
+    % start initial batch of listeners
+    lists:foreach(fun(_) -> start_listener(SelfType) end,
+                  lists:seq(1, Config#listener_config.listeners)),
 
-    {noreply, State#state{socket=LSocket, pattern=Pattern, filters=Filters}};
+    {noreply, State#state{socket=Socket}};
+
+handle_cast(start, #state{config=Config} = State) ->
+    Module = Config#listener_config.child_name,
+    {ok, _Pid} = gen_server:start_link(Module, State#state.socket, []),
+
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -106,30 +124,9 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({tcp, _Sock, Data}, State) ->
-    case process_line(State, Data) of
-        {skip, _, _} ->
-            statser_instrumentation:increment(<<"metrics-blacklisted">>);
-        {Path, {ok, Value}, {ok, TimeStamp}} ->
-            Line = {line, Path, Value, TimeStamp},
-            gen_server:cast(statser_router, Line),
-
-            statser_instrumentation:increment(<<"metrics-received">>),
-            lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]);
-        _Error ->
-            statser_instrumentation:increment(<<"invalid-metrics">>),
-            lager:warning("invalid metric received: ~p", [Data])
-    end,
-
-    listen(State#state.socket),
-    {noreply, State};
-
-handle_info({tcp_closed, Sock}, State) ->
-    lager:debug("socket ~w closed [~w]", [Sock, self()]),
-    {stop, normal, State};
-
-handle_info(Info, State) ->
-    lager:warning("expected message in protobuf listener: ~p", [Info]),
+handle_info(Info, #state{config=Config} = State) ->
+    Type = Config#listener_config.child_name,
+    lager:warning("unexpected message in listener parent for ~p: ~p", [Type, Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -143,13 +140,11 @@ handle_info(Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, State) ->
-    case State#state.socket of
-        none ->
-            statser_listeners_parent:start_listener(listeners);
-        Socket ->
-            gen_tcp:close(Socket)
-    end,
+terminate(_Reason, #state{socket=none}) ->
+    ok;
+
+terminate(_Reason, #state{socket=Socket}) ->
+    gen_tcp:close(Socket),
     ok.
 
 %%--------------------------------------------------------------------
@@ -166,38 +161,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-listen(Socket) ->
-    inet:setopts(Socket, [{active, once}]).
-
-process_line(#state{pattern=Pattern, filters=Filters}, Data) ->
-    case binary:split(Data, Pattern, [global, trim_all]) of
-        % usual graphite format: 'path value timestamp'
-        [Path, ValueBS, TimeStampBS] ->
-            Value = statser_util:to_number(ValueBS),
-            TimeStamp = to_epoch(TimeStampBS),
-            {filter_path(Path, Filters), Value, TimeStamp};
-
-        % graphite format w/o timestamp: 'path value'
-        [Path, ValueBS] ->
-            Value = statser_util:to_number(ValueBS),
-            TimeStamp = erlang:system_time(second),
-            {filter_path(Path, Filters), Value, {ok, TimeStamp}};
-
-        _Otherwise ->
-            error
-    end.
-
-filter_path(Path, Filters) ->
-    case statser_config:metric_passes_filters(Path, Filters) of
-        true -> Path;
-        false -> skip
-    end.
-
-to_epoch(Binary) ->
-    List = binary_to_list(Binary),
-    case string:to_integer(List) of
-        {error, _} -> error;
-        {Result, _Rest} -> {ok, Result}
-    end.
-
