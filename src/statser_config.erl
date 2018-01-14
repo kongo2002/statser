@@ -103,10 +103,11 @@ get_rate_limits() ->
     application:get_env(statser, rate_limits, ?FALLBACK_RATE_LIMITS).
 
 
-metric_passes_filters(Metric, Filters) ->
-    WhiteList = Filters#metric_filters.whitelist,
-    BlackList = Filters#metric_filters.blacklist,
-    passes_blacklist(Metric, BlackList) andalso passes_whitelist(Metric, WhiteList).
+metric_passes_filters(Metric, #metric_filters{whitelist=WhiteList, blacklist=BlackList}) ->
+    passes_blacklist(Metric, BlackList) andalso passes_whitelist(Metric, WhiteList);
+
+metric_passes_filters(_Metric, _InvalidOrNoFilters) ->
+    true.
 
 
 %%%===================================================================

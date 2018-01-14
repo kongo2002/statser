@@ -115,14 +115,14 @@ handle_info(read, #state{socket=Socket} = State) ->
             {ok, Data} = gen_tcp:recv(Socket, Length),
 
             Payload = carbon:decode_msg(Data, 'Payload'),
-            lager:debug("read data: ~p", [Payload]),
+            lager:debug("read protobuf data: ~p", [Payload]),
 
-            lists:foreach(fun(#'Metric'{metric=M, points=Ps}) ->
-                                  Metric = list_to_binary(M),
-                                  lists:foreach(fun(#'Point'{value=V, timestamp=TS}) ->
-                                                        gen_server:cast(statser_router, {line, Metric, V, TS})
-                                                end, Ps)
-                          end, Payload#'Payload'.metrics),
+            Metrics = protobuf_to_metrics(Payload, State#state.filters),
+
+            lists:foreach(fun(Line) ->
+                                  gen_server:cast(statser_router, Line),
+                                  statser_instrumentation:increment(<<"protobuf.handled-values">>)
+                          end, Metrics),
 
             self() ! read,
             {noreply, State};
@@ -184,3 +184,18 @@ read_length(Socket) ->
             lager:error("unexpected error in protobuf listener: ~p", [Unexpected]),
             error
     end.
+
+
+protobuf_to_metrics(#'Payload'{metrics=Metrics}, Filters) ->
+    lists:flatmap(fun(#'Metric'{metric=M, points=Ps}) ->
+                          Metric = list_to_binary(M),
+                          case statser_config:metric_passes_filters(Metric, Filters) of
+                              true ->
+                                  lists:map(fun(#'Point'{value=V, timestamp=TS}) ->
+                                                    {line, Metric, V, TS}
+                                            end, Ps);
+                              false ->
+                                  statser_instrumentation:increment(<<"metrics-blacklisted">>),
+                                  []
+                          end
+                  end, Metrics).
