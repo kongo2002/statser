@@ -2,7 +2,12 @@
 
 -behaviour(gen_server).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -include("carbon.hrl").
+-include("statser.hrl").
 
 %% API
 -export([start_link/1]).
@@ -199,3 +204,40 @@ protobuf_to_metrics(#'Payload'{metrics=Metrics}, Filters) ->
                                   []
                           end
                   end, Metrics).
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+metric_to_payload(Metric, Points) ->
+    MS = [#'Metric'{metric=Metric, points=Points}],
+    #'Payload'{metrics=MS}.
+
+
+pt(Value, TS) ->
+    #'Point'{value=Value, timestamp=TS}.
+
+
+mk_pattern(Expr) ->
+    {ok, Pattern} = re:compile(Expr, [no_auto_capture]),
+    #metric_pattern{name=Expr, pattern=Pattern}.
+
+
+protobuf_to_metrics_test_() ->
+    MS1 = metric_to_payload("foo.bar", []),
+    MS2 = metric_to_payload("foo.bar", [pt(100, 10), pt(200, 20), pt(300, 30)]),
+    MS3 = metric_to_payload("ham.eggs", [pt(100, 10), pt(200, 20), pt(300, 30)]),
+
+    Filters = #metric_filters{blacklist=[mk_pattern("^foo")]},
+
+    [?_assertEqual([], protobuf_to_metrics(MS1, none)),
+     ?_assertEqual([{line, <<"foo.bar">>, 100, 10},
+                    {line, <<"foo.bar">>, 200, 20},
+                    {line, <<"foo.bar">>, 300, 30}],
+                   protobuf_to_metrics(MS2, none)),
+     ?_assertEqual([], protobuf_to_metrics(MS2, Filters)),
+     ?_assertEqual(3, length(protobuf_to_metrics(MS3, Filters)))].
+
+-endif.
