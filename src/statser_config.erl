@@ -201,7 +201,7 @@ load_document(Doc) ->
     lager:info("loaded protobuf config: ~p", [Protobuf]),
 
     DataDir = load_data_dir(proplists:get_value("data_dir", Doc)),
-    lager:info("loaded data directory config: ~p", [DataDir]),
+    lager:info("loaded data directory config: ~s", [DataDir]),
 
     RateLimits = load_rate_limits(proplists:get_value("rate_limits", Doc)),
     lager:info("loaded rate limits: ~p", [RateLimits]),
