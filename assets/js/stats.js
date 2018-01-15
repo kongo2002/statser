@@ -42,9 +42,10 @@ $(document).ready(function() {
 
   // legend
   svg.append("text")
-    .attr("x", width+5)  // space legend
-    .attr("y", margin.top + 20)
-    .attr("class", "legend");
+    .attr("x", 10)  // space legend
+    .attr("y", 20)
+    .attr("class", "legend")
+    .text(graphName);
 
   // Scale the range of the data
   x.domain(d3.extent(metricsData, function(d) { return d.x; }));
@@ -65,7 +66,7 @@ $(document).ready(function() {
   // y axis
   svg.append("g")
     .attr("class", "yaxis")
-    .call(d3.axisLeft(y));
+    .call(d3.axisLeft(y).ticks(6));
 
   var update = function(data) {
     // Scale the range of the data
@@ -85,7 +86,7 @@ $(document).ready(function() {
 
     svg.select(".yaxis")
       .duration(duration)
-      .call(d3.axisLeft(y));
+      .call(d3.axisLeft(y).ticks(6));
   };
 
   var e = new EventSource('/.statser/stream');
