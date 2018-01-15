@@ -22,6 +22,7 @@
          code_change/3]).
 
 -define(DEFAULT_HEALTH_TIMER_INTERVAL, 30000).
+-define(HEALTH_UPDATE_INTERVAL_SECS, 10).
 
 -record(state, {subscribers=[], timer, interval, metrics, services}).
 
@@ -70,8 +71,7 @@ alive(Name) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    Interval = 60,
-
+    Interval = ?HEALTH_UPDATE_INTERVAL_SECS,
     lager:info("starting health service with update interval of ~w sec", [Interval]),
 
     State = #state{subscribers=[],
@@ -188,7 +188,7 @@ schedule_refresh(#state{interval=Interval} = State) ->
 notify(Subs, Interval, Metrics, Services) ->
     Now = erlang:system_time(second),
     Stats = lists:map(fun({K, V}) when is_number(V) ->
-                               PerSecond = V / Interval,
+                               PerSecond = V / Interval * ?MILLIS_PER_SEC,
                                {[{name, K}, {value, PerSecond}, {type, counter}]};
                           ({K, Vs}) when is_list(Vs) ->
                                Avg = statser_calc:safe_average(Vs),

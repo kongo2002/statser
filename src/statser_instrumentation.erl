@@ -24,6 +24,8 @@
 
 -record(state, {metrics, path, interval, timer}).
 
+-define(DEFAULT_INSTRUMENTATION_INTERVAL_SECS, 10).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -106,7 +108,8 @@ handle_cast(prepare, State) ->
     Path = <<"statser.instrumentation.", HostnameBS/binary, ".">>,
 
     % TODO: determine interval from configuration
-    Interval = 60 * ?MILLIS_PER_SEC,
+    % or rather ensure/check if the metrics archive retention matches correctly
+    Interval = ?DEFAULT_INSTRUMENTATION_INTERVAL_SECS * ?MILLIS_PER_SEC,
     State0 = State#state{interval=Interval, path=Path},
 
     lager:info("preparing instrumentation service timer with interval of ~w ms", [Interval]),

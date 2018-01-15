@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="/.statser/css/bootstrap.min.css">
     <link rel="stylesheet" href="/.statser/css/open-iconic-bootstrap.min.css">
     <title>statser dashboard</title>
+    <style>
+    .line {
+      fill: none;
+      stroke: #007bff;
+      stroke-width: 3px;
+    }
+    </style>
   </head>
   <body>
 
@@ -30,6 +37,11 @@
       <div>
         <dl id="health" class="row"></dl>
       </div>
+
+      <h2>Live</h2>
+
+      <div id="live" class="graph"></div>
+      <p></p>
 
       <h2>Metrics</h2>
 
@@ -58,6 +70,7 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
     <script src="/.statser/js/stats.js"></script>
   </body>
 </html>
