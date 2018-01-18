@@ -12,7 +12,8 @@
          floor/1,
          to_number/1,
          parse_unit/1,
-         parse_unit/2]).
+         parse_unit/2,
+         epoch_seconds_to_datetime/1]).
 
 
 to_number(Binary) ->
@@ -64,6 +65,14 @@ parse_unit(Value, [$w | _])   -> Value * 604800;
 parse_unit(Value, "mon" ++ _) -> Value * 2592000;
 parse_unit(Value, [$y | _])   -> Value * 31536000;
 parse_unit(_, _)              -> error.
+
+
+epoch_seconds_to_datetime(Seconds) ->
+    % calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0})
+    EpochSeconds = 62167219200,
+    {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:gregorian_seconds_to_datetime(EpochSeconds + Seconds),
+    lists:flatten(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
+                                [Year,Month,Day,Hour,Minute,Second])).
 
 
 %%
