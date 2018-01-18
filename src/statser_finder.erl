@@ -15,7 +15,12 @@ find_metrics_tree(Parts) ->
     find_metrics_tree(Parts, [Base]).
 
 find_metrics_tree(Parts, Cwd) ->
-    find_metrics(Parts, Cwd, true).
+    Ms0 = find_metrics(Parts, Cwd, true),
+
+    % in 'directory-mode' we want to strip out duplicates
+    % based on the last part's name
+    Ms = lists:ukeysort(1, Ms0),
+    lists:map(fun({F, MPath}) -> to_node(F, MPath) end, Ms).
 
 
 find_metrics(Parts) ->
@@ -23,7 +28,12 @@ find_metrics(Parts) ->
     find_metrics(Parts, [Base]).
 
 find_metrics(Parts, Cwd) ->
-    find_metrics(Parts, Cwd, false).
+    Ms0 = find_metrics(Parts, Cwd, false),
+
+    % in here we just want to sort the nodes by their names
+    % in order to return 'stable' results
+    Ms = lists:sort(fun by_name/2, Ms0),
+    lists:map(fun({F, MPath}) -> to_node(F, MPath) end, Ms).
 
 
 find_metrics([FilePart], Cwd, WithDirs) ->
@@ -31,13 +41,14 @@ find_metrics([FilePart], Cwd, WithDirs) ->
     Files = glob_whispers(FilePart, full_dir(Cwd)),
 
     % fetch directory entries as well (if requested)
-    Elements0 = case WithDirs of
-                    true -> Files ++ glob_dirs(FilePart, full_dir(Cwd));
-                    false -> Files
-                end,
+    Elements = case WithDirs of
+                   true ->
+                       Files ++ glob_dirs(FilePart, full_dir(Cwd));
+                   false ->
+                       Files
+               end,
 
-    Elements = lists:sort(fun by_name/2, Elements0),
-    lists:map(fun(E) -> to_node(E, MetricsPath) end, Elements);
+    lists:map(fun(E) -> {E, MetricsPath} end, Elements);
 
 find_metrics([DirPart | Rest], Cwd, WithDirs) ->
     DirCandidates = glob_dirs(DirPart, full_dir(Cwd)),
@@ -64,8 +75,8 @@ to_path(Path) ->
     list_to_binary(string:join(Path, ".")).
 
 
-by_name({_TypeA, NameA}, {_TypeB, NameB}) when NameA =< NameB -> true;
-by_name({_TypeA, _NameA}, {_TypeB, _NameB}) -> false.
+by_name({{_TypeA, NameA}, _}, {{_TypeB, NameB}, _}) when NameA =< NameB -> true;
+by_name({{_TypeA, _NameA}, _}, {{_TypeB, _NameB}, _}) -> false.
 
 
 glob_dirs(Dir, Cwd) when is_binary(Dir) ->

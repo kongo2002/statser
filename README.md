@@ -209,7 +209,6 @@ whitelist:
 
 ### TODO
 
-* remove duplicates in metrics API
 * graphite 1.1 features
   - tag support
   - [open metrics format][openmetrics]
