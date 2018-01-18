@@ -25,6 +25,7 @@
 -define(DELIMITER_PIPE, <<"|">>).
 -define(DELIMITER_COLON, <<":">>).
 -define(BASE_TIMER_CORRECTION, 50).
+-define(UDP_RECEIVE_BUFFER, 524288).
 
 %%%===================================================================
 %%% API
@@ -99,7 +100,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(accept, #state{config=Config} = State) ->
     Self = self(),
     Port = Config#udp_config.port,
-    {ok, Socket} = gen_udp:open(Port, [binary, {active, false}]),
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, false}, {recbuf, ?UDP_RECEIVE_BUFFER}]),
     lager:info("UDP listener opened port at ~w [~p]", [Port, Socket]),
 
     % TODO: handle exit/failure
