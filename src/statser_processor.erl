@@ -63,11 +63,11 @@ evaluate_call(<<"aliasByNode">>, [Series | Aliases], _From, _Until, _Now) ->
 
 % averageAbove
 evaluate_call(<<"averageAbove">>, [Series, Avg], _From, _Until, _Now) ->
-    lists:filter(fun(#series{values=Values}) -> statser_calc:safe_average(Values) >= Avg end, Series);
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_average(Values) >= Avg end, Series, "averageAbove");
 
 % averageBelow
 evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
-    lists:filter(fun(#series{values=Values}) -> statser_calc:safe_average(Values) =< Avg end, Series);
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_average(Values) =< Avg end, Series, "averageBelow");
 
 % averageOutsidePercentile
 evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now) when is_number(N0) ->
@@ -75,10 +75,10 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
     Avgs = lists:map(fun(#series{values=Values}) -> statser_calc:safe_average(Values) end, Series),
     LowPerc = percentile(Avgs, 100 - N),
     HighPerc = percentile(Avgs, N),
-    lists:filter(fun(#series{values=Values}) ->
+    filter_named(fun(#series{values=Values}) ->
                          Avg = statser_calc:safe_average(Values),
                          Avg =< LowPerc orelse Avg >= HighPerc
-                 end, Series);
+                 end, Series, "averageOutsidePercentile");
 
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
@@ -574,6 +574,18 @@ percentile(Values, N, Interpolate) ->
     end.
 
 
+filter_named(Func, Series, Name) ->
+    filter_named(Func, Series, Name, []).
+
+filter_named(Func, Series, Name, Args) ->
+    lists:foldr(fun(S, Acc) ->
+                        case Func(S) of
+                            true -> [with_function_name(S, Name, Args) | Acc];
+                            _Otherwise -> Acc
+                        end
+                end, [], Series).
+
+
 with_function_name(Series, Name) ->
     with_function_name(Series, Name, []).
 
@@ -655,15 +667,17 @@ derivative_test_() ->
 
 average_above_test_() ->
     Series = [pseudo_series([5.0, 7.0])],
-    [?_assertEqual(Series, evaluate_call(<<"averageAbove">>, [Series, 6.0], 0, 0, 0)),
+    Expected = [with_function_name(hd(Series), "averageAbove")],
+    [?_assertEqual(Expected, evaluate_call(<<"averageAbove">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual([], evaluate_call(<<"averageAbove">>, [Series, 6.5], 0, 0, 0))
     ].
 
 average_below_test_() ->
     Series = [pseudo_series([5.0, 7.0])],
+    Expected = [with_function_name(hd(Series), "averageBelow")],
     [?_assertEqual([], evaluate_call(<<"averageBelow">>, [Series, 5.5], 0, 0, 0)),
-     ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
-     ?_assertEqual(Series, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
+     ?_assertEqual(Expected, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
+     ?_assertEqual(Expected, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
     ].
 
 npercentile_test_() ->
@@ -681,8 +695,9 @@ average_outside_percentile_test_() ->
     S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
     S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
-    [?_assertEqual(S1 ++ S3, evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
-     ?_assertEqual(Series, evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
+    Named = fun(S) -> lists:map(fun(X) -> with_function_name(X, "averageOutsidePercentile") end, S) end,
+    [?_assertEqual(Named(S1 ++ S3), evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
+     ?_assertEqual(Named(Series), evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
     ].
 
 most_deviant_test_() ->
