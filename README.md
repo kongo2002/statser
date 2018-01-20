@@ -102,6 +102,7 @@ on my roadmap below.
     - `absolute`
     - `aliasByMetric`
     - `aliasByNode`
+    - `aliasSub`
     - `alias`
     - `averageAbove`
     - `averageBelow`

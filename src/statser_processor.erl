@@ -78,6 +78,14 @@ evaluate_call(<<"aliasByMetric">>, [Series], _From, _Until, _Now) ->
 evaluate_call(<<"aliasByNode">>, [Series | Aliases], _From, _Until, _Now) ->
     lists:map(fun(S) -> alias_target(S, Aliases) end, Series);
 
+% aliasSub
+evaluate_call(<<"aliasSub">>, [Series, Search, Replace], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Target = binary_to_list(S#series.target),
+                      Replaced = re:replace(Target, Search, Replace, [{return, binary}]),
+                      S#series{target=Replaced}
+              end, Series);
+
 % averageAbove
 evaluate_call(<<"averageAbove">>, [Series, Avg], _From, _Until, _Now) ->
     filter_named(fun(#series{values=Values}) -> statser_calc:safe_average(Values) >= Avg end, Series, "averageAbove");
@@ -635,16 +643,6 @@ with_function_name_test_() ->
     ].
 
 
-alias_target_test_() ->
-
-    [?_assertEqual(pseudo_target(<<"foo">>), alias_target(pseudo_target(<<"foo">>), [])),
-     ?_assertEqual(pseudo_target(<<"foo.bar">>), alias_target(pseudo_target(<<"foo.bar">>), [])),
-     ?_assertEqual(pseudo_target(<<"test">>), alias_target(pseudo_target(<<"foo.bar.test">>), [2])),
-     ?_assertEqual(pseudo_target(<<"test">>), alias_target(pseudo_target(<<"foo.bar.test">>), [-1])),
-     ?_assertEqual(pseudo_target(<<"foo">>), alias_target(pseudo_target(<<"foo.bar.test">>), [0]))
-    ].
-
-
 pseudo_target(Target) ->
     #series{target=Target}.
 
@@ -685,6 +683,21 @@ derivative_test_() ->
                    derivative(pseudo_values([null,1,2,3,4,5,null,6,7,8]))),
      ?_assertEqual(pseudo_values([null,1,2,2,2]),
                    derivative(pseudo_values([1,2,4,6,8])))
+    ].
+
+alias_target_test_() ->
+    [?_assertEqual(pseudo_target(<<"foo">>), alias_target(pseudo_target(<<"foo">>), [])),
+     ?_assertEqual(pseudo_target(<<"foo.bar">>), alias_target(pseudo_target(<<"foo.bar">>), [])),
+     ?_assertEqual(pseudo_target(<<"test">>), alias_target(pseudo_target(<<"foo.bar.test">>), [2])),
+     ?_assertEqual(pseudo_target(<<"test">>), alias_target(pseudo_target(<<"foo.bar.test">>), [-1])),
+     ?_assertEqual(pseudo_target(<<"foo">>), alias_target(pseudo_target(<<"foo.bar.test">>), [0]))
+    ].
+
+alias_sub_test_() ->
+    [?_assertEqual([pseudo_target(<<"TCP-32">>)],
+                   evaluate_call(<<"aliasSub">>, [[pseudo_target(<<"foo.bar.tcp32">>)], "^.*tcp(\\d+)", "TCP-\\1"], 0, 0, 0)),
+     ?_assertEqual([pseudo_target(<<"foo.bar.tcp">>)],
+                   evaluate_call(<<"aliasSub">>, [[pseudo_target(<<"foo.bar.tcp">>)], "^.*tcp(\\d+)", "TCP-\\1"], 0, 0, 0))
     ].
 
 average_above_test_() ->
