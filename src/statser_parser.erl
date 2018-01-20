@@ -47,7 +47,7 @@ end
 -spec 'function'(input(), index()) -> parse_result().
 'function'(Input, Index) ->
   p(Input, Index, 'function', fun(I,D) -> (p_seq([fun 'alphanum'/2, p_string(<<"(">>), fun 'arguments'/2, p_string(<<")">>)]))(I,D) end, fun(Node, _Idx) ->
-[Fctn, P1, Args, P2] = Node, {call, iolist_to_binary(Fctn), Args}
+[Fctn, _P1, Args, _P2] = Node, {call, iolist_to_binary(Fctn), Args}
  end).
 
 -spec 'arguments'(input(), index()) -> parse_result().

@@ -146,7 +146,7 @@ process({template, Expr, Args}, Params, Now) -> process_template(Expr, Args, Par
 process(Argument, _Params, _Now) -> Argument.
 
 
-process_paths(Path, {From, Until, MaxPoints} = Params, Now) ->
+process_paths(Path, {From, Until, _MaxPoints}, Now) ->
     FoundPaths = statser_finder:find_metrics(Path),
     Paths = lists:map(fun({P}) -> proplists:get_value(<<"id">>, P) end, FoundPaths),
     lager:debug("found ~w paths to process: ~p", [length(Paths), Paths]),
@@ -155,14 +155,14 @@ process_paths(Path, {From, Until, MaxPoints} = Params, Now) ->
     Processed.
 
 
-process_function(Fctn, Args, {From, Until, MaxPoints} = Params, Now) ->
+process_function(Fctn, Args, {From, Until, _MaxPoints} = Params, Now) ->
     ProcessedArgs = lists:map(fun(Arg) -> process(Arg, Params, Now) end, Args),
     Processed = statser_processor:evaluate_call(Fctn, ProcessedArgs, From, Until, Now),
     lager:debug("processing ~p resulted in ~p", [Fctn, Processed]),
     Processed.
 
 
-process_template(Expr, Args, {From, Until, MaxPoints} = Params, Now) ->
+process_template(_Expr, _Args, {_From, _Until, _MaxPoints} = _Params, _Now) ->
     % TODO: template handling
     [{0, 0}].
 
