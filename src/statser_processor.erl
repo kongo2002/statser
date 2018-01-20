@@ -562,11 +562,36 @@ percentile(Values, N, Interpolate) ->
     end.
 
 
+with_function_name(Series, Name) ->
+    with_function_name(Series, Name, []).
+
+with_function_name(#series{target=Target} = Series, Name, Args) ->
+    FormattedArgs = format_args(Args),
+    TargetStr = binary_to_list(Target),
+    NewTarget = binary:list_to_bin(lists:flatten([Name, 40 , TargetStr] ++ FormattedArgs ++ [41])),
+    Series#series{target=NewTarget}.
+
+
+format_args([]) -> [];
+format_args(Args) ->
+    [44 | lists:join(44, Args)].
+
 %%
 %% TESTS
 %%
 
 -ifdef(TEST).
+
+
+with_function_name_test_() ->
+    [?_assertEqual(pseudo_target(<<"func(foo.bar)">>),
+                   with_function_name(pseudo_target(<<"foo.bar">>), "func")),
+     ?_assertEqual(pseudo_target(<<"func(foo.bar)">>),
+                   with_function_name(pseudo_target(<<"foo.bar">>), "func", [])),
+     ?_assertEqual(pseudo_target(<<"func(foo.bar,arg1,arg2)">>),
+                   with_function_name(pseudo_target(<<"foo.bar">>), "func", ["arg1", "arg2"]))
+    ].
+
 
 alias_target_test_() ->
 
