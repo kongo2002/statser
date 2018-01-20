@@ -146,7 +146,9 @@ handle_info(update_metrics, State) ->
     gen_server:cast(statser_health, {metrics, Metrics}),
 
     UpdatedM = maps:fold(fun(K, V, Map) when is_number(V) ->
-                                 publish(K, V, Now, Path),
+                                 Rate = V / (State#state.interval / ?MILLIS_PER_SEC),
+                                 publish(<<K/binary, ".rate">>, Rate, Now, Path),
+                                 publish(<<K/binary, ".count">>, V, Now, Path),
                                  maps:put(K, 0, Map);
                             (K, Vs, Map) when is_list(Vs) ->
                                  Avg = statser_calc:safe_average(Vs),
@@ -197,7 +199,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-schedule_update_metrics(#state{interval=Interval}=State) ->
+schedule_update_metrics(#state{interval=Interval} = State) ->
     Timer = erlang:send_after(Interval, self(), update_metrics),
     State#state{timer=Timer}.
 
