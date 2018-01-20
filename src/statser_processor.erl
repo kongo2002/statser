@@ -17,29 +17,46 @@
          median/1]).
 
 -define(TIMEOUT, 2000).
+-define(FETCHER_TIMEOUT, 2500).
 
+
+fetch_data([], _From, _Until, _Now) -> [];
+
+fetch_data([Path], From, Until, Now) ->
+    % if only *one* path is requested in here, there is no reason
+    % to spawn multiple parallel fetch processes
+    fetch_inner(Path, From, Until, Now);
 
 fetch_data(Paths, From, Until, Now) ->
-    % TODO: asynchronous fetching would be really nice
-    lists:flatmap(fun (Path) ->
-                          % get metrics handler
-                          Result = case ets:lookup(metrics, Path) of
-                                       [] ->
-                                           % there is no metrics handler already meaning
-                                           % there is nothing cached to be merged
-                                           % -> just read from fs directly instead
-                                           File = statser_metric_handler:get_whisper_file(Path),
-                                           statser_whisper:fetch(File, From, Until, Now);
-                                       [{_Path, Pid}] ->
-                                           gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT)
-                                   end,
-                          case Result of
-                              #series{} -> [Result#series{target=Path}];
-                              _Error ->
-                                  % XXX: log warning? return error?
-                                  []
+    Parent = self(),
+    % spawn fetchers who are reporting back to `Parent`
+    Fetchers = [spawn_link(fun() -> Parent ! {self(), fetch_inner(Path, From, Until, Now)} end) ||
+                Path <- Paths],
+    % collect fetchers' results
+    lists:flatmap(fun(_Fetcher) ->
+                          receive {_Pid, SeriesData} -> SeriesData
+                          after ?FETCHER_TIMEOUT -> []
                           end
-                  end, Paths).
+                  end, Fetchers).
+
+
+fetch_inner(Path, From, Until, Now) ->
+    Result = case ets:lookup(metrics, Path) of
+                 [] ->
+                     % there is no metrics handler already meaning
+                     % there is nothing cached to be merged
+                     % -> just read from fs directly instead
+                     File = statser_metric_handler:get_whisper_file(Path),
+                     statser_whisper:fetch(File, From, Until, Now);
+                 [{_Path, Pid}] ->
+                     gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT)
+             end,
+    case Result of
+        #series{} -> [Result#series{target=Path}];
+        _Error ->
+            % XXX: log warning? return error?
+            []
+    end.
 
 
 % absolute
