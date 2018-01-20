@@ -45,7 +45,8 @@ fetch_data(Paths, From, Until, Now) ->
 % absolute
 evaluate_call(<<"absolute">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values, fun erlang:abs/1)}
+                      S0 = S#series{values=process_series_values(S#series.values, fun erlang:abs/1)},
+                      with_function_name(S0, "absolute")
               end, Series);
 
 % alias
@@ -81,7 +82,10 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
 
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
-    lists:map(fun(S) -> S#series{values=derivative(S#series.values)} end, Series);
+    lists:map(fun(S) ->
+                      S0 = S#series{values=derivative(S#series.values)},
+                      with_function_name(S0, "derivative")
+              end, Series);
 
 % diffSeries
 evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
@@ -98,13 +102,15 @@ evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
                                                         {[{TS, Sum} | Vs], Sum}
                                                 end, {[], 0}, Values0),
                       ReversedValues = lists:reverse(Values),
-                      S#series{values=ReversedValues}
+                      S0 = S#series{values=ReversedValues},
+                      with_function_name(S0, "integral")
               end, Series);
 
 % invert
 evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values, fun statser_calc:safe_invert/1)}
+                      S0 = S#series{values=process_series_values(S#series.values, fun statser_calc:safe_invert/1)},
+                      with_function_name(S0, "invert")
               end, Series);
 
 % limit
@@ -118,14 +124,15 @@ evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_numbe
         true ->
             % no reason to calculate deviant if the requested count is less than
             % the total number of given series anyways
-            Series;
+            lists:map(fun(S) -> with_function_name(S, "mostDeviant") end, Series);
         false ->
             SigmaSeries = lists:map(fun(S) ->
                                             SquareSum = square_sum(S#series.values),
                                             {SquareSum, S}
                                     end, Series),
             Sorted = lists:sort(fun({SigmaA, _}, {SigmaB, _}) -> SigmaA > SigmaB end, SigmaSeries),
-            lists:map(fun({_Sigma, S}) -> S end, lists:sublist(Sorted, N))
+            lists:map(fun({_Sigma, S}) -> with_function_name(S, "mostDeviant") end,
+                      lists:sublist(Sorted, N))
     end;
 
 % movingAverage
@@ -139,7 +146,7 @@ evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) ->
                       % fetch additional past data
                       [S] = fetch_data([S0#series.target], From-(Points * Step), Until, Now),
                       Values = moving_average(S#series.values, Points),
-                      S0#series{values=Values}
+                      with_function_name(S0#series{values=Values}, "movingAverage")
               end, Series);
 
 % multiplySeries
@@ -153,13 +160,14 @@ evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_numbe
                       Values0 = S#series.values,
                       Perc = percentile(Values0, N),
                       Values = process_series_values(Values0, fun(_) -> Perc end),
-                      S#series{values=Values}
+                      with_function_name(S#series{values=Values}, "nPercentile")
               end, Series);
 
 % offset
 evaluate_call(<<"offset">>, [Series, Offset], _From, _Until, _Now) when is_number(Offset) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values, fun(X) -> X + Offset end)}
+                      S0 = S#series{values=process_series_values(S#series.values, fun(X) -> X + Offset end)},
+                      with_function_name(S0, "offset")
               end, Series);
 
 % offsetToZero
@@ -167,7 +175,8 @@ evaluate_call(<<"offsetToZero">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
                       Values = S#series.values,
                       Minimum = safe_minimum(Values),
-                      S#series{values=process_series_values(Values, fun(X) -> X - Minimum end)}
+                      S0 = S#series{values=process_series_values(Values, fun(X) -> X - Minimum end)},
+                      with_function_name(S0, "offsetToZero")
               end, Series);
 
 % removeAboveValue
@@ -177,7 +186,8 @@ evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when i
                       Values = process_series_values(Values0, fun(X) when X > Val -> null;
                                                                  (X) -> X
                                                               end),
-                      S#series{values=Values}
+                      S0 = S#series{values=Values},
+                      with_function_name(S0, "removeAboveValue")
               end, Series);
 
 % removeBelowValue
@@ -187,14 +197,16 @@ evaluate_call(<<"removeBelowValue">>, [Series, Val], _From, _Until, _Now) when i
                       Values = process_series_values(Values0, fun(X) when X < Val -> null;
                                                                  (X) -> X
                                                               end),
-                      S#series{values=Values}
+                      S0 = S#series{values=Values},
+                      with_function_name(S0, "removeBelowValue")
               end, Series);
 
 % squareRoot
 evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
-                      S#series{values=process_series_values(S#series.values,
-                                                            fun statser_calc:safe_square_root/1)}
+                      S0 = S#series{values=process_series_values(S#series.values,
+                                                                 fun statser_calc:safe_square_root/1)},
+                      with_function_name(S0, "squareRoot")
               end, Series);
 
 % sumSeries
@@ -602,8 +614,10 @@ alias_target_test_() ->
      ?_assertEqual(pseudo_target(<<"foo">>), alias_target(pseudo_target(<<"foo.bar.test">>), [0]))
     ].
 
+
 pseudo_target(Target) ->
     #series{target=Target}.
+
 
 pseudo_values(Series) ->
     pseudo_values(Series, 10).
@@ -611,6 +625,7 @@ pseudo_values(Series) ->
 pseudo_values(Series, Step) ->
     {Lst, _Idx} = lists:foldl(fun(V, {Acc, Idx}) -> {[{Idx, V} | Acc], Idx + Step} end, {[], 100}, Series),
     lists:reverse(Lst).
+
 
 pseudo_series(Values) ->
     pseudo_series(Values, 10).
@@ -624,6 +639,11 @@ pseudo_series(Values, Step, Aggregation) ->
     End = length(Values) * Step + Start,
     PValues = pseudo_values(Values, Step),
     #series{target=Target,values=PValues,start=Start,until=End,step=Step,aggregation=Aggregation}.
+
+
+pseudo_series_n(Values, Func) ->
+    with_function_name(pseudo_series(Values), Func).
+
 
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
@@ -648,9 +668,12 @@ average_below_test_() ->
 
 npercentile_test_() ->
     Series = [pseudo_series([5.0, 8.0, 7.0])],
-    [?_assertEqual([pseudo_series([7.0, 7.0, 7.0])], evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([5.0, 5.0, 5.0])], evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([8.0, 8.0, 8.0])], evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
+    [?_assertEqual([pseudo_series_n([7.0, 7.0, 7.0], "nPercentile")],
+                   evaluate_call(<<"nPercentile">>, [Series, 50], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([5.0, 5.0, 5.0], "nPercentile")],
+                   evaluate_call(<<"nPercentile">>, [Series, 10], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([8.0, 8.0, 8.0], "nPercentile")],
+                   evaluate_call(<<"nPercentile">>, [Series, 99], 0, 0, 0))
     ].
 
 average_outside_percentile_test_() ->
@@ -667,17 +690,22 @@ most_deviant_test_() ->
     S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
     S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
-    [?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
-     ?_assertEqual(Series, evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
-     ?_assertEqual(S3 ++ S2, evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
-     ?_assertEqual(S3, evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
+    Named = fun(S) -> lists:map(fun(X) -> with_function_name(X, "mostDeviant") end, S) end,
+    [?_assertEqual(Named(Series), evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
+     ?_assertEqual(Named(Series), evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
+     ?_assertEqual(Named(S3 ++ S2), evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(Named(S3), evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
     ].
 
 integral_test_() ->
-    [?_assertEqual([pseudo_series([1,2,3])], evaluate_call(<<"integral">>, [[pseudo_series([1,1,1])]], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([1,null,2,3])], evaluate_call(<<"integral">>, [[pseudo_series([1,null,1,1])]], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([])], evaluate_call(<<"integral">>, [[pseudo_series([])]], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([null,null])], evaluate_call(<<"integral">>, [[pseudo_series([null,null])]], 0, 0, 0))
+    [?_assertEqual([pseudo_series_n([1,2,3], "integral")],
+                   evaluate_call(<<"integral">>, [[pseudo_series([1,1,1])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([1,null,2,3], "integral")],
+                   evaluate_call(<<"integral">>, [[pseudo_series([1,null,1,1])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([], "integral")],
+                   evaluate_call(<<"integral">>, [[pseudo_series([])]], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([null,null], "integral")],
+                   evaluate_call(<<"integral">>, [[pseudo_series([null,null])]], 0, 0, 0))
     ].
 
 sum_series_test_() ->
@@ -705,7 +733,7 @@ diff_series_test_() ->
 
 offset_to_zero_test_() ->
     Series = [pseudo_series([102, 101, 104, 101, 100, 111])],
-    Expected = [pseudo_series([2, 1, 4, 1, 0, 11])],
+    Expected = [pseudo_series_n([2, 1, 4, 1, 0, 11], "offsetToZero")],
     [?_assertEqual(Expected, evaluate_call(<<"offsetToZero">>, [Series], 0, 0, 0))].
 
 sort_non_null_test_() ->
