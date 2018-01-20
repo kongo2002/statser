@@ -90,7 +90,7 @@ evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
 % diffSeries
 evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
-    zip_series(Norm, fun safe_diff/1);
+    zip_series(Norm, fun safe_diff/1, "diffSeries");
 
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
@@ -115,7 +115,7 @@ evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
 
 % limit
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
-    lists:sublist(Series, N);
+    lists:map(fun(S) -> with_function_name(S, "limit") end, lists:sublist(Series, N));
 
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
@@ -152,7 +152,7 @@ evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) ->
 % multiplySeries
 evaluate_call(<<"multiplySeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
-    zip_series(Norm, fun safe_multiply/1);
+    zip_series(Norm, fun safe_multiply/1, "multiplySeries");
 
 % nPercentile
 evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
@@ -212,7 +212,7 @@ evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
 % sumSeries
 evaluate_call(<<"sumSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
-    zip_series(Norm, fun safe_sum/1);
+    zip_series(Norm, fun safe_sum/1, "sumSeries");
 
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
@@ -376,11 +376,12 @@ zip_heads(Lists, Func) ->
     end.
 
 
-zip_series([], _Func) -> [];
-zip_series([Hd | _] = Series, Func) ->
+zip_series([], _Func, _Name) -> [];
+zip_series([Hd | _] = Series, Func, Name) ->
     Values = lists:map(fun(#series{values=Vs}) -> Vs end, Series),
     % we use the first series as a template
-    [Hd#series{values=zip_lists(Values, Func)}].
+    Zipped = Hd#series{values=zip_lists(Values, Func)},
+    [with_function_name(Zipped, Name)].
 
 
 safe_sum(Vs) ->
@@ -657,6 +658,10 @@ pseudo_series_n(Values, Func) ->
     with_function_name(pseudo_series(Values), Func).
 
 
+named(Series, Name) ->
+    lists:map(fun(X) -> with_function_name(X, Name) end, Series).
+
+
 derivative_test_() ->
     [?_assertEqual([], derivative([])),
      ?_assertEqual(pseudo_values([null,null,1,1,1,1,null,null,1,1]),
@@ -695,9 +700,10 @@ average_outside_percentile_test_() ->
     S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
     S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
-    Named = fun(S) -> lists:map(fun(X) -> with_function_name(X, "averageOutsidePercentile") end, S) end,
-    [?_assertEqual(Named(S1 ++ S3), evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
-     ?_assertEqual(Named(Series), evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
+    [?_assertEqual(named(S1 ++ S3, "averageOutsidePercentile"),
+                   evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
+     ?_assertEqual(named(Series, "averageOutsidePercentile"),
+                   evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
     ].
 
 most_deviant_test_() ->
@@ -705,11 +711,10 @@ most_deviant_test_() ->
     S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
     S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
     Series = S1 ++ S2 ++ S3,
-    Named = fun(S) -> lists:map(fun(X) -> with_function_name(X, "mostDeviant") end, S) end,
-    [?_assertEqual(Named(Series), evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
-     ?_assertEqual(Named(Series), evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
-     ?_assertEqual(Named(S3 ++ S2), evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
-     ?_assertEqual(Named(S3), evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
+    [?_assertEqual(named(Series, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 3], 0, 0, 0)),
+     ?_assertEqual(named(Series, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
+     ?_assertEqual(named(S3 ++ S2, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(S3, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
     ].
 
 integral_test_() ->
@@ -727,23 +732,31 @@ sum_series_test_() ->
     Series1 = [pseudo_series([1,2,3])],
     Series2 = [pseudo_series([1,2,3], 20)],
     Series3 = [pseudo_series([1,1,2,2,3,3])],
-    [?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [Series1, Series1], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([2,4,6])], evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([2.0,4.0,6.0], 20)], evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    [?_assertEqual(named([pseudo_series([2,4,6])], "sumSeries"),
+                   evaluate_call(<<"sumSeries">>, [Series1, Series1], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([2,4,6])], "sumSeries"),
+                   evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([2.0,4.0,6.0], 20)], "sumSeries"),
+                   evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
     ].
 
 multiply_series_test_() ->
     Series = [pseudo_series([null,1,2,null,3])],
-    [?_assertEqual([pseudo_series([null, 1, 4, null, 9])], evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([null, 1, 4, null, 9])], evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
+    [?_assertEqual(named([pseudo_series([null, 1, 4, null, 9])], "multiplySeries"),
+                   evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([null, 1, 4, null, 9])], "multiplySeries"),
+                   evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
     ].
 
 diff_series_test_() ->
     Series1 = [pseudo_series([1,2,3])],
     Series2 = [pseudo_series([3,2,6])],
-    [?_assertEqual([pseudo_series([-2,0,-3])], evaluate_call(<<"diffSeries">>, [Series1, Series2], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([-2,0,-3])], evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2]], 0, 0, 0)),
-     ?_assertEqual([pseudo_series([-5,-2,-9])], evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2 ++ Series2]], 0, 0, 0))
+    [?_assertEqual(named([pseudo_series([-2,0,-3])], "diffSeries"),
+                   evaluate_call(<<"diffSeries">>, [Series1, Series2], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([-2,0,-3])], "diffSeries"),
+                   evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([-5,-2,-9])], "diffSeries"),
+                   evaluate_call(<<"diffSeries">>, [[Series1 ++ Series2 ++ Series2]], 0, 0, 0))
     ].
 
 offset_to_zero_test_() ->
