@@ -78,6 +78,7 @@ handle_metrics(Request) ->
     case statser_parser:parse(Query) of
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
+            statser_instrumentation:increment(<<"api.query.requests">>),
             Metrics = statser_finder:find_metrics_tree(Path),
             Formatted = format(Metrics, json),
             {ok, ?DEFAULT_HEADERS, Formatted};
@@ -95,6 +96,7 @@ handle_render(_Targets, _From, false, _MaxPoints) ->
     {400, [], <<"no 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
     Now = erlang:system_time(second),
+    statser_instrumentation:increment(<<"api.render.requests">>),
     Processed = lists:flatmap(fun(Target) ->
                                       % one target definition may result in 0-n results
                                       Res = process_target(Target, From, Until, Now, MaxPoints),
