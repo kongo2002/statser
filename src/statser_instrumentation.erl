@@ -102,10 +102,8 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(prepare, State) ->
-    % TODO: sanitize hostname
-    {ok, Hostname} = inet:gethostname(),
-    HostnameBS = list_to_binary(Hostname),
-    Path = <<"statser.instrumentation.", HostnameBS/binary, ".">>,
+    Hostname = get_hostname(),
+    Path = <<"statser.instrumentation.", Hostname/binary, ".">>,
 
     % TODO: determine interval from configuration
     % or rather ensure/check if the metrics archive retention matches correctly
@@ -221,6 +219,11 @@ record_metrics(Key, Value, Map) when is_number(Value) ->
                 (Values) -> Values end,
     maps:update_with(Key, Update, [Value], Map);
 record_metrics(_Key, _Value, Map) -> Map.
+
+
+get_hostname() ->
+    {ok, Hostname} = inet:gethostname(),
+    re:replace(Hostname, "[^a-zA-Z0-9_]+", "_", [global, {return, binary}]).
 
 
 %%%===================================================================
