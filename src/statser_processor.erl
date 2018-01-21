@@ -105,6 +105,15 @@ evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now)
                          Avg =< LowPerc orelse Avg >= HighPerc
                  end, Series, "averageOutsidePercentile");
 
+% alias for 'averageSeries'
+evaluate_call(<<"avg">>, Series, From, Until, Now) ->
+    evaluate_call(<<"averageSeries">>, Series, From, Until, Now);
+
+% averageSeries
+evaluate_call(<<"averageSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_average/1, "averageSeries");
+
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -406,6 +415,7 @@ zip_series([Hd | _] = Series, Func, Name) ->
     Values = lists:map(fun(#series{values=Vs}) -> Vs end, Series),
     % we use the first series as a template
     Zipped = Hd#series{values=zip_lists(Values, Func)},
+    % TODO: the name is based on the first series only
     [with_function_name(Zipped, Name)].
 
 
@@ -776,6 +786,14 @@ multiply_series_test_() ->
                    evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([null, 1, 4, null, 9])], "multiplySeries"),
                    evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
+    ].
+
+average_series_test_() ->
+    Series1 = [pseudo_series([1,1,2])],
+    Series2 = [pseudo_series([2,3,4])],
+    Series3 = [pseudo_series([3,null,9])],
+    [?_assertEqual(named([pseudo_series([2.0,2.0,5.0])], "averageSeries"),
+                   evaluate_call(<<"avg">>, [Series1, Series2, Series3], 0, 0, 0))
     ].
 
 diff_series_test_() ->

@@ -107,6 +107,7 @@ on my roadmap below.
     - `averageAbove`
     - `averageBelow`
     - `averageOutsidePercentile`
+    - `averageSeries`
     - `derivative`
     - `diffSeries`
     - `integral`
