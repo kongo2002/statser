@@ -109,6 +109,8 @@ on my roadmap below.
     - `averageOutsidePercentile`
     - `averageSeries` (short alias: `avg`)
     - `changed`
+    - `currentAbove`
+    - `currentBelow`
     - `derivative`
     - `diffSeries`
     - `integral`

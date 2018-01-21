@@ -121,6 +121,28 @@ evaluate_call(<<"changed">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "changed")
               end, Series);
 
+% currentAbove
+evaluate_call(<<"currentAbove">>, [Series, Threshold], _From, _Until, _Now) when is_number(Threshold) ->
+    filter_named(fun(#series{values=Values}) ->
+                         case safe_last(Values) of
+                             null -> false;
+                             {_TS, null} -> false;
+                             {_TS, Val} ->
+                                 Val > Threshold
+                         end
+                 end, Series, "currentAbove");
+
+% currentBelow
+evaluate_call(<<"currentBelow">>, [Series, Threshold], _From, _Until, _Now) when is_number(Threshold) ->
+    filter_named(fun(#series{values=Values}) ->
+                         case safe_last(Values) of
+                             null -> false;
+                             {_TS, null} -> false;
+                             {_TS, Val} ->
+                                 Val < Threshold
+                         end
+                 end, Series, "currentBelow");
+
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -743,6 +765,22 @@ average_below_test_() ->
     [?_assertEqual([], evaluate_call(<<"averageBelow">>, [Series, 5.5], 0, 0, 0)),
      ?_assertEqual(Expected, evaluate_call(<<"averageBelow">>, [Series, 6.0], 0, 0, 0)),
      ?_assertEqual(Expected, evaluate_call(<<"averageBelow">>, [Series, 10], 0, 0, 0))
+    ].
+
+current_above_test_() ->
+    Series = [pseudo_series([5.0, 7.0])],
+    Expected = [with_function_name(hd(Series), "currentAbove")],
+    [?_assertEqual([], evaluate_call(<<"currentAbove">>, [Series, 8.0], 0, 0, 0)),
+     ?_assertEqual(Expected, evaluate_call(<<"currentAbove">>, [Series, 4.0], 0, 0, 0)),
+     ?_assertEqual(Expected, evaluate_call(<<"currentAbove">>, [Series, 6], 0, 0, 0))
+    ].
+
+current_below_test_() ->
+    Series = [pseudo_series([5.0, 7.0])],
+    Expected = [with_function_name(hd(Series), "currentBelow")],
+    [?_assertEqual([], evaluate_call(<<"currentBelow">>, [Series, 5.0], 0, 0, 0)),
+     ?_assertEqual(Expected, evaluate_call(<<"currentBelow">>, [Series, 8.0], 0, 0, 0)),
+     ?_assertEqual(Expected, evaluate_call(<<"currentBelow">>, [Series, 10], 0, 0, 0))
     ].
 
 npercentile_test_() ->
