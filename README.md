@@ -113,6 +113,7 @@ on my roadmap below.
     - `currentBelow`
     - `derivative`
     - `diffSeries`
+    - `divideSeries`
     - `integral`
     - `invert`
     - `limit`

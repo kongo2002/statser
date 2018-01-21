@@ -150,6 +150,18 @@ evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "derivative")
               end, Series);
 
+% divideSeries
+evaluate_call(<<"divideSeries">>, [Series1, Series2], _From, _Until, _Now) ->
+    % TODO: check series' lengths
+    Combine = fun(S1, S2) ->
+                      Dividend = S1#series.values,
+                      Divisor = S2#series.values,
+                      Res = lists:zipwith(fun statser_calc:safe_div/2, Dividend, Divisor),
+                      Series = S1#series{values=Res},
+                      with_function_name(Series, "divideSeries")
+              end,
+    lists:zipwith(Combine, Series1, Series2);
+
 % diffSeries
 evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
@@ -842,6 +854,13 @@ sum_series_test_() ->
                    evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([2.0,4.0,6.0], 20)], "sumSeries"),
                    evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    ].
+
+divide_series_test_() ->
+    Series1 = [pseudo_series([10,20,30])],
+    Series2 = [pseudo_series([2,2,3])],
+    [?_assertEqual(named([pseudo_series([5.0,10.0,10.0])], "divideSeries"),
+                   evaluate_call(<<"divideSeries">>, [Series1, Series2], 0, 0, 0))
     ].
 
 multiply_series_test_() ->
