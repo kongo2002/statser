@@ -114,6 +114,13 @@ evaluate_call(<<"averageSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
     zip_series(Norm, fun statser_calc:safe_average/1, "averageSeries");
 
+% changed
+evaluate_call(<<"changed">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      S0 = S#series{values=changed(S#series.values)},
+                      with_function_name(S0, "changed")
+              end, Series);
+
 % derivative
 evaluate_call(<<"derivative">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -539,6 +546,19 @@ safe_avg(_Sum, Len) when Len =< 0 -> 0;
 safe_avg(Sum, Len) -> Sum / Len.
 
 
+changed(Values) ->
+    lists:reverse(changed(Values, [], null)).
+
+changed([{TS, null} | Xs], Acc, _Last) ->
+    changed(Xs, [{TS, 0} | Acc], null);
+changed([{TS, Val} | Xs], Acc, Val) ->
+    changed(Xs, [{TS, 0} | Acc], Val);
+changed([{TS, Val} | Xs], Acc, _Last) ->
+    changed(Xs, [{TS, 1} | Acc], Val);
+changed([], Acc, _Last) ->
+    Acc.
+
+
 moving_average([], _Window) -> [];
 moving_average(Values, Window) when Window =< 0 -> Values;
 moving_average(Values, Window) ->
@@ -744,6 +764,12 @@ average_outside_percentile_test_() ->
                    evaluate_call(<<"averageOutsidePercentile">>, [Series, 80], 0, 0, 0)),
      ?_assertEqual(named(Series, "averageOutsidePercentile"),
                    evaluate_call(<<"averageOutsidePercentile">>, [Series, 50], 0, 0, 0))
+    ].
+
+changed_test_() ->
+    Series = [pseudo_series([1,2,2,3,3,null,3])],
+    Expected = named([pseudo_series([1,1,0,1,0,0,1])], "changed"),
+    [?_assertEqual(Expected, evaluate_call(<<"changed">>, [Series], 0, 0, 0))
     ].
 
 most_deviant_test_() ->
