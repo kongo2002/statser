@@ -167,6 +167,20 @@ evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
     zip_series(Norm, fun safe_diff/1, "diffSeries");
 
+% exclude
+evaluate_call(<<"exclude">>, [Series, Pattern], _From, _Until, _Now) ->
+    case re:compile(Pattern) of
+        {ok, Regex} ->
+            lists:filter(fun(#series{target=Target}) ->
+                                 case re:run(Target, Regex) of
+                                     {match, _Mtch} -> true;
+                                     _Otherwise -> false
+                                 end
+                         end, Series);
+        {error, _Error} ->
+            []
+    end;
+
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -831,6 +845,14 @@ most_deviant_test_() ->
      ?_assertEqual(named(Series, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
      ?_assertEqual(named(S3 ++ S2, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(S3, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
+    ].
+
+exclude_test_() ->
+    Series = [pseudo_series([1,2,4])],
+    [?_assertEqual([], evaluate_call(<<"exclude">>, [Series, "none"], 0, 0, 0)),
+     ?_assertEqual(Series, evaluate_call(<<"exclude">>, [Series, "target"], 0, 0, 0)),
+     ?_assertEqual(Series, evaluate_call(<<"exclude">>, [Series, "get$"], 0, 0, 0)),
+     ?_assertEqual([], evaluate_call(<<"exclude">>, [Series, "^taget$"], 0, 0, 0))
     ].
 
 integral_test_() ->
