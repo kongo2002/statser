@@ -114,6 +114,7 @@ on my roadmap below.
     - `derivative`
     - `diffSeries`
     - `divideSeries`
+    - `exclude`
     - `integral`
     - `invert`
     - `limit`
