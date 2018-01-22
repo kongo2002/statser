@@ -117,10 +117,12 @@ on my roadmap below.
     - `exclude`
     - `grep`
     - `highestAverage`
+    - `highestCurrent`
     - `integral`
     - `invert`
     - `limit`
     - `lowestAverage`
+    - `lowestCurrent`
     - `mostDeviant`
     - `movingAverage`
     - `multiplySeries`

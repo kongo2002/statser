@@ -212,6 +212,16 @@ evaluate_call(<<"highestAverage">>, [Series, N], _From, _Until, _Now) when is_nu
                       lists:sublist(Sorted, N))
     end;
 
+% highestCurrent
+evaluate_call(<<"highestCurrent">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    Func = fun(Values) ->
+                   case safe_last(Values) of
+                       {_TS, null} -> 0;
+                       {_TS, Val} -> Val
+                   end
+           end,
+    select_top_n(Series, N, "highestCurrent", Func);
+
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -254,6 +264,13 @@ evaluate_call(<<"lowestAverage">>, [Series, N], _From, _Until, _Now) when is_num
                       lists:sublist(Sorted, N))
     end;
 
+% lowestCurrent
+evaluate_call(<<"lowestCurrent">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    Func = fun(Values) ->
+                   {_TS, Val} = safe_last(Values),
+                   Val
+           end,
+    select_low_n(Series, N, "lowestCurrent", Func);
 
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
@@ -427,6 +444,40 @@ sort_non_null([{_TS, Val} | Vs], Acc, Len) ->
     sort_non_null(Vs, [Val | Acc], Len + 1);
 sort_non_null([Val | Vs], Acc, Len) ->
     sort_non_null(Vs, [Val | Acc], Len + 1).
+
+
+select_top_n(Series, N, Name, Func) ->
+    NumSeries = length(Series),
+    case NumSeries =< N of
+        true ->
+            % no reason to select series if the total number is less than `N` anyways
+            lists:map(fun(S) -> with_function_name(S, Name) end, Series);
+        false ->
+            XSeries = lists:map(fun(S) ->
+                                        XVal = Func(S#series.values),
+                                        {XVal, S}
+                                end, Series),
+            Sorted = lists:sort(fun({X, _}, {Y, _}) -> X > Y end, XSeries),
+            lists:map(fun({_Avg, S}) -> with_function_name(S, Name) end,
+                      lists:sublist(Sorted, N))
+    end.
+
+
+select_low_n(Series, N, Name, Func) ->
+    NumSeries = length(Series),
+    case NumSeries =< N of
+        true ->
+            % no reason to select series if the total number is less than `N` anyways
+            lists:map(fun(S) -> with_function_name(S, Name) end, Series);
+        false ->
+            XSeries = lists:map(fun(S) ->
+                                        XVal = Func(S#series.values),
+                                        {XVal, S}
+                                end, Series),
+            Sorted = lists:sort(fun({X, _}, {Y, _}) -> X =< Y end, XSeries),
+            lists:map(fun({_Avg, S}) -> with_function_name(S, Name) end,
+                      lists:sublist(Sorted, N))
+    end.
 
 
 consolidate(Series, ValuesPP) when ValuesPP =< 1 -> Series;
@@ -909,6 +960,19 @@ highest_average_test_() ->
                    evaluate_call(<<"highestAverage">>, [Series, 3], 0, 0, 0))
     ].
 
+highest_current_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S3, "highestCurrent"),
+                   evaluate_call(<<"highestCurrent">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(named(S3 ++ S2, "highestCurrent"),
+                   evaluate_call(<<"highestCurrent">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(Series, "highestCurrent"),
+                   evaluate_call(<<"highestCurrent">>, [Series, 3], 0, 0, 0))
+    ].
+
 lowest_average_test_() ->
     S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
     S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
@@ -920,6 +984,19 @@ lowest_average_test_() ->
                    evaluate_call(<<"lowestAverage">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(Series, "lowestAverage"),
                    evaluate_call(<<"lowestAverage">>, [Series, 3], 0, 0, 0))
+    ].
+
+lowest_current_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S1, "lowestCurrent"),
+                   evaluate_call(<<"lowestCurrent">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(named(S1 ++ S2, "lowestCurrent"),
+                   evaluate_call(<<"lowestCurrent">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(Series, "lowestCurrent"),
+                   evaluate_call(<<"lowestCurrent">>, [Series, 3], 0, 0, 0))
     ].
 
 exclude_test_() ->
