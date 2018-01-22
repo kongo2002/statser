@@ -209,6 +209,10 @@ evaluate_call(<<"highestCurrent">>, [Series, N], _From, _Until, _Now) when is_nu
            end,
     select_top_n(Series, N, "highestCurrent", Func);
 
+% highestMax
+evaluate_call(<<"highestMax">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    select_top_n(Series, N, "highestMax", fun statser_calc:safe_max/1);
+
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -931,6 +935,19 @@ highest_current_test_() ->
                    evaluate_call(<<"highestCurrent">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(Series, "highestCurrent"),
                    evaluate_call(<<"highestCurrent">>, [Series, 3], 0, 0, 0))
+    ].
+
+highest_max_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S3, "highestMax"),
+                   evaluate_call(<<"highestMax">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(named(S3 ++ S2, "highestMax"),
+                   evaluate_call(<<"highestMax">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(Series, "highestMax"),
+                   evaluate_call(<<"highestMax">>, [Series, 3], 0, 0, 0))
     ].
 
 lowest_average_test_() ->

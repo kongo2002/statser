@@ -118,6 +118,7 @@ on my roadmap below.
     - `grep`
     - `highestAverage`
     - `highestCurrent`
+    - `highestMax`
     - `integral`
     - `invert`
     - `limit`

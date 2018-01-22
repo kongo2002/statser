@@ -9,6 +9,7 @@
 -export([safe_average/1,
          safe_invert/1,
          safe_div/2,
+         safe_max/1,
          safe_square_root/1]).
 
 
@@ -26,6 +27,20 @@ safe_average([null | Vs], Cnt, Avg) ->
 safe_average([Val | Vs], Cnt, Avg) ->
     NewAvg = Avg + (Val - Avg) / Cnt,
     safe_average(Vs, Cnt + 1, NewAvg).
+
+
+safe_max(Vs) ->
+    safe_max(Vs, 0.0).
+
+safe_max([], Max) -> Max;
+safe_max([{_TS, null} | Vs], Max) ->
+    safe_max(Vs, Max);
+safe_max([{_TS, Val} | Vs], Max) ->
+    safe_max(Vs, max(Val, Max));
+safe_max([null | Vs], Max) ->
+    safe_max(Vs, Max);
+safe_max([Val | Vs], Max) ->
+    safe_max(Vs, max(Val, Max)).
 
 
 safe_invert(null) -> null;
