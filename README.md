@@ -115,6 +115,7 @@ on my roadmap below.
     - `diffSeries`
     - `divideSeries`
     - `exclude`
+    - `grep`
     - `integral`
     - `invert`
     - `limit`
