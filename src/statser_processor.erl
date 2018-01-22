@@ -266,6 +266,16 @@ evaluate_call(<<"lowestCurrent">>, [Series, N], _From, _Until, _Now) when is_num
            end,
     select_low_n(Series, N, "lowestCurrent", Func);
 
+% maximumAbove
+evaluate_call(<<"maximumAbove">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_max(Values) > N end,
+                 Series, "maximumAbove");
+
+% maximumBelow
+evaluate_call(<<"maximumBelow">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_max(Values) < N end,
+                 Series, "maximumBelow");
+
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     select_top_n(Series, N, "mostDeviant", fun square_sum/1);
@@ -1025,6 +1035,32 @@ keep_last_value_test_() ->
                    evaluate_call(<<"keepLastValue">>, [S2], 0, 0, 0)),
      ?_assertEqual([pseudo_series([null,2,2,2])],
                    evaluate_call(<<"keepLastValue">>, [S3], 0, 0, 0))
+    ].
+
+maximum_above_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])],
+    S2 = [pseudo_series([3.0, 9.0, 6.0])],
+    S3 = [pseudo_series([3.0, 12.0, 9.0])],
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S3, "maximumAbove"),
+                   evaluate_call(<<"maximumAbove">>, [Series, 10], 0, 0, 0)),
+     ?_assertEqual(named(S2 ++ S3, "maximumAbove"),
+                   evaluate_call(<<"maximumAbove">>, [Series, 8], 0, 0, 0)),
+     ?_assertEqual(named(Series, "maximumAbove"),
+                   evaluate_call(<<"maximumAbove">>, [Series, 4], 0, 0, 0))
+    ].
+
+maximum_below_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])],
+    S2 = [pseudo_series([3.0, 9.0, 6.0])],
+    S3 = [pseudo_series([3.0, 12.0, 9.0])],
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S1, "maximumBelow"),
+                   evaluate_call(<<"maximumBelow">>, [Series, 6], 0, 0, 0)),
+     ?_assertEqual(named(S1 ++ S2, "maximumBelow"),
+                   evaluate_call(<<"maximumBelow">>, [Series, 10], 0, 0, 0)),
+     ?_assertEqual(named(Series, "maximumBelow"),
+                   evaluate_call(<<"maximumBelow">>, [Series, 13], 0, 0, 0))
     ].
 
 exclude_test_() ->

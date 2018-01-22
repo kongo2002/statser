@@ -126,6 +126,8 @@ on my roadmap below.
     - `limit`
     - `lowestAverage`
     - `lowestCurrent`
+    - `maximumAbove`
+    - `maximumBelow`
     - `mostDeviant`
     - `movingAverage`
     - `multiplySeries`
