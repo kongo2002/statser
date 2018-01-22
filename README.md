@@ -116,6 +116,7 @@ on my roadmap below.
     - `divideSeries`
     - `exclude`
     - `grep`
+    - `highestAverage`
     - `integral`
     - `invert`
     - `limit`

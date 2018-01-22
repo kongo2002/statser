@@ -195,6 +195,23 @@ evaluate_call(<<"grep">>, [Series, Pattern], _From, _Until, _Now) ->
             []
     end;
 
+% highestAverage
+evaluate_call(<<"highestAverage">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    NumSeries = length(Series),
+    case NumSeries =< N of
+        true ->
+            % no reason to select series if the total number is less than `N` anyways
+            lists:map(fun(S) -> with_function_name(S, "highestAverage") end, Series);
+        false ->
+            ASeries = lists:map(fun(S) ->
+                                        Avg = statser_calc:safe_average(S#series.values),
+                                        {Avg, S}
+                                end, Series),
+            Sorted = lists:sort(fun({AvgA, _}, {AvgB, _}) -> AvgA > AvgB end, ASeries),
+            lists:map(fun({_Avg, S}) -> with_function_name(S, "highestAverage") end,
+                      lists:sublist(Sorted, N))
+    end;
+
 % integral
 evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -859,6 +876,19 @@ most_deviant_test_() ->
      ?_assertEqual(named(Series, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 90], 0, 0, 0)),
      ?_assertEqual(named(S3 ++ S2, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(S3, "mostDeviant"), evaluate_call(<<"mostDeviant">>, [Series, 1], 0, 0, 0))
+    ].
+
+highest_average_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S3, "highestAverage"),
+                   evaluate_call(<<"highestAverage">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(named(S3 ++ S2, "highestAverage"),
+                   evaluate_call(<<"highestAverage">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(Series, "highestAverage"),
+                   evaluate_call(<<"highestAverage">>, [Series, 3], 0, 0, 0))
     ].
 
 exclude_test_() ->
