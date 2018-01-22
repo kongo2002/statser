@@ -197,20 +197,7 @@ evaluate_call(<<"grep">>, [Series, Pattern], _From, _Until, _Now) ->
 
 % highestAverage
 evaluate_call(<<"highestAverage">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
-    NumSeries = length(Series),
-    case NumSeries =< N of
-        true ->
-            % no reason to select series if the total number is less than `N` anyways
-            lists:map(fun(S) -> with_function_name(S, "highestAverage") end, Series);
-        false ->
-            ASeries = lists:map(fun(S) ->
-                                        Avg = statser_calc:safe_average(S#series.values),
-                                        {Avg, S}
-                                end, Series),
-            Sorted = lists:sort(fun({AvgA, _}, {AvgB, _}) -> AvgA > AvgB end, ASeries),
-            lists:map(fun({_Avg, S}) -> with_function_name(S, "highestAverage") end,
-                      lists:sublist(Sorted, N))
-    end;
+    select_top_n(Series, N, "highestAverage", fun statser_calc:safe_average/1);
 
 % highestCurrent
 evaluate_call(<<"highestCurrent">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
@@ -249,20 +236,7 @@ evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) -
 
 % lowestAverage
 evaluate_call(<<"lowestAverage">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
-    NumSeries = length(Series),
-    case NumSeries =< N of
-        true ->
-            % no reason to select series if the total number is less than `N` anyways
-            lists:map(fun(S) -> with_function_name(S, "lowestAverage") end, Series);
-        false ->
-            ASeries = lists:map(fun(S) ->
-                                        Avg = statser_calc:safe_average(S#series.values),
-                                        {Avg, S}
-                                end, Series),
-            Sorted = lists:sort(fun({AvgA, _}, {AvgB, _}) -> AvgA =< AvgB end, ASeries),
-            lists:map(fun({_Avg, S}) -> with_function_name(S, "lowestAverage") end,
-                      lists:sublist(Sorted, N))
-    end;
+    select_low_n(Series, N, "lowestAverage", fun statser_calc:safe_average/1);
 
 % lowestCurrent
 evaluate_call(<<"lowestCurrent">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
@@ -274,21 +248,7 @@ evaluate_call(<<"lowestCurrent">>, [Series, N], _From, _Until, _Now) when is_num
 
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
-    NumSeries = length(Series),
-    case NumSeries =< N of
-        true ->
-            % no reason to calculate deviant if the requested count is less than
-            % the total number of given series anyways
-            lists:map(fun(S) -> with_function_name(S, "mostDeviant") end, Series);
-        false ->
-            SigmaSeries = lists:map(fun(S) ->
-                                            SquareSum = square_sum(S#series.values),
-                                            {SquareSum, S}
-                                    end, Series),
-            Sorted = lists:sort(fun({SigmaA, _}, {SigmaB, _}) -> SigmaA > SigmaB end, SigmaSeries),
-            lists:map(fun({_Sigma, S}) -> with_function_name(S, "mostDeviant") end,
-                      lists:sublist(Sorted, N))
-    end;
+    select_top_n(Series, N, "mostDeviant", fun square_sum/1);
 
 % movingAverage
 evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) ->
