@@ -243,6 +243,13 @@ evaluate_call(<<"isNonNull">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S#series{values=Vs}, "isNonNull")
               end, Series);
 
+% keepLastValue
+evaluate_call(<<"keepLastValue">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Vs = keep_last_value(S#series.values),
+                      S#series{values=Vs}
+              end, Series);
+
 % limit
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) -> with_function_name(S, "limit") end, lists:sublist(Series, N));
@@ -722,6 +729,18 @@ median(Values) ->
     percentile(Values, 50, true).
 
 
+% TODO: support limit of 'null' values to skip
+keep_last_value(Values) ->
+    keep_last_value(Values, null, []).
+
+keep_last_value([], _Last, Acc) ->
+    lists:reverse(Acc);
+keep_last_value([{TS, null} | Vs], Last, Acc) ->
+    keep_last_value(Vs, Last, [{TS, Last} | Acc]);
+keep_last_value([{_TS, Val}=T | Vs], _Last, Acc) ->
+    keep_last_value(Vs, Val, [T | Acc]).
+
+
 percentile(Values, N) ->
     percentile(Values, N, false).
 
@@ -769,12 +788,15 @@ with_function_name(Series, Name) ->
 with_function_name(#series{target=Target} = Series, Name, Args) ->
     FormattedArgs = format_args(Args),
     TargetStr = binary_to_list(Target),
+    % 40 = character code of '('
+    % 41 = character code of ')'
     NewTarget = binary:list_to_bin(lists:flatten([Name, 40 , TargetStr] ++ FormattedArgs ++ [41])),
     Series#series{target=NewTarget}.
 
 
 format_args([]) -> [];
 format_args(Args) ->
+    % 44 = character code of ','
     [44 | lists:join(44, Args)].
 
 %%
@@ -992,6 +1014,17 @@ lowest_current_test_() ->
                    evaluate_call(<<"lowestCurrent">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(Series, "lowestCurrent"),
                    evaluate_call(<<"lowestCurrent">>, [Series, 3], 0, 0, 0))
+    ].
+
+keep_last_value_test_() ->
+    S1 = [pseudo_series([1,2,4])],
+    S2 = [pseudo_series([2,null,null,4])],
+    S3 = [pseudo_series([null,2,null, null])],
+    [?_assertEqual(S1, evaluate_call(<<"keepLastValue">>, [S1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([2,2,2,4])],
+                   evaluate_call(<<"keepLastValue">>, [S2], 0, 0, 0)),
+     ?_assertEqual([pseudo_series([null,2,2,2])],
+                   evaluate_call(<<"keepLastValue">>, [S3], 0, 0, 0))
     ].
 
 exclude_test_() ->

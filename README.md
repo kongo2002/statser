@@ -122,6 +122,7 @@ on my roadmap below.
     - `integral`
     - `invert`
     - `isNonNull`
+    - `keepLastValue`
     - `limit`
     - `lowestAverage`
     - `lowestCurrent`
