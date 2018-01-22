@@ -10,6 +10,7 @@
          safe_invert/1,
          safe_div/2,
          safe_max/1,
+         safe_min/1,
          safe_square_root/1]).
 
 
@@ -41,6 +42,20 @@ safe_max([null | Vs], Max) ->
     safe_max(Vs, Max);
 safe_max([Val | Vs], Max) ->
     safe_max(Vs, max(Val, Max)).
+
+
+safe_min(Vs) ->
+    safe_min(Vs, null).
+
+safe_min([], Min) -> Min;
+safe_min([{_TS, null} | Vs], Min) ->
+    safe_min(Vs, Min);
+safe_min([{_TS, Val} | Vs], Min) ->
+    safe_min(Vs, min(Val, Min));
+safe_min([null | Vs], Min) ->
+    safe_min(Vs, Min);
+safe_min([Val | Vs], Min) ->
+    safe_min(Vs, min(Val, Min)).
 
 
 safe_invert(null) -> null;

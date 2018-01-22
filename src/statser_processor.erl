@@ -276,6 +276,16 @@ evaluate_call(<<"maximumBelow">>, [Series, N], _From, _Until, _Now) when is_numb
     filter_named(fun(#series{values=Values}) -> statser_calc:safe_max(Values) < N end,
                  Series, "maximumBelow");
 
+% minimumAbove
+evaluate_call(<<"minimumAbove">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_min(Values) > N end,
+                 Series, "minimumAbove");
+
+% minimumBelow
+evaluate_call(<<"minimumBelow">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    filter_named(fun(#series{values=Values}) -> statser_calc:safe_min(Values) < N end,
+                 Series, "minimumBelow");
+
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     select_top_n(Series, N, "mostDeviant", fun square_sum/1);
@@ -1061,6 +1071,32 @@ maximum_below_test_() ->
                    evaluate_call(<<"maximumBelow">>, [Series, 10], 0, 0, 0)),
      ?_assertEqual(named(Series, "maximumBelow"),
                    evaluate_call(<<"maximumBelow">>, [Series, 13], 0, 0, 0))
+    ].
+
+minimum_above_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])],
+    S2 = [pseudo_series([5.0, 9.0, 6.0])],
+    S3 = [pseudo_series([7.0, 12.0, 9.0])],
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S3, "minimumAbove"),
+                   evaluate_call(<<"minimumAbove">>, [Series, 6], 0, 0, 0)),
+     ?_assertEqual(named(S2 ++ S3, "minimumAbove"),
+                   evaluate_call(<<"minimumAbove">>, [Series, 4], 0, 0, 0)),
+     ?_assertEqual(named(Series, "minimumAbove"),
+                   evaluate_call(<<"minimumAbove">>, [Series, 2], 0, 0, 0))
+    ].
+
+minimum_below_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])],
+    S2 = [pseudo_series([5.0, 9.0, 6.0])],
+    S3 = [pseudo_series([7.0, 12.0, 9.0])],
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S1, "minimumBelow"),
+                   evaluate_call(<<"minimumBelow">>, [Series, 4], 0, 0, 0)),
+     ?_assertEqual(named(S1 ++ S2, "minimumBelow"),
+                   evaluate_call(<<"minimumBelow">>, [Series, 6], 0, 0, 0)),
+     ?_assertEqual(named(Series, "minimumBelow"),
+                   evaluate_call(<<"minimumBelow">>, [Series, 8], 0, 0, 0))
     ].
 
 exclude_test_() ->
