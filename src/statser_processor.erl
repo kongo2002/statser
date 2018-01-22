@@ -237,6 +237,24 @@ evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) -> with_function_name(S, "limit") end, lists:sublist(Series, N));
 
+% lowestAverage
+evaluate_call(<<"lowestAverage">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
+    NumSeries = length(Series),
+    case NumSeries =< N of
+        true ->
+            % no reason to select series if the total number is less than `N` anyways
+            lists:map(fun(S) -> with_function_name(S, "lowestAverage") end, Series);
+        false ->
+            ASeries = lists:map(fun(S) ->
+                                        Avg = statser_calc:safe_average(S#series.values),
+                                        {Avg, S}
+                                end, Series),
+            Sorted = lists:sort(fun({AvgA, _}, {AvgB, _}) -> AvgA =< AvgB end, ASeries),
+            lists:map(fun({_Avg, S}) -> with_function_name(S, "lowestAverage") end,
+                      lists:sublist(Sorted, N))
+    end;
+
+
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     NumSeries = length(Series),
@@ -889,6 +907,19 @@ highest_average_test_() ->
                    evaluate_call(<<"highestAverage">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(Series, "highestAverage"),
                    evaluate_call(<<"highestAverage">>, [Series, 3], 0, 0, 0))
+    ].
+
+lowest_average_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])], % avg 4.0
+    S2 = [pseudo_series([3.0, 9.0, 6.0])], % avg 6.0
+    S3 = [pseudo_series([3.0, 12.0, 9.0])], % avg 8.0
+    Series = S1 ++ S2 ++ S3,
+    [?_assertEqual(named(S1, "lowestAverage"),
+                   evaluate_call(<<"lowestAverage">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(named(S1 ++ S2, "lowestAverage"),
+                   evaluate_call(<<"lowestAverage">>, [Series, 2], 0, 0, 0)),
+     ?_assertEqual(named(Series, "lowestAverage"),
+                   evaluate_call(<<"lowestAverage">>, [Series, 3], 0, 0, 0))
     ].
 
 exclude_test_() ->

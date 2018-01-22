@@ -120,6 +120,7 @@ on my roadmap below.
     - `integral`
     - `invert`
     - `limit`
+    - `lowestAverage`
     - `mostDeviant`
     - `movingAverage`
     - `multiplySeries`
