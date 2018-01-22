@@ -28,11 +28,7 @@ find_metrics(Parts) ->
     find_metrics(Parts, [Base]).
 
 find_metrics(Parts, Cwd) ->
-    Ms0 = find_metrics(Parts, Cwd, false),
-
-    % in here we just want to sort the nodes by their names
-    % in order to return 'stable' results
-    Ms = lists:sort(fun by_name/2, Ms0),
+    Ms = find_metrics(Parts, Cwd, false),
     lists:map(fun({F, MPath}) -> to_node(F, MPath) end, Ms).
 
 
@@ -73,10 +69,6 @@ to_node(Node, Path, IsLeaf) ->
 
 to_path(Path) ->
     list_to_binary(string:join(Path, ".")).
-
-
-by_name({{_TypeA, NameA}, _}, {{_TypeB, NameB}, _}) when NameA =< NameB -> true;
-by_name({{_TypeA, _NameA}, _}, {{_TypeB, _NameB}, _}) -> false.
 
 
 glob_dirs(Dir, Cwd) when is_binary(Dir) ->

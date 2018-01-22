@@ -102,8 +102,14 @@ handle_render(Targets, From, Until, MaxPoints) ->
                                       Res = process_target(Target, From, Until, Now, MaxPoints),
                                       lists:map(fun(S) -> adjust_datapoints(S, MaxPoints) end, Res)
                               end, Targets),
-    Formatted = format(lists:map(fun format_to_json/1, Processed), json),
+    % sort the processed series in here so the result is stable
+    Sorted = lists:sort(fun by_target/2, Processed),
+    Formatted = format(lists:map(fun format_to_json/1, Sorted), json),
     {ok, ?DEFAULT_HEADERS, Formatted}.
+
+
+by_target(#series{target=TargetA}, #series{target=TargetB}) when TargetA =< TargetB -> true;
+by_target(_, _) -> false.
 
 
 adjust_datapoints(Series, none) -> Series;
