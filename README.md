@@ -121,6 +121,7 @@ on my roadmap below.
     - `highestMax`
     - `integral`
     - `invert`
+    - `isNonNull`
     - `limit`
     - `lowestAverage`
     - `lowestCurrent`

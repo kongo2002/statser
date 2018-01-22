@@ -234,6 +234,15 @@ evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "invert")
               end, Series);
 
+% isNonNull
+evaluate_call(<<"isNonNull">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Vs = lists:map(fun({TS, null}) -> {TS, 0};
+                                        ({TS, _Val}) -> {TS, 1}
+                                     end, S#series.values),
+                      with_function_name(S#series{values=Vs}, "isNonNull")
+              end, Series);
+
 % limit
 evaluate_call(<<"limit">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) -> with_function_name(S, "limit") end, lists:sublist(Series, N));
@@ -961,6 +970,15 @@ lowest_average_test_() ->
                    evaluate_call(<<"lowestAverage">>, [Series, 2], 0, 0, 0)),
      ?_assertEqual(named(Series, "lowestAverage"),
                    evaluate_call(<<"lowestAverage">>, [Series, 3], 0, 0, 0))
+    ].
+
+is_non_null_test_() ->
+    S1 = [pseudo_series([3.0, 5.0, 4.0])],
+    S2 = [pseudo_series([3.0, null, null])],
+    [?_assertEqual(named([pseudo_series([1,1,1])], "isNonNull"),
+                   evaluate_call(<<"isNonNull">>, [S1], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([1,0,0])], "isNonNull"),
+                   evaluate_call(<<"isNonNull">>, [S2], 0, 0, 0))
     ].
 
 lowest_current_test_() ->
