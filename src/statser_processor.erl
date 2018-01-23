@@ -530,12 +530,18 @@ consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
 
 
 normalize(SeriesLst) ->
-    Series = lists:flatten(SeriesLst),
-    {Start, End, Step} = normalize_stats(Series),
-    % TODO: properly handle start/stop
-    % TODO: this is sufficient for now as most of the time start/end are the same over all series
-    Ss = lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series),
-    {Ss, Start, End, Step}.
+    case lists:flatten(SeriesLst) of
+        [] ->
+            % TODO: not quite sure what to return in this case but I guess this way
+            % is at least better than throwing an error...
+            {[], null, null, null};
+        Series ->
+            {Start, End, Step} = normalize_stats(Series),
+            % TODO: properly handle start/stop
+            % TODO: this is sufficient for now as most of the time start/end are the same over all series
+            Ss = lists:map(fun(S) -> consolidate(S, Step div S#series.step) end, Series),
+            {Ss, Start, End, Step}
+    end.
 
 
 normalize_stats([Hd | Tl]) ->
