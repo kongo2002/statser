@@ -274,14 +274,14 @@ get_or_create_metadata(FsPath, Path, Metadata) ->
     case statser_whisper:read_metadata(FsPath) of
         {ok, M} -> M;
         {error, enoent} ->
-            lager:info("no archive existing for ~p - creating now", [Path]),
+            lager:info("no archive existing for '~s' - creating now", [Path]),
             ok = filelib:ensure_dir(FsPath),
             {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
             M;
         UnexpectedError ->
             lager:warning("failed to read archive - error: ~w", [UnexpectedError]),
-            lager:info("no valid archive existing for ~p - creating now", [Path]),
+            lager:info("no valid archive existing for '~s' - creating now", [Path]),
             ok = filelib:ensure_dir(FsPath),
             {ok, M} = statser_whisper:create(FsPath, Metadata),
             statser_instrumentation:increment(<<"creates">>),
@@ -316,14 +316,14 @@ prepare_file(Dirs, File) ->
 get_creation_metadata(Path) ->
     {Storage, Aggregation} = statser_config:get_metadata(Path),
     Retentions = Storage#storage_definition.retentions,
+    Agg = Aggregation#aggregation_definition.aggregation,
+    XFF = Aggregation#aggregation_definition.factor,
 
-    lager:info("~p: determined archive definition: ~p ~p", [Path, Retentions, Aggregation]),
+    lager:info("~s: determined archive definition [retention: ~p; aggregation: ~p]",
+               [Path, lists:map(fun(#retention_definition{raw=R}) -> R end, Retentions), Agg]),
 
     RetValues = lists:map(fun (#retention_definition{seconds=S, points=P}) -> {S, P} end,
                           Retentions),
-
-    Agg = Aggregation#aggregation_definition.aggregation,
-    XFF = Aggregation#aggregation_definition.factor,
 
     {RetValues, Agg, XFF}.
 
