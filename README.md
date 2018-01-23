@@ -134,6 +134,7 @@ on my roadmap below.
     - `movingAverage`
     - `multiplySeries`
     - `nPercentile`
+    - `nonNegativeDerivative`
     - `offsetToZero`
     - `offset`
     - `perSecond`

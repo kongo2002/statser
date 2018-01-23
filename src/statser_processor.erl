@@ -318,6 +318,14 @@ evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_numbe
                       with_function_name(S#series{values=Values}, "nPercentile")
               end, Series);
 
+% nonNegativeDerivative
+evaluate_call(<<"nonNegativeDerivative">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Values = non_negative_derivative(S),
+                      S0 = S#series{values=Values},
+                      with_function_name(S0, "nonNegativeDerivative")
+              end, Series);
+
 % offset
 evaluate_call(<<"offset">>, [Series, Offset], _From, _Until, _Now) when is_number(Offset) ->
     lists:map(fun(S) ->
@@ -775,6 +783,18 @@ per_second([{TS, V} | Vs], Step, Prev, Acc) ->
     per_second(Vs, Step, V, [{TS, Value} | Acc]).
 
 
+non_negative_derivative(#series{values=Values}) ->
+    non_negative_derivative(Values);
+non_negative_derivative(Vs) ->
+    non_negative_derivative(Vs, null, []).
+
+non_negative_derivative([], _Prev, Acc) ->
+    lists:reverse(Acc);
+non_negative_derivative([{TS, V} | Vs], Prev, Acc) ->
+    Value = non_negative_delta(V, Prev),
+    non_negative_derivative(Vs, V, [{TS, Value} | Acc]).
+
+
 median(Values) ->
     percentile(Values, 50, true).
 
@@ -1216,6 +1236,17 @@ per_second_test_() ->
                    evaluate_call(<<"perSecond">>, [[S1]], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([null, 10/20, null, null, 10/20, null], 20)], "perSecond"),
                    evaluate_call(<<"perSecond">>, [[S2]], 0, 0, 0))
+    ].
+
+non_negative_derivative_test_() ->
+    S1 = pseudo_series([10, 20, 25, 30, 40, 60]),
+    S2 = pseudo_series([10, 20, null, 30, 40, null]),
+    [?_assertEqual(pseudo_values([null, 10, 5, 5, 10, 20]), non_negative_derivative(S1)),
+     ?_assertEqual(pseudo_values([null, 10, null, null, 10, null]), non_negative_derivative(S2)),
+     ?_assertEqual(named([pseudo_series([null, 10, 5, 5, 10, 20])], "nonNegativeDerivative"),
+                   evaluate_call(<<"nonNegativeDerivative">>, [[S1]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([null, 10, null, null, 10, null])], "nonNegativeDerivative"),
+                   evaluate_call(<<"nonNegativeDerivative">>, [[S2]], 0, 0, 0))
     ].
 
 sort_non_null_test_() ->
