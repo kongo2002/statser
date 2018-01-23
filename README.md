@@ -136,6 +136,7 @@ on my roadmap below.
     - `nPercentile`
     - `offsetToZero`
     - `offset`
+    - `perSecond`
     - `removeAboveValue`
     - `removeBelowValue`
     - `squareRoot`

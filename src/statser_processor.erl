@@ -325,6 +325,14 @@ evaluate_call(<<"offset">>, [Series, Offset], _From, _Until, _Now) when is_numbe
                       with_function_name(S0, "offset")
               end, Series);
 
+% perSecond
+evaluate_call(<<"perSecond">>, [Series], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      Values = per_second(S),
+                      S0 = S#series{values=Values},
+                      with_function_name(S0, "perSecond")
+              end, Series);
+
 % offsetToZero
 evaluate_call(<<"offsetToZero">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -743,6 +751,28 @@ with_current_value(null) -> {0, 0};
 with_current_value({_TS, null}) -> {0, 0};
 with_current_value({_TS, Value}) -> {Value, 1};
 with_current_value(Value) -> {Value, 1}.
+
+
+non_negative_delta(null, _Prev) -> null;
+non_negative_delta(_Val, null) -> null;
+non_negative_delta(Val, Prev) when Val >= Prev -> Val - Prev;
+non_negative_delta(_Val, _Prev) -> null.
+
+
+per_second(#series{values=Values, step=Step}) ->
+    per_second(Values, Step).
+
+per_second(Vs, Step) ->
+    per_second(Vs, Step, null, []).
+
+per_second([], _Step, _Prev, Acc) ->
+    lists:reverse(Acc);
+per_second([{TS, V} | Vs], Step, Prev, Acc) ->
+    Value = case non_negative_delta(V, Prev) of
+                null -> null;
+                Diff -> Diff / Step
+            end,
+    per_second(Vs, Step, V, [{TS, Value} | Acc]).
 
 
 median(Values) ->
@@ -1176,6 +1206,17 @@ offset_to_zero_test_() ->
     Series = [pseudo_series([102, 101, 104, 101, 100, 111])],
     Expected = [pseudo_series_n([2, 1, 4, 1, 0, 11], "offsetToZero")],
     [?_assertEqual(Expected, evaluate_call(<<"offsetToZero">>, [Series], 0, 0, 0))].
+
+per_second_test_() ->
+    S1 = pseudo_series([10, 20, 25, 30, 40, 60]),
+    S2 = pseudo_series([10, 20, null, 30, 40, null], 20),
+    [?_assertEqual(pseudo_values([null, 10/10, 5/10, 5/10, 10/10, 20/10]), per_second(S1)),
+     ?_assertEqual(pseudo_values([null, 10/20, null, null, 10/20, null], 20), per_second(S2)),
+     ?_assertEqual(named([pseudo_series([null, 10/10, 5/10, 5/10, 10/10, 20/10])], "perSecond"),
+                   evaluate_call(<<"perSecond">>, [[S1]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([null, 10/20, null, null, 10/20, null], 20)], "perSecond"),
+                   evaluate_call(<<"perSecond">>, [[S2]], 0, 0, 0))
+    ].
 
 sort_non_null_test_() ->
     [?_assertEqual({[], 0}, sort_non_null([])),
