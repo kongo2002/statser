@@ -360,6 +360,14 @@ evaluate_call(<<"offsetToZero">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "offsetToZero")
               end, Series);
 
+% pow
+evaluate_call(<<"pow">>, [Series, Factor], _From, _Until, _Now) when is_number(Factor) ->
+    lists:map(fun(S) ->
+                      Values = process_series_values(S#series.values,
+                                                     fun(X) -> statser_calc:safe_pow([X, Factor]) end),
+                      with_function_name(S#series{values=Values}, "pow")
+              end, Series);
+
 % powSeries
 evaluate_call(<<"powSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
@@ -1239,6 +1247,12 @@ multiply_series_test_() ->
                    evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([null, 1, 4, null, 9])], "multiplySeries"),
                    evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
+    ].
+
+pow_test_() ->
+    Series = [pseudo_series([1,null,2,4,1,2])],
+    [?_assertEqual(named([pseudo_series([1.0,null,8.0,64.0,1.0,8.0])], "pow"),
+                   evaluate_call(<<"pow">>, [Series, 3], 0, 0, 0))
     ].
 
 pow_series_test_() ->
