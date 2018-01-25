@@ -583,6 +583,8 @@ zip_lists(Lists, WithFunc, Acc) ->
 
 
 zip_heads(Lists, Func) ->
+    % we are using `foldr` instead of `foldl` so we can process
+    % the values in the same order as the series
     Lsts = lists:foldr(fun([], _Acc) -> undefined;
                           (_, undefined) -> undefined;
                           ([{TS, Val} | Tl], {Heads, Tails, _}) ->
