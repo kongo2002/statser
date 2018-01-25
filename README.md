@@ -140,6 +140,7 @@ on my roadmap below.
     - `offsetToZero`
     - `offset`
     - `perSecond`
+    - `powSeries`
     - `removeAboveValue`
     - `removeBelowValue`
     - `squareRoot`

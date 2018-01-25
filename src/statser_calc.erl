@@ -11,6 +11,7 @@
          safe_div/2,
          safe_max/1,
          safe_min/1,
+         safe_pow/1,
          safe_square_root/1]).
 
 
@@ -46,6 +47,23 @@ safe_max([Val | Vs], null) ->
     safe_max(Vs, Val);
 safe_max([Val | Vs], Max) ->
     safe_max(Vs, max(Val, Max)).
+
+
+safe_pow([]) -> null;
+safe_pow([null | _Vs]) -> null;
+safe_pow([{_TS, null} | _Vs]) -> null;
+safe_pow([{_TS, V} | Vs]) ->
+    safe_pow(Vs, V);
+safe_pow([V | Vs]) ->
+    safe_pow(Vs, V).
+
+safe_pow([], Current) -> Current;
+safe_pow([{_TS, null} | _Vs], _Current) -> null;
+safe_pow([null | _Vs], _Current) -> null;
+safe_pow([{_TS, Val} | Vs], Current) ->
+    safe_pow(Vs, math:pow(Current, Val));
+safe_pow([Val | Vs], Current) ->
+    safe_pow(Vs, math:pow(Current, Val)).
 
 
 safe_min(Vs) ->
@@ -107,6 +125,14 @@ safe_div_test_() ->
      ?_assertEqual({100, 5.0}, safe_div({100, 10}, {100, 2})),
      ?_assertEqual({100, null}, safe_div({100, null}, {100, 2})),
      ?_assertEqual({100, null}, safe_div({100, 20.0}, {100, null}))
+    ].
+
+safe_pow_test_() ->
+    [?_assertEqual(null, safe_pow([])),
+     ?_assertEqual(null, safe_pow([1,2,4,3,null,2])),
+     ?_assertEqual(1, safe_pow([1])),
+     ?_assertEqual(math:pow(1, 2), safe_pow([1, 2])),
+     ?_assertEqual(math:pow(1, 2), safe_pow([{100, 1}, {110, 2}]))
     ].
 
 -endif.

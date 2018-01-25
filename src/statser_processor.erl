@@ -360,6 +360,11 @@ evaluate_call(<<"offsetToZero">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "offsetToZero")
               end, Series);
 
+% powSeries
+evaluate_call(<<"powSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_pow/1, "powSeries");
+
 % removeAboveValue
 evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
     lists:map(fun(S) ->
@@ -578,15 +583,12 @@ zip_lists(Lists, WithFunc, Acc) ->
 
 
 zip_heads(Lists, Func) ->
-    Lsts = lists:foldl(fun([], _Acc) -> undefined;
+    Lsts = lists:foldr(fun([], _Acc) -> undefined;
                           (_, undefined) -> undefined;
                           ([{TS, Val} | Tl], {Heads, Tails, _}) ->
-                               % appending (`++`) should be fine in here because the
-                               % number of lists will be rather small compared to
-                               % the number of values of each list
-                               {Heads ++ [Val], [Tl | Tails], TS};
+                               {[Val | Heads], [Tl | Tails], TS};
                           ([Val | Tl], {Heads, Tails, TS}) ->
-                               {Heads ++ [Val], [Tl | Tails], TS}
+                               {[Val | Heads], [Tl | Tails], TS}
                        end, {[], [], null}, Lists),
     case Lsts of
         undefined -> undefined;
@@ -1235,6 +1237,15 @@ multiply_series_test_() ->
                    evaluate_call(<<"multiplySeries">>, [Series, Series], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([null, 1, 4, null, 9])], "multiplySeries"),
                    evaluate_call(<<"multiplySeries">>, [[Series ++ Series]], 0, 0, 0))
+    ].
+
+pow_series_test_() ->
+    S1 = [pseudo_series([null,1,2,4,3])],
+    S2 = [pseudo_series([1,2,1,null,8])],
+    [?_assertEqual(named([pseudo_series([null,1.0,2.0,null,math:pow(3, 8)])], "powSeries"),
+                   evaluate_call(<<"powSeries">>, [[S1 ++ S2]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([null,1.0,4.0,math:pow(4, 4),27.0])], "powSeries"),
+                   evaluate_call(<<"powSeries">>, [[S1 ++ S1]], 0, 0, 0))
     ].
 
 average_series_test_() ->
