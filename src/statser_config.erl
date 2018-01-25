@@ -26,7 +26,7 @@
 -define(FALLBACK_RATE_LIMITS, #rate_limit_config{creates_per_sec=25,
                                                  updates_per_sec=500}).
 
--define(FALLBACK_UDP_CONFIG, #udp_config{port=none,
+-define(FALLBACK_UDP_CONFIG, #udp_config{port=8125,
                                          interval=10000,
                                          prune_after=300000}).
 
