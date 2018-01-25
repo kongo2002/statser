@@ -129,6 +129,7 @@ on my roadmap below.
     - `maxSeries`
     - `maximumAbove`
     - `maximumBelow`
+    - `minSeries`
     - `minimumAbove`
     - `minimumBelow`
     - `mostDeviant`

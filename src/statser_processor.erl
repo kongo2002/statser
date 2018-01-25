@@ -291,6 +291,11 @@ evaluate_call(<<"minimumBelow">>, [Series, N], _From, _Until, _Now) when is_numb
     filter_named(fun(#series{values=Values}) -> statser_calc:safe_min(Values) < N end,
                  Series, "minimumBelow");
 
+% minSeries
+evaluate_call(<<"minSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_min/1, "minSeries");
+
 % mostDeviant
 evaluate_call(<<"mostDeviant">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     select_top_n(Series, N, "mostDeviant", fun square_sum/1);
@@ -1213,6 +1218,15 @@ max_series_test_() ->
                    evaluate_call(<<"maxSeries">>, [[S1 ++ S2]], 0, 0, 0)),
      ?_assertEqual(named(S1, "maxSeries"),
                    evaluate_call(<<"maxSeries">>, [[S1 ++ S1]], 0, 0, 0))
+    ].
+
+min_series_test_() ->
+    S1 = [pseudo_series([null,1,2,4,3])],
+    S2 = [pseudo_series([1,2,1,null,8])],
+    [?_assertEqual(named([pseudo_series([1,1,1,4,3])], "minSeries"),
+                   evaluate_call(<<"minSeries">>, [[S1 ++ S2]], 0, 0, 0)),
+     ?_assertEqual(named(S1, "minSeries"),
+                   evaluate_call(<<"minSeries">>, [[S1 ++ S1]], 0, 0, 0))
     ].
 
 multiply_series_test_() ->
