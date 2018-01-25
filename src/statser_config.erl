@@ -554,7 +554,7 @@ load_data_dir_from_string_test_() ->
 udp_is_enabled_test_() ->
     GetUdp = fun({_Storage, _Aggs, _WL, _BL, Udp, _PB, _Dir, _RL}) -> Udp end,
     {setup, fun setup/0,
-     [?_assertEqual(false, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
+     [?_assertEqual(true, udp_is_enabled(?FALLBACK_UDP_CONFIG)),
       ?_assertEqual(true, udp_is_enabled(load_from_string("udp:\n port: 8000", GetUdp))),
       ?_assertEqual(false, udp_is_enabled(load_from_string("udp:\n port: 0", GetUdp)))
      ]}.
