@@ -207,19 +207,6 @@ aggregation:
     aggregation: sum
     factor: 0
 
-# StatsD compatible adapter (disabled by default)
-udp:
-  # udp port to listen on
-  # omit this setting to disable 'StatsD-like' functionality
-  port: 8125
-
-  # metrics flush interval (in seconds)
-  interval: 10
-
-  # prune inactive metrics keys after x seconds
-  # 0 to never prune metrics at all
-  prune_after: 300
-
 # you may configure a blacklist and/or whitelist to configure
 # what metrics you really care about
 # every metric that enters the system will be checked against
@@ -230,6 +217,26 @@ blacklist:
 
 whitelist:
   - ^stats\.
+
+# StatsD compatible adapter
+udp:
+  # UDP port to listen on
+  # set this to something =< 0 to disable
+  port: 8125
+
+  # metrics flush interval (in seconds)
+  interval: 10
+
+  # prune inactive metrics keys after x seconds
+  # 0 to never prune metrics at all
+  prune_after: 300
+
+# protobuf listener (disabled by default)
+#
+# the protobuf interface was introduced in graphite 1.x
+# you can enable this by using the following options
+protobuf:
+  port: 2005
 ```
 
 
