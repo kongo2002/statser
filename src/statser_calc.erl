@@ -31,15 +31,19 @@ safe_average([Val | Vs], Cnt, Avg) ->
 
 
 safe_max(Vs) ->
-    safe_max(Vs, 0.0).
+    safe_max(Vs, null).
 
 safe_max([], Max) -> Max;
+safe_max([{_TS, V} | Vs], null) ->
+    safe_max(Vs, V);
 safe_max([{_TS, null} | Vs], Max) ->
     safe_max(Vs, Max);
 safe_max([{_TS, Val} | Vs], Max) ->
     safe_max(Vs, max(Val, Max));
 safe_max([null | Vs], Max) ->
     safe_max(Vs, Max);
+safe_max([Val | Vs], null) ->
+    safe_max(Vs, Val);
 safe_max([Val | Vs], Max) ->
     safe_max(Vs, max(Val, Max)).
 

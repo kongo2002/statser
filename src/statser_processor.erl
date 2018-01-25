@@ -276,6 +276,11 @@ evaluate_call(<<"maximumBelow">>, [Series, N], _From, _Until, _Now) when is_numb
     filter_named(fun(#series{values=Values}) -> statser_calc:safe_max(Values) < N end,
                  Series, "maximumBelow");
 
+% maxSeries
+evaluate_call(<<"maxSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_max/1, "maxSeries");
+
 % minimumAbove
 evaluate_call(<<"minimumAbove">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     filter_named(fun(#series{values=Values}) -> statser_calc:safe_min(Values) > N end,
@@ -1199,6 +1204,15 @@ divide_series_test_() ->
     Series2 = [pseudo_series([2,2,3])],
     [?_assertEqual(named([pseudo_series([5.0,10.0,10.0])], "divideSeries"),
                    evaluate_call(<<"divideSeries">>, [Series1, Series2], 0, 0, 0))
+    ].
+
+max_series_test_() ->
+    S1 = [pseudo_series([null,1,2,4,3])],
+    S2 = [pseudo_series([1,2,1,null,8])],
+    [?_assertEqual(named([pseudo_series([1,2,2,4,8])], "maxSeries"),
+                   evaluate_call(<<"maxSeries">>, [[S1 ++ S2]], 0, 0, 0)),
+     ?_assertEqual(named(S1, "maxSeries"),
+                   evaluate_call(<<"maxSeries">>, [[S1 ++ S1]], 0, 0, 0))
     ].
 
 multiply_series_test_() ->

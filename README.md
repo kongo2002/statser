@@ -126,6 +126,7 @@ on my roadmap below.
     - `limit`
     - `lowestAverage`
     - `lowestCurrent`
+    - `maxSeries`
     - `maximumAbove`
     - `maximumBelow`
     - `minimumAbove`
