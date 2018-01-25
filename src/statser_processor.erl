@@ -373,6 +373,16 @@ evaluate_call(<<"powSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
     zip_series(Norm, fun statser_calc:safe_pow/1, "powSeries");
 
+% randomWalk
+evaluate_call(<<"randomWalk">>, [Target], From, Until, Now) ->
+    evaluate_call(<<"randomWalk">>, [Target, 60], From, Until, Now);
+
+evaluate_call(<<"randomWalk">>, [Target, Step], From, Until, _Now) when is_number(Step) ->
+    Length = (Until - From) div Step,
+    Vs = lists:map(fun(Idx) -> {From + Step * Idx, rand:uniform()} end,
+                   lists:seq(0, Length)),
+    [#series{values=Vs, target=Target, start=From, until=Until, step=Step}];
+
 % removeAboveValue
 evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
     lists:map(fun(S) ->
