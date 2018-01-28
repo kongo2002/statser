@@ -118,8 +118,9 @@ safe_stddev(Vs) ->
     safe_stddev(Vs, safe_average(Vs), 0.0, 0).
 
 safe_stddev(_Vs, null, _Sum, _Len) -> null;
-safe_stddev([], _Avg, Sum, Len) ->
+safe_stddev([], _Avg, Sum, Len) when Len > 0 ->
     math:sqrt(Sum / Len);
+safe_stddev([], _Avg, _Sum, _Len) -> null;
 safe_stddev([{_TS, null} | Vs], Avg, Sum, Len) ->
     safe_stddev(Vs, Avg, Sum, Len);
 safe_stddev([{_TS, V} | Vs], Avg, Sum, Len) ->
@@ -192,6 +193,13 @@ safe_range_test_() ->
      ?_assertEqual(2, safe_range([3, null, 1])),
      ?_assertEqual(5, safe_range([3, null, -1, 2, 1, 3, 4, 1])),
      ?_assertEqual(0, safe_range([1]))
+    ].
+
+safe_stddev_test_() ->
+    [?_assertEqual(null, safe_stddev([])),
+     ?_assertEqual(null, safe_stddev([null])),
+     ?_assertEqual(0.0, safe_stddev([null,1])),
+     ?_assertEqual(math:sqrt(8/3), safe_stddev([2,4,null,6]))
     ].
 
 -endif.
