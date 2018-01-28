@@ -377,11 +377,17 @@ evaluate_call(<<"powSeries">>, Series, _From, _Until, _Now) ->
 evaluate_call(<<"randomWalk">>, [Target], From, Until, Now) ->
     evaluate_call(<<"randomWalk">>, [Target, 60], From, Until, Now);
 
+% randomWalk
 evaluate_call(<<"randomWalk">>, [Target, Step], From, Until, _Now) when is_number(Step) ->
     Length = (Until - From) div Step,
     Vs = lists:map(fun(Idx) -> {From + Step * Idx, rand:uniform()} end,
                    lists:seq(0, Length)),
     [#series{values=Vs, target=Target, start=From, until=Until, step=Step}];
+
+% rangeOfSeries
+evaluate_call(<<"rangeOfSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_range/1, "rangeOfSeries");
 
 % removeAboveValue
 evaluate_call(<<"removeAboveValue">>, [Series, Val], _From, _Until, _Now) when is_number(Val) ->
@@ -1272,6 +1278,15 @@ pow_series_test_() ->
                    evaluate_call(<<"powSeries">>, [[S1 ++ S2]], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([null,1.0,4.0,math:pow(4, 4),27.0])], "powSeries"),
                    evaluate_call(<<"powSeries">>, [[S1 ++ S1]], 0, 0, 0))
+    ].
+
+range_of_series_test_() ->
+    S1 = [pseudo_series([null,1,2,4,3])],
+    S2 = [pseudo_series([1,2,1,null,8])],
+    [?_assertEqual(named([pseudo_series([0,1,1,0,5])], "rangeOfSeries"),
+                   evaluate_call(<<"rangeOfSeries">>, [[S1 ++ S2]], 0, 0, 0)),
+     ?_assertEqual(named([pseudo_series([null,0,0,0,0])], "rangeOfSeries"),
+                   evaluate_call(<<"rangeOfSeries">>, [[S1 ++ S1]], 0, 0, 0))
     ].
 
 average_series_test_() ->

@@ -12,6 +12,8 @@
          safe_max/1,
          safe_min/1,
          safe_pow/1,
+         safe_range/1,
+         safe_substract/2,
          safe_square_root/1]).
 
 
@@ -80,6 +82,33 @@ safe_min([Val | Vs], Min) ->
     safe_min(Vs, min(Val, Min)).
 
 
+safe_max_compare(A, null) -> A;
+safe_max_compare(null, B) -> B;
+safe_max_compare(A, B) -> max(A, B).
+
+
+safe_range(Vs) ->
+    safe_range(Vs, {null, null}).
+
+safe_range([], {Min, Max}) ->
+    safe_substract(Max, Min);
+safe_range([{_TS, null} | Vs], MinMax) ->
+    safe_range(Vs, MinMax);
+safe_range([{_TS, Val} | Vs], {Min, Max}) ->
+    MinMax = {min(Val, Min), safe_max_compare(Val, Max)},
+    safe_range(Vs, MinMax);
+safe_range([null | Vs], MinMax) ->
+    safe_range(Vs, MinMax);
+safe_range([Val | Vs], {Min, Max}) ->
+    MinMax = {min(Val, Min), safe_max_compare(Val, Max)},
+    safe_range(Vs, MinMax).
+
+
+safe_substract(_A, null) -> null;
+safe_substract(null, _B) -> null;
+safe_substract(A, B) -> A - B.
+
+
 safe_invert(null) -> null;
 safe_invert(Value) -> math:pow(Value, -1).
 
@@ -133,6 +162,17 @@ safe_pow_test_() ->
      ?_assertEqual(1, safe_pow([1])),
      ?_assertEqual(math:pow(1, 2), safe_pow([1, 2])),
      ?_assertEqual(math:pow(1, 2), safe_pow([{100, 1}, {110, 2}]))
+    ].
+
+safe_range_test_() ->
+    [?_assertEqual(null, safe_range([null, null])),
+     ?_assertEqual(null, safe_range([null])),
+     ?_assertEqual(null, safe_range([])),
+     ?_assertEqual(1, safe_range([1, 2])),
+     ?_assertEqual(2, safe_range([3, 1])),
+     ?_assertEqual(2, safe_range([3, null, 1])),
+     ?_assertEqual(5, safe_range([3, null, -1, 2, 1, 3, 4, 1])),
+     ?_assertEqual(0, safe_range([1]))
     ].
 
 -endif.

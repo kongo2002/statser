@@ -143,6 +143,7 @@ on my roadmap below.
     - `powSeries`
     - `pow`
     - `randomWalk`
+    - `rangeOfSeries`
     - `removeAboveValue`
     - `removeBelowValue`
     - `squareRoot`
