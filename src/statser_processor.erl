@@ -11,11 +11,6 @@
          evaluate_call/5,
          fetch_data/4]).
 
-% calculation functions
--export([percentile/2,
-         percentile/3,
-         median/1]).
-
 -define(TIMEOUT, 2000).
 -define(FETCHER_TIMEOUT, 2500).
 
@@ -98,8 +93,8 @@ evaluate_call(<<"averageBelow">>, [Series, Avg], _From, _Until, _Now) ->
 evaluate_call(<<"averageOutsidePercentile">>, [Series, N0], _From, _Until, _Now) when is_number(N0) ->
     N = upper_half(N0),
     Avgs = lists:map(fun(#series{values=Values}) -> statser_calc:safe_average(Values) end, Series),
-    LowPerc = percentile(Avgs, 100 - N),
-    HighPerc = percentile(Avgs, N),
+    LowPerc = statser_calc:percentile(Avgs, 100 - N),
+    HighPerc = statser_calc:percentile(Avgs, N),
     filter_named(fun(#series{values=Values}) ->
                          Avg = statser_calc:safe_average(Values),
                          Avg =< LowPerc orelse Avg >= HighPerc
@@ -165,7 +160,7 @@ evaluate_call(<<"divideSeries">>, [Series1, Series2], _From, _Until, _Now) ->
 % diffSeries
 evaluate_call(<<"diffSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
-    zip_series(Norm, fun safe_diff/1, "diffSeries");
+    zip_series(Norm, fun statser_calc:safe_diff/1, "diffSeries");
 
 % exclude
 evaluate_call(<<"exclude">>, [Series, Pattern], _From, _Until, _Now) ->
@@ -323,7 +318,7 @@ evaluate_call(<<"multiplySeries">>, Series, _From, _Until, _Now) ->
 evaluate_call(<<"nPercentile">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
     lists:map(fun(S) ->
                       Values0 = S#series.values,
-                      Perc = percentile(Values0, N),
+                      Perc = statser_calc:percentile(Values0, N),
                       Values = process_series_values(Values0, fun(_) -> Perc end),
                       with_function_name(S#series{values=Values}, "nPercentile")
               end, Series);
@@ -444,7 +439,7 @@ evaluate_call(<<"stddevSeries">>, Series, _From, _Until, _Now) ->
 % sumSeries
 evaluate_call(<<"sumSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
-    zip_series(Norm, fun safe_sum/1, "sumSeries");
+    zip_series(Norm, fun statser_calc:safe_sum/1, "sumSeries");
 
 evaluate_call(Unknown, _Args, _From, _Until, _Now) ->
     lager:error("unknown function call ~p or invalid arguments", [Unknown]),
@@ -506,21 +501,6 @@ lcm(A, B) when A < B ->
     B div gcd(B, A) * A;
 lcm(A, B)  ->
     A div gcd(A, B) * B.
-
-
-sort_non_null(Values) ->
-    sort_non_null(Values, [], 0).
-
-sort_non_null([], Acc, Len) ->
-    {lists:sort(Acc), Len};
-sort_non_null([null | Vs], Acc, Len) ->
-    sort_non_null(Vs, Acc, Len);
-sort_non_null([{_TS, null} | Vs], Acc, Len) ->
-    sort_non_null(Vs, Acc, Len);
-sort_non_null([{_TS, Val} | Vs], Acc, Len) ->
-    sort_non_null(Vs, [Val | Acc], Len + 1);
-sort_non_null([Val | Vs], Acc, Len) ->
-    sort_non_null(Vs, [Val | Acc], Len + 1).
 
 
 select_top_n(Series, N, Name, Func) ->
@@ -656,32 +636,6 @@ zip_series([Hd | _] = Series, Func, Name) ->
     [with_function_name(Zipped, Name)].
 
 
-safe_sum(Vs) ->
-    safe_sum(Vs, 0).
-
-safe_sum([], Acc) -> Acc;
-safe_sum([null | Vs], Acc) ->
-    safe_sum(Vs, Acc);
-safe_sum([{_TS, null} | Vs], Acc) ->
-    safe_sum(Vs, Acc);
-safe_sum([{_TS, Value} | Vs], Acc) ->
-    safe_sum(Vs, Acc + Value);
-safe_sum([Value | Vs], Acc) ->
-    safe_sum(Vs, Acc + Value).
-
-
-safe_length(Vs) ->
-    safe_length(Vs, 0).
-
-safe_length([], Len) -> Len;
-safe_length([null | Xs], Len) ->
-    safe_length(Xs, Len);
-safe_length([{_TS, null} | Xs], Len) ->
-    safe_length(Xs, Len);
-safe_length([_ | Xs], Len) ->
-    safe_length(Xs, Len + 1).
-
-
 safe_multiply([]) -> null;
 safe_multiply([{_TS, V} | Vs]) ->
     safe_multiply(Vs, V);
@@ -721,26 +675,6 @@ safe_minimum([Value | Vs], Min) ->
 safe_minimum0(null, Value) -> Value;
 safe_minimum0(Value, null) -> Value;
 safe_minimum0(A, B) -> min(A, B).
-
-
-safe_diff([]) -> 0;
-safe_diff([{_TS, Value} | Vs]) -> safe_diff(Vs, Value);
-safe_diff([Value | Vs]) -> safe_diff(Vs, Value).
-
-safe_diff([], null) -> 0;
-safe_diff([], Acc) -> Acc;
-safe_diff([null | Vs], Acc) ->
-    safe_diff(Vs, Acc);
-safe_diff([{_TS, null} | Vs], Acc) ->
-    safe_diff(Vs, Acc);
-safe_diff([{_TS, Value} | Vs], null) ->
-    safe_diff(Vs, Value);
-safe_diff([{_TS, Value} | Vs], Acc) ->
-    safe_diff(Vs, Acc - Value);
-safe_diff([Value | Vs], null) ->
-    safe_diff(Vs, Value);
-safe_diff([Value | Vs], Acc) ->
-    safe_diff(Vs, Acc - Value).
 
 
 square_sum([]) -> 0;
@@ -793,8 +727,8 @@ moving_average([], _Window) -> [];
 moving_average(Values, Window) when Window =< 0 -> Values;
 moving_average(Values, Window) ->
     FirstPart = lists:sublist(Values, Window),
-    FirstLen = safe_length(FirstPart),
-    FirstSum = safe_sum(FirstPart),
+    FirstLen = statser_calc:safe_length(FirstPart),
+    FirstSum = statser_calc:safe_sum(FirstPart),
     FirstAvg = safe_avg(FirstSum, FirstLen),
     Rest = safe_tail(Window, Values),
     FirstValue = get_value(safe_last(FirstPart), FirstAvg),
@@ -861,10 +795,6 @@ non_negative_derivative([{TS, V} | Vs], Prev, Acc) ->
     non_negative_derivative(Vs, V, [{TS, Value} | Acc]).
 
 
-median(Values) ->
-    percentile(Values, 50, true).
-
-
 % TODO: support limit of 'null' values to skip
 keep_last_value(Values) ->
     keep_last_value(Values, null, []).
@@ -875,35 +805,6 @@ keep_last_value([{TS, null} | Vs], Last, Acc) ->
     keep_last_value(Vs, Last, [{TS, Last} | Acc]);
 keep_last_value([{_TS, Val}=T | Vs], _Last, Acc) ->
     keep_last_value(Vs, Val, [T | Acc]).
-
-
-percentile(Values, N) ->
-    percentile(Values, N, false).
-
-percentile(Values, N, Interpolate) ->
-    {Sorted, Len} = sort_non_null(Values),
-    FractionalRank = (N / 100.0) * (Len + 1),
-    Rank0 = statser_util:floor(FractionalRank),
-    RankFraction = FractionalRank - Rank0,
-
-    Rank =
-    if Interpolate == true -> Rank0;
-       true -> Rank0 + statser_util:ceiling(RankFraction)
-    end,
-
-    Percentile =
-    if Len == 0 -> null;
-       Rank == 0 -> hd(Sorted);
-       Rank > Len -> lists:nth(Len, Sorted);
-       true -> lists:nth(Rank, Sorted)
-    end,
-
-    if Interpolate == true andalso Len > Rank ->
-           NextValue = lists:nth(Rank + 1, Sorted),
-           Percentile + RankFraction * (NextValue - Percentile);
-       true ->
-           Percentile
-    end.
 
 
 filter_named(Func, Series, Name) ->
@@ -1380,14 +1281,6 @@ non_negative_derivative_test_() ->
                    evaluate_call(<<"nonNegativeDerivative">>, [[S2]], 0, 0, 0))
     ].
 
-sort_non_null_test_() ->
-    [?_assertEqual({[], 0}, sort_non_null([])),
-     ?_assertEqual({[], 0}, sort_non_null([null, null])),
-     ?_assertEqual({[1], 1}, sort_non_null([1])),
-     ?_assertEqual({[1, 2], 2}, sort_non_null([1, null, 2])),
-     ?_assertEqual({[1, 2], 2}, sort_non_null([2, null, 1]))
-    ].
-
 square_sum_test_() ->
     [?_assertEqual(0, square_sum([])),
      ?_assertEqual(2/3, square_sum([3, 4, 5])),
@@ -1413,15 +1306,6 @@ gcd_test_() ->
     [?_assertEqual(10, gcd(10, 0)),
      ?_assertEqual(5, gcd(0, 5)),
      ?_assertEqual(5, gcd(10, 5))
-    ].
-
-safe_diff_test_() ->
-    [?_assertEqual(0, safe_diff([])),
-     ?_assertEqual(1, safe_diff([1])),
-     ?_assertEqual(0, safe_diff([1, 1])),
-     ?_assertEqual(-5, safe_diff([1, 1, 2, 3])),
-     ?_assertEqual(-5, safe_diff([null, 1, 1, 2, null, 3, null])),
-     ?_assertEqual(0, safe_diff([null, null, null]))
     ].
 
 safe_multiply_test_() ->
@@ -1467,22 +1351,6 @@ moving_average_test_() ->
      ?_assertEqual([5/2,9/3,10/3,9/3,6/3,4/3,2/2], moving_average([null,2,3,4,3,2,1,1,null], 3)),
      ?_assertEqual([{120,6/3},{130,9/3},{140,10/3},{150,9/3},{160,6/3},{170,4/3},{180,3/3}],
                    moving_average(pseudo_values([1,2,3,4,3,2,1,1,1]), 3))
-    ].
-
-percentile_test_() ->
-    [?_assertEqual(null, percentile([], 50)),
-     ?_assertEqual(null, percentile([null], 50)),
-     ?_assertEqual(1, percentile([1], 50)),
-     ?_assertEqual(1, percentile([1, null, null], 50)),
-     ?_assertEqual(2, percentile([1, null, 2], 50)),
-     ?_assertEqual(2, percentile([2, null, 1], 50)),
-     ?_assertEqual(1.5, percentile([2, null, 1], 50, true)),
-     ?_assertEqual(2, percentile([2, null, 1, 3], 50)),
-     ?_assertEqual(2.0, percentile([2, null, 1, 3], 50, true)),
-     ?_assertEqual(1, percentile([2, 1, 3], 10)),
-     ?_assertEqual(1.0, percentile([2, 1, 3], 10, true)),
-     ?_assertEqual(3, percentile([2, 1, 3], 99)),
-     ?_assertEqual(3, percentile([2, 1, 3], 99, true))
     ].
 
 -endif.

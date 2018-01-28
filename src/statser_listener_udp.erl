@@ -258,7 +258,7 @@ calculate_timer(Values) ->
     {Sum, SquaredSum, Len} = walk_values(Sorted),
     Mean = Sum / Len,
     {StdDev, Max} = stddev_max(Mean, Sorted),
-    Median = statser_processor:median(Sorted),
+    Median = statser_calc:median(Sorted),
     {Min, Max, Mean, Median, StdDev, Sum, SquaredSum}.
 
 
