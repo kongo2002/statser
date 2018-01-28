@@ -411,6 +411,14 @@ evaluate_call(<<"removeBelowValue">>, [Series, Val], _From, _Until, _Now) when i
                       with_function_name(S0, "removeBelowValue")
               end, Series);
 
+% scale
+evaluate_call(<<"scale">>, [Series, Factor], _From, _Until, _Now) when is_number(Factor) ->
+    lists:map(fun(S) ->
+                      Scale = fun(V) -> V * Factor end,
+                      S0 = S#series{values=process_series_values(S#series.values, Scale)},
+                      with_function_name(S0, "scale")
+              end, Series);
+
 % squareRoot
 evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -1312,6 +1320,11 @@ offset_to_zero_test_() ->
     Series = [pseudo_series([102, 101, 104, 101, 100, 111])],
     Expected = [pseudo_series_n([2, 1, 4, 1, 0, 11], "offsetToZero")],
     [?_assertEqual(Expected, evaluate_call(<<"offsetToZero">>, [Series], 0, 0, 0))].
+
+scale_test_() ->
+    Series = [pseudo_series([1,2,3,4])],
+    Expected = [pseudo_series_n([2,4,6,8], "scale")],
+    [?_assertEqual(Expected, evaluate_call(<<"scale">>, [Series, 2], 0, 0, 0))].
 
 per_second_test_() ->
     S1 = pseudo_series([10, 20, 25, 30, 40, 60]),
