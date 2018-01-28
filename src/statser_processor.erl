@@ -436,6 +436,11 @@ evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "squareRoot")
               end, Series);
 
+% stddevSeries
+evaluate_call(<<"stddevSeries">>, Series, _From, _Until, _Now) ->
+    {Norm, _Start, _End, _Step} = normalize(Series),
+    zip_series(Norm, fun statser_calc:safe_stddev/1, "stddevSeries");
+
 % sumSeries
 evaluate_call(<<"sumSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
@@ -1247,6 +1252,16 @@ sum_series_test_() ->
                    evaluate_call(<<"sumSeries">>, [[Series1 ++ Series1]], 0, 0, 0)),
      ?_assertEqual(named([pseudo_series([2.0,4.0,6.0], 20)], "sumSeries"),
                    evaluate_call(<<"sumSeries">>, [[Series2 ++ Series3]], 0, 0, 0))
+    ].
+
+stddev_series_test_() ->
+    Series1 = [pseudo_series([1,2,3])],
+    Series2 = [pseudo_series([2,4,6])],
+    Series3 = [pseudo_series([3,6,9])],
+    Ss = Series1 ++ Series2 ++ Series3,
+    Expected = [math:sqrt(2/3),math:sqrt(8/3),math:sqrt(18/3)],
+    [?_assertEqual(named([pseudo_series(Expected)], "stddevSeries"),
+                   evaluate_call(<<"stddevSeries">>, [Ss], 0, 0, 0))
     ].
 
 divide_series_test_() ->

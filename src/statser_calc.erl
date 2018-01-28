@@ -13,6 +13,7 @@
          safe_min/1,
          safe_pow/1,
          safe_range/1,
+         safe_stddev/1,
          safe_substract/2,
          safe_square_root/1]).
 
@@ -111,6 +112,24 @@ safe_substract(A, B) -> A - B.
 
 safe_invert(null) -> null;
 safe_invert(Value) -> math:pow(Value, -1).
+
+
+safe_stddev(Vs) ->
+    safe_stddev(Vs, safe_average(Vs), 0.0, 0).
+
+safe_stddev(_Vs, null, _Sum, _Len) -> null;
+safe_stddev([], _Avg, Sum, Len) ->
+    math:sqrt(Sum / Len);
+safe_stddev([{_TS, null} | Vs], Avg, Sum, Len) ->
+    safe_stddev(Vs, Avg, Sum, Len);
+safe_stddev([{_TS, V} | Vs], Avg, Sum, Len) ->
+    Dev = math:pow(V - Avg, 2),
+    safe_stddev(Vs, Avg, Sum + Dev, Len + 1);
+safe_stddev([null | Vs], Avg, Sum, Len) ->
+    safe_stddev(Vs, Avg, Sum, Len);
+safe_stddev([V | Vs], Avg, Sum, Len) ->
+    Dev = math:pow(V - Avg, 2),
+    safe_stddev(Vs, Avg, Sum + Dev, Len + 1).
 
 
 safe_square_root(null) -> null;

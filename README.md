@@ -149,6 +149,7 @@ on my roadmap below.
     - `scaleToSeconds`
     - `scale`
     - `squareRoot`
+    - `stddevSeries`
     - `sumSeries`
 
 
