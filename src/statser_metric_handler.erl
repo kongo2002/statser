@@ -162,6 +162,11 @@ handle_cast(check_heartbeat, #state{path=Path, heartbeat=HB} = State) ->
             if HB < Expired ->
                    DateTime = statser_util:epoch_seconds_to_datetime(HB),
                    lager:info("stopping metrics handler for '~s' due to inactivity [last seen ~s]", [Path, DateTime]),
+
+                   % TODO:
+                   % as stopping of the metric-handler usually goes along
+                   % with the final flushing of the cached values we should
+                   % consider using the rate-limiter as well
                    {stop, normal, State};
                true -> {noreply, State}
             end;
