@@ -419,6 +419,15 @@ evaluate_call(<<"scale">>, [Series, Factor], _From, _Until, _Now) when is_number
                       with_function_name(S0, "scale")
               end, Series);
 
+% scaleToSeconds
+evaluate_call(<<"scaleToSeconds">>, [Series, Seconds], _From, _Until, _Now) when is_number(Seconds) andalso Seconds > 0 ->
+    lists:map(fun(S) ->
+                      Factor = Seconds / S#series.step,
+                      Scale = fun(V) -> V * Factor end,
+                      S0 = S#series{values=process_series_values(S#series.values, Scale)},
+                      with_function_name(S0, "scaleToSeconds")
+              end, Series);
+
 % squareRoot
 evaluate_call(<<"squareRoot">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -1325,6 +1334,14 @@ scale_test_() ->
     Series = [pseudo_series([1,2,3,4])],
     Expected = [pseudo_series_n([2,4,6,8], "scale")],
     [?_assertEqual(Expected, evaluate_call(<<"scale">>, [Series, 2], 0, 0, 0))].
+
+scale_to_seconds_test_() ->
+    Series = [pseudo_series([1,2,4,4])],
+    Exp1 = [pseudo_series_n([1/10,2/10,4/10,4/10], "scaleToSeconds")],
+    Exp2 = [pseudo_series_n([1*6.0,2*6.0,4*6.0,4*6.0], "scaleToSeconds")],
+    [?_assertEqual(Exp1, evaluate_call(<<"scaleToSeconds">>, [Series, 1], 0, 0, 0)),
+     ?_assertEqual(Exp2, evaluate_call(<<"scaleToSeconds">>, [Series, 60], 0, 0, 0))
+    ].
 
 per_second_test_() ->
     S1 = pseudo_series([10, 20, 25, 30, 40, 60]),

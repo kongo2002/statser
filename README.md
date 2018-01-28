@@ -146,6 +146,7 @@ on my roadmap below.
     - `rangeOfSeries`
     - `removeAboveValue`
     - `removeBelowValue`
+    - `scaleToSeconds`
     - `scale`
     - `squareRoot`
     - `sumSeries`
