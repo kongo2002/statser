@@ -679,21 +679,29 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
     if
         % we do have enough data points to calculate an aggregation
         KnownPercentage >= XFF ->
-            AggValue = aggregate(AggType, Values, NumValues, NumPoints),
-            lager:debug("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
-            Point = data_point(LowerInterval, AggValue),
-            {BaseInterval, _} = point_at(IO, Lower#whisper_archive.offset),
-            Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
-            ok = write_at(IO, Point, Offset),
-            true;
+            % usually the file factor (XFF) should make sure we
+            % have at least 'some' values to aggregate but you never
+            % know what configuration we have at hand
+            % e.g. average with XFF == 0.0
+            case aggregate(AggType, Values, NumValues, NumPoints) of
+                null ->
+                    false;
+                AggValue ->
+                    lager:debug("calculated aggregate [~p] ~p [values ~p]", [AggType, AggValue, Values]),
+                    Point = data_point(LowerInterval, AggValue),
+                    {BaseInterval, _} = point_at(IO, Lower#whisper_archive.offset),
+                    Offset = get_data_point_offset(Lower, LowerInterval, BaseInterval),
+                    ok = write_at(IO, Point, Offset),
+                    true
+            end;
         true ->
             false
     end.
 
 
+aggregate(sum, Values, _, _) -> lists:sum(Values);
 aggregate(_, [], _, _) -> null;
 aggregate(average, Values, NumValues, _) -> lists:sum(Values) / NumValues;
-aggregate(sum, Values, _, _) -> lists:sum(Values);
 aggregate(last, Values, _, _) -> lists:last(Values);
 aggregate(max, Values, _, _) -> lists:max(Values);
 aggregate(min, Values, _, _) -> lists:min(Values);
