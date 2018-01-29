@@ -68,9 +68,7 @@ init({Path, Metadata}) ->
     % let's try to register ourselves
     case ets:insert_new(metrics, {Path, self()}) of
         true ->
-            % we could register ourself, let's continue
-            % TODO: not quite sure of this additional `prepare` step
-            %       we could do that in here as well...
+            % we could register ourself, let's continue with preparation
             gen_server:cast(self(), {prepare, Metadata}),
             {ok, set_heartbeat(#state{path=Path})};
         false ->
@@ -152,24 +150,22 @@ handle_cast({line, _Path, Value, TS}, State) ->
     {noreply, set_heartbeat(NewState)};
 
 handle_cast(check_heartbeat, #state{path=Path, heartbeat=HB} = State) ->
-    % schedule new timer
-    case State#state.metadata of
-        #whisper_metadata{archives=[A | _]} ->
-            Now = erlang:system_time(second),
-            IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR,
-            Expired = Now - IntervalMillis,
-
-            if HB < Expired ->
-                   DateTime = statser_util:epoch_seconds_to_datetime(HB),
-                   lager:info("stopping metrics handler for '~s' due to inactivity [last seen ~s]", [Path, DateTime]),
-
-                   % TODO:
-                   % as stopping of the metric-handler usually goes along
-                   % with the final flushing of the cached values we should
-                   % consider using the rate-limiter as well
-                   {stop, normal, State};
-               true -> {noreply, State}
-            end;
+    case {heartbeat_expired(State), State#state.cache} of
+        {true, []} ->
+            DateTime = statser_util:epoch_seconds_to_datetime(HB),
+            lager:info("stopping metrics handler for '~s' due to inactivity [last seen ~s]", [Path, DateTime]),
+            {stop, normal, State};
+        {true, _Cs} ->
+            % we might have some data points that are not flushed to disk yet
+            % let's request a flush and terminate afterwards
+            %
+            % because usually all metric handlers receive the heartbeat check
+            % signal at the same time the chances are real that a couple of
+            % handlers will expire at the same time - therefore we don't want
+            % to exceed our flush limit by stopping a lot of handlers with
+            % pending metrics at once
+            request_flush(),
+            {noreply, State};
         _Otherwise ->
             {noreply, State}
     end;
@@ -246,6 +242,14 @@ request_create() ->
 
 request_flush() ->
     gen_server:cast(update_limiter, {drain, flush_cache, self()}).
+
+
+heartbeat_expired(#state{heartbeat=HB, metadata=#whisper_metadata{archives=[A | _]}}) ->
+    Now = erlang:system_time(second),
+    IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR,
+    Expired = Now - IntervalMillis,
+    HB < Expired;
+heartbeat_expired(_State) -> false.
 
 
 get_metadata(State) ->
