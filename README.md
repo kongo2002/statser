@@ -80,13 +80,12 @@ in a simple YAML configuration file.
 Moreover you can already point your [grafana][grafana] dashboard to your statser
 instance just like you did with a graphite backend. Even though
 [grafana][grafana] has no particular statser-support it does work because
-statser implements most parts of graphite-web's API already.
+statser implements (or mimics) most parts of graphite-web's API already.
 
-Find a roughly up-to-date list of features that are either finished or somewhere
-on my roadmap below.
+Find a list of features that are either finished or on my roadmap below.
 
 
-### Stuff that works already
+### Features
 
 * full whisper database support
 * carbon plain text interface (known to listen on port `2003`)
