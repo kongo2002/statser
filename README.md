@@ -118,6 +118,7 @@ Find a list of features that are either finished or on my roadmap below.
     - `highestAverage`
     - `highestCurrent`
     - `highestMax`
+    - `integralByInterval`
     - `integral`
     - `invert`
     - `isNonNull`

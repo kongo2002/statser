@@ -222,6 +222,17 @@ evaluate_call(<<"integral">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "integral")
               end, Series);
 
+% integralByInterval
+evaluate_call(<<"integralByInterval">>, [Series, Interval], _From, _Until, _Now) ->
+    lists:map(fun(S) ->
+                      ISecs = if
+                                  is_binary(Interval) -> statser_util:parse_unit(Interval);
+                                  true -> Interval * S#series.step
+                              end,
+                      Vs = integral_by_interval(S#series.values, ISecs),
+                      with_function_name(S#series{values=Vs}, "integralByInterval")
+              end, Series);
+
 % invert
 evaluate_call(<<"invert">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -488,6 +499,25 @@ derivative([{TS, null} | Vs], _Prev, Acc) ->
     derivative(Vs, null, [{TS, null} | Acc]);
 derivative([{TS, Value} | Vs], Prev, Acc) ->
     derivative(Vs, Value, [{TS, Value - Prev} | Acc]).
+
+
+integral_by_interval([], _IntervalSeconds) -> [];
+integral_by_interval([{TS, _} | _] = Vs, IntervalSeconds) ->
+    integral_by_interval(Vs, TS, 0, [], IntervalSeconds).
+
+integral_by_interval([], _LastInterval, _Sum, Result, _MaxInterval) ->
+    lists:reverse(Result);
+integral_by_interval([{TS, Val} | Vs], LastInterval, Sum, Result, MaxInterval) ->
+    TimeSpan = TS - LastInterval,
+    Value = case Val of
+                null -> 0;
+                _ -> Val
+            end,
+    if TimeSpan >= MaxInterval ->
+           integral_by_interval(Vs, TS, Value, [{TS, Value} | Result], MaxInterval);
+       true ->
+           integral_by_interval(Vs, LastInterval, Sum + Value, [{TS, Sum + Value} | Result], MaxInterval)
+    end.
 
 
 % greatest common divisor
@@ -1141,6 +1171,24 @@ integral_test_() ->
                    evaluate_call(<<"integral">>, [[pseudo_series([])]], 0, 0, 0)),
      ?_assertEqual([pseudo_series_n([null,null], "integral")],
                    evaluate_call(<<"integral">>, [[pseudo_series([null,null])]], 0, 0, 0))
+    ].
+
+integral_by_interval_test_() ->
+    S1 = [pseudo_series([1,2,3,4,5,6,7])],
+    S2 = [pseudo_series([1,null,1,1,null])],
+    S3 = [pseudo_series([null,null,null])],
+    [?_assertEqual([pseudo_series_n([1,3,6,4,9,15,7], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [S1, 3], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([1,2,3,4,5,6,7], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [S1, <<"5s">>], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([1,2,3,4,5,6,7], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [S1, <<"10s">>], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [[pseudo_series([])], 1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([1,1,1,2,0], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [S2, 2], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([0,0,0], "integralByInterval")],
+                   evaluate_call(<<"integralByInterval">>, [S3, <<"20s">>], 0, 0, 0))
     ].
 
 sum_series_test_() ->
