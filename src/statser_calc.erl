@@ -196,6 +196,7 @@ safe_div({TS, _A}, {_, null}) -> {TS, null};
 safe_div(null, _B) -> null;
 safe_div({TS, null}, _B) -> {TS, null};
 safe_div({TS, A}, {_, B}) -> {TS, A / B};
+safe_div({TS, A}, B) -> {TS, A / B};
 safe_div(A, B) -> A / B.
 
 

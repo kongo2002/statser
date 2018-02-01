@@ -103,6 +103,7 @@ Find a list of features that are either finished or on my roadmap below.
     - `aliasByNode`
     - `aliasSub`
     - `alias`
+    - `asPercent`
     - `averageAbove`
     - `averageBelow`
     - `averageOutsidePercentile`

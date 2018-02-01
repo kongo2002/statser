@@ -109,6 +109,44 @@ evaluate_call(<<"averageSeries">>, Series, _From, _Until, _Now) ->
     {Norm, _Start, _End, _Step} = normalize(Series),
     zip_series(Norm, fun statser_calc:safe_average/1, "averageSeries");
 
+% asPercent
+%
+% The 'original' graphite API is a real mess because the function may
+% be called in three or four different variants.
+% We will support only a part of what is (currently) supported by
+% graphite already:
+%
+%  * 'total' is not specified at all (use the series' sum instead)
+%  * 'total' is specified as a constant number
+%  * 'total' is specified as one or more series
+%
+evaluate_call(<<"asPercent">>, [Series, Total], _From, _Until, _Now) when is_number(Total) ->
+    ToPercent = Total / 100.0,
+    lists:map(fun(S) ->
+                      Vs = lists:map(fun(V) -> statser_calc:safe_div(V, ToPercent) end, S#series.values),
+                      with_function_name(S#series{values=Vs}, "asPercent")
+              end, Series);
+
+evaluate_call(<<"asPercent">>=Call, [Series], From, Until, Now) ->
+    % we pass in ourselves to the 'overload' that takes the 'total-series'
+    % so we can calculate the total based on it
+    evaluate_call(Call, [Series, Series], From, Until, Now);
+
+evaluate_call(<<"asPercent">>, [Series, TotalSeries], _From, _Until, _Now) ->
+    % create 'sum-series' first
+    {SummedS0, _Start, _End, _Step} = normalize(TotalSeries),
+    [SummedS] = zip_series(SummedS0, fun statser_calc:safe_sum/1, "__summed__"),
+
+    % usually we zip into *one* series but this time we have to map over each series
+    % and zip these with the 'sum-series' from above
+    lists:flatmap(fun(S) ->
+                          {Norm, _Start, _End, _Step} = normalize([S, SummedS]),
+                          Percent = fun([V, Total]) ->
+                                            statser_calc:safe_div(V, Total / 100.0)
+                                    end,
+                          zip_series(Norm, Percent, "asPercent")
+                  end, Series);
+
 % changed
 evaluate_call(<<"changed">>, [Series], _From, _Until, _Now) ->
     lists:map(fun(S) ->
@@ -1160,6 +1198,27 @@ grep_test_() ->
      ?_assertEqual(Series, evaluate_call(<<"grep">>, [Series, "target"], 0, 0, 0)),
      ?_assertEqual(Series, evaluate_call(<<"grep">>, [Series, "get$"], 0, 0, 0)),
      ?_assertEqual([], evaluate_call(<<"grep">>, [Series, "^taget$"], 0, 0, 0))
+    ].
+
+as_percent_test_() ->
+    S1 = [pseudo_series([10,20,30,40,50])],
+    S2 = [pseudo_series([10,null,30,40,50])],
+    [?_assertEqual([pseudo_series_n([10.0,20.0,30.0,40.0,50.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1, 100], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([5.0,10.0,15.0,20.0,25.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1, 200], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([5.0,null,15.0,20.0,25.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S2, 200], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([50.0,50.0,50.0,50.0,50.0], "asPercent"),
+                    pseudo_series_n([50.0,50.0,50.0,50.0,50.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1 ++ S1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([50.0,50.0,50.0,50.0,50.0], "asPercent"),
+                    pseudo_series_n([50.0,50.0,50.0,50.0,50.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1 ++ S1, S1 ++ S1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([100.0,100.0,100.0,100.0,100.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1, S1], 0, 0, 0)),
+     ?_assertEqual([pseudo_series_n([100.0,100.0,100.0,100.0,100.0], "asPercent")],
+                   evaluate_call(<<"asPercent">>, [S1], 0, 0, 0))
     ].
 
 integral_test_() ->
