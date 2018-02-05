@@ -114,4 +114,10 @@ ceiling_test_() ->
      ?_assertEqual(-5, ceiling(-5.9))
     ].
 
+epoch_seconds_to_datetime_test_() ->
+    [?_assertEqual("1970-01-01T00:00:00", epoch_seconds_to_datetime(0)),
+     ?_assertEqual("1970-01-01T01:00:00", epoch_seconds_to_datetime(3600)),
+     ?_assertEqual("1970-01-01T01:01:01", epoch_seconds_to_datetime(3661))
+    ].
+
 -endif.
