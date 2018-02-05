@@ -312,7 +312,12 @@ evaluate_call(<<"lowestCurrent">>, [Series, N], _From, _Until, _Now) when is_num
 
 % maximumAbove
 evaluate_call(<<"maximumAbove">>, [Series, N], _From, _Until, _Now) when is_number(N) ->
-    filter_named(fun(#series{values=Values}) -> statser_calc:safe_max(Values) > N end,
+    filter_named(fun(#series{values=Values}) ->
+                         case statser_calc:safe_max(Values) of
+                             null -> false;
+                             X -> X > N
+                         end
+                 end,
                  Series, "maximumAbove");
 
 % maximumBelow
@@ -1136,13 +1141,16 @@ maximum_above_test_() ->
     S1 = [pseudo_series([3.0, 5.0, 4.0])],
     S2 = [pseudo_series([3.0, 9.0, 6.0])],
     S3 = [pseudo_series([3.0, 12.0, 9.0])],
+    S4 = [pseudo_series([null, null, null])],
     Series = S1 ++ S2 ++ S3,
     [?_assertEqual(named(S3, "maximumAbove"),
                    evaluate_call(<<"maximumAbove">>, [Series, 10], 0, 0, 0)),
      ?_assertEqual(named(S2 ++ S3, "maximumAbove"),
                    evaluate_call(<<"maximumAbove">>, [Series, 8], 0, 0, 0)),
      ?_assertEqual(named(Series, "maximumAbove"),
-                   evaluate_call(<<"maximumAbove">>, [Series, 4], 0, 0, 0))
+                   evaluate_call(<<"maximumAbove">>, [Series, 4], 0, 0, 0)),
+     ?_assertEqual(named(Series, "maximumAbove"),
+                   evaluate_call(<<"maximumAbove">>, [Series ++ S4, 4], 0, 0, 0))
     ].
 
 maximum_below_test_() ->
