@@ -134,18 +134,21 @@ evaluate_call(<<"asPercent">>=Call, [Series], From, Until, Now) ->
 
 evaluate_call(<<"asPercent">>, [Series, TotalSeries], _From, _Until, _Now) ->
     % create 'sum-series' first
-    {SummedS0, _Start, _End, _Step} = normalize(TotalSeries),
-    [SummedS] = zip_series(SummedS0, fun statser_calc:safe_sum/1, "__summed__"),
+    case normalize(TotalSeries) of
+        {[], _, _, _} -> [];
+        {SummedS0, _Start, _End, _Step} ->
+            [SummedS] = zip_series(SummedS0, fun statser_calc:safe_sum/1, "__summed__"),
 
-    % usually we zip into *one* series but this time we have to map over each series
-    % and zip these with the 'sum-series' from above
-    lists:flatmap(fun(S) ->
-                          {Norm, _Start, _End, _Step} = normalize([S, SummedS]),
-                          Percent = fun([V, Total]) ->
-                                            statser_calc:safe_div(V, Total / 100.0)
-                                    end,
-                          zip_series(Norm, Percent, "asPercent")
-                  end, Series);
+            % usually we zip into *one* series but this time we have to map over each series
+            % and zip these with the 'sum-series' from above
+            lists:flatmap(fun(S) ->
+                                  {Norm, _Start, _End, _Step} = normalize([S, SummedS]),
+                                  Percent = fun([V, Total]) ->
+                                                    statser_calc:safe_div(V, Total / 100.0)
+                                            end,
+                                  zip_series(Norm, Percent, "asPercent")
+                          end, Series)
+    end;
 
 % changed
 evaluate_call(<<"changed">>, [Series], _From, _Until, _Now) ->
