@@ -92,7 +92,7 @@ read_archive_info(IO, As, Archives) ->
 
 -spec fetch(binary(), integer(), integer()) -> #series{}.
 fetch(File, From, Until) ->
-    fetch(File, From, Until, erlang:system_time(second)).
+    fetch(File, From, Until, statser_util:seconds()).
 
 
 -spec fetch(binary(), integer(), integer(), integer()) -> #series{}.
@@ -137,8 +137,8 @@ fetch_with_metadata(IO, Metadata, Now, From, Until) ->
 
     % normalize range
     ArchiveSeconds = Archive#whisper_archive.seconds,
-    FromInterval = interval_start(Archive, From),
-    UntilInterval0 = interval_start(Archive, Until),
+    FromInterval = interval_start(Archive, From) + ArchiveSeconds,
+    UntilInterval0 = interval_start(Archive, Until) + ArchiveSeconds,
 
     UntilInterval = if UntilInterval0 == FromInterval ->
                            UntilInterval0 + ArchiveSeconds;
@@ -169,7 +169,8 @@ fetch_series(IO, Archive, FromOffset, UntilOffset) ->
     % we have to wrap around the archive's end
     {ok, _} = file:position(IO, {bof, FromOffset}),
     ArchiveOffset = Archive#whisper_archive.offset,
-    ArchiveEnd = ArchiveOffset + Archive#whisper_archive.size,
+    ArchiveSize = Archive#whisper_archive.size,
+    ArchiveEnd = ArchiveOffset + ArchiveSize,
 
     {ok, FstContent} = file:read(IO, ArchiveEnd - FromOffset),
     {ok, _} = file:position(IO, {bof, ArchiveOffset}),
@@ -822,7 +823,7 @@ create_and_read_test_() ->
                                     {ok, M2} = read_metadata(File),
                                     {ok, M1, M2}
                             end,
-                      {ok, CreateM, ReadM} = with_tempfile(Fun),
+                      {ok, CreateM, ReadM} = test_util:with_tempfile(Fun),
                       Extract = fun(A) ->
                                         {A#whisper_archive.seconds, A#whisper_archive.points}
                                 end,
@@ -852,22 +853,17 @@ update_points_test_() ->
                                     Series2 = fetch(File, From, To),
                                     {ok, Series1, Series2}
                             end,
-                    {ok, S1, S2} = with_tempfile(WithF),
+                    {ok, S1, S2} = test_util:with_tempfile(WithF),
                     [?_assertEqual(S1, S2)]
             end,
     Now = erlang:system_time(second),
     lists:flatten([Check(Archives1, [{Now, 100}], Now, Now+60),
+                   Check(Archives1, [{Now, 100}], Now-20, Now),
                    Check(Archives1, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
                    Check(Archives1, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60),
                    Check(Archives2, [{Now, 100}], Now, Now+60),
                    Check(Archives2, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),
                    Check(Archives2, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+40, 140}], Now, Now+60)
                   ]).
-
-with_tempfile(Fun) ->
-    TempFile = lib:nonl(os:cmd("mktemp")),
-    try Fun(TempFile)
-        after file:delete(TempFile)
-    end.
 
 -endif. % TEST

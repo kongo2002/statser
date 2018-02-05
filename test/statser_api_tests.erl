@@ -8,9 +8,12 @@
 
 
 setup() ->
-    ok = test_util:start_statser(),
+    setup(emergency).
+
+setup(LogLevel) ->
+    Ctx = test_util:start_statser(LogLevel),
     inets:start(),
-    ok.
+    Ctx.
 
 
 teardown(State) ->
@@ -61,6 +64,31 @@ api_render_functions_of_non_existing_target_test_() ->
      }
     }.
 
+api_render_sent_metric_test_() ->
+    {
+     "test for rendering metrics that were just sent",
+     {
+      setup,
+      fun setup/0, fun teardown/1,
+      [
+       % TODO: refine assertion
+       ?_assert(non_empty_list(send_and_request_datapoints("foo.bar", 100)))
+      ]
+     }
+    }.
+
+
+non_empty_list([_ | _]) -> true;
+non_empty_list([]) -> false.
+
+
+send_and_request_datapoints(Metric, Value) ->
+    test_util:send_metric(Metric, Value),
+    timer:sleep(100),
+    [{Values}] = render_request([Metric]),
+    DataPoints = proplists:get_value(<<"datapoints">>, Values),
+    DataPoints.
+
 
 get_request(Path) ->
     Url = ?DEFAULT_HOST ++ Path,
@@ -83,7 +111,7 @@ metrics_request(Path) ->
 
 render_request(Targets) ->
     Ts0 = lists:map(fun(T) -> "target=" ++ T end, Targets),
-    Ts = lists:flatten(lists:join("&", Ts0)),
+    Ts = lists:flatten(lists:join("&", Ts0 ++ ["from=-15min"])),
     {{_, 200, "OK"}, _, Body} = form_post_request("/render", Ts),
     jiffy:decode(Body).
 

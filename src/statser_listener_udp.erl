@@ -132,7 +132,7 @@ handle_info(prune, #state{config=Config} = State) ->
     lager:debug("udp: start pruning entries"),
 
     PruneAfterSecs = Config#udp_config.prune_after div ?MILLIS_PER_SEC,
-    PruneBefore = seconds() - PruneAfterSecs,
+    PruneBefore = statser_util:seconds() - PruneAfterSecs,
 
     Counters = maps:filter(fun(_, {TS, _}) -> TS > PruneBefore end, State#state.counters),
     Timers = maps:filter(fun(_, {TS, _, _}) -> TS > PruneBefore end, State#state.timers),
@@ -150,7 +150,7 @@ handle_info(prune, #state{config=Config} = State) ->
 
 handle_info(flush, #state{config=Config} = State) ->
     Start = erlang:monotonic_time(millisecond),
-    Now = seconds(),
+    Now = statser_util:seconds(),
     PerSecond = Config#udp_config.interval / ?MILLIS_PER_SEC,
 
     % flush counters
@@ -232,10 +232,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-seconds() ->
-    erlang:system_time(second).
-
 
 listen(Parent, Socket) ->
     {ok, {_Addr, _Port, Packet}} = gen_udp:recv(Socket, 0),
@@ -357,7 +353,7 @@ handle_metric(_State, _Metric, _Value, _Type, error) ->
 handle_metric(State, Metric, {ok, Value}, <<"c">>, {ok, Sample}) ->
     lager:debug("handle counter: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
-    Now = seconds(),
+    Now = statser_util:seconds(),
     Counters0 = State#state.counters,
     Update = fun({_, X}) -> {Now, X + (Value * (1 / Sample))} end,
     Counters = maps:update_with(Metric, Update, {Now, (Value * (1 / Sample))}, Counters0),
@@ -367,7 +363,7 @@ handle_metric(State, Metric, {ok, Value}, <<"c">>, {ok, Sample}) ->
 handle_metric(State, Metric, {ok, Value}, <<"ms">>, {ok, Sample}) ->
     lager:debug("handle timer: ~p:~w [sample ~w]", [Metric, Value, Sample]),
 
-    Now = seconds(),
+    Now = statser_util:seconds(),
     Inc = 1 / Sample,
     Timers0 = State#state.timers,
     Update = fun({_, Xs, Cnt}) -> {Now, [Value | Xs], Cnt + Inc} end,
@@ -378,7 +374,7 @@ handle_metric(State, Metric, {ok, Value}, <<"ms">>, {ok, Sample}) ->
 handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
     lager:debug("handle gauge: ~p:~w ~w", [Metric, Mod, Value]),
 
-    Now = seconds(),
+    Now = statser_util:seconds(),
     {Update, Initial} =
     case Mod of
         set -> {fun(_) -> {Now, Value} end, {Now, Value}};
@@ -394,7 +390,7 @@ handle_metric(State, Metric, {ok, Mod, Value}, <<"g">>, _Sample) ->
 handle_metric(State, Metric, {ok, Value}, <<"s">>, _Sample) ->
     lager:debug("handle set: ~p:~w", [Metric, Value]),
 
-    Now = seconds(),
+    Now = statser_util:seconds(),
     Sets0 = State#state.sets,
     Update = fun({_, Xs}) -> {Now, [Value | Xs]} end,
     Sets = maps:update_with(Metric, Update, {Now, [Value]}, Sets0),

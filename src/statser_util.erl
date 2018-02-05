@@ -13,6 +13,7 @@
          to_number/1,
          parse_unit/1,
          parse_unit/2,
+         seconds/0,
          epoch_seconds_to_datetime/1]).
 
 
@@ -65,6 +66,10 @@ parse_unit(Value, [$w | _])   -> Value * 604800;
 parse_unit(Value, "mon" ++ _) -> Value * 2592000;
 parse_unit(Value, [$y | _])   -> Value * 31536000;
 parse_unit(_, _)              -> error.
+
+
+seconds() ->
+    erlang:system_time(second).
 
 
 epoch_seconds_to_datetime(Seconds) ->
