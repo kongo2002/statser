@@ -215,9 +215,11 @@ get_suffix(File) ->
     get_suffix(lists:reverse(File), 4, []).
 
 get_suffix([], _X, Suffix) ->
-    {lists:reverse([]), string:lowercase(Suffix)};
+    % string:lowercase since OTP 20
+    {lists:reverse([]), string:to_lower(Suffix)};
 get_suffix(File, 0, Suffix) ->
-    {lists:reverse(File), string:lowercase(Suffix)};
+    % string:lowercase since OTP 20
+    {lists:reverse(File), string:to_lower(Suffix)};
 get_suffix([H | Ts], X, Suffix) ->
     get_suffix(Ts, X-1, [H | Suffix]).
 
