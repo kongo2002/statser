@@ -114,6 +114,8 @@ init([]) ->
                        [create_limiter, <<"creates">>, Limits#rate_limit_config.creates_per_sec]),
                 ?WORKER(update_limiter, statser_rate_limiter,
                        [update_limiter, <<"updates">>, Limits#rate_limit_config.updates_per_sec]),
+                % finder
+                ?WORKER(finder, statser_finder_server, []),
                 % API
                 ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
                ],
