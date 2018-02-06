@@ -20,7 +20,9 @@
          terminate/2,
          code_change/3]).
 
--record(state, {data_dir, metrics=[]}).
+-define(FINDER_UPDATE_INTERVAL, 60000).
+
+-record(state, {metrics=[], data_dir, timer, count}).
 
 -record(metric_file, {
           name :: nonempty_string(),
@@ -130,7 +132,9 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{timer=Timer}) ->
+    lager:info("terminating finder server at ~w", [self()]),
+    erlang:cancel_timer(Timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -148,16 +152,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-update_metrics_files(#state{data_dir=Dir}=State) ->
-    case find_metrics_files(Dir) of
-        [#metric_dir{contents=Ms}] ->
-            Count = count_metrics(Ms),
-            lager:info("found ~p metrics in data directory '~s'", [Count, Dir]),
-            State#state{metrics=Ms};
-        _Otherwise ->
-            lager:info("no metrics found in data directory '~s' ~p", [Dir]),
-            State#state{metrics=[]}
-    end.
+update_metrics_files(#state{data_dir=Dir, count=OldCount}=State) ->
+    lager:debug("updating finder metrics files"),
+
+    State0 = case find_metrics_files(Dir) of
+                 [#metric_dir{contents=Ms}] ->
+                     Count = count_metrics(Ms),
+
+                     if OldCount /= Count ->
+                            lager:info("found ~p metrics in data directory '~s'", [Count, Dir]);
+                        true -> ok
+                     end,
+
+                     State#state{metrics=Ms, count=Count};
+                 _Otherwise ->
+                     if OldCount /= 0 ->
+                            lager:info("no metrics found in data directory '~s' ~p", [Dir]);
+                        true -> ok
+                     end,
+                     State#state{metrics=[], count=0}
+             end,
+
+    Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
+    State0#state{timer=Timer}.
 
 
 count_metrics(Metrics) ->

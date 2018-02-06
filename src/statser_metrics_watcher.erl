@@ -118,7 +118,9 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{timer=Timer}) ->
+    lager:info("terminating metrics watcher at ~w", [self()]),
+    erlang:cancel_timer(Timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
