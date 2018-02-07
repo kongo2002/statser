@@ -225,10 +225,13 @@ find_metrics_files(File, Base) ->
                                     [#metric_dir{}=X] -> {Fs, [{Name, X} | Ds]}
                                 end
                         end,
-                    {Metrics, Dirs} = lists:foldl(F, {[], []}, Contents),
-                    [#metric_dir{name=File,
-                                 metrics=orddict:from_list(Metrics),
-                                 dirs=orddict:from_list(Dirs)}];
+                    case lists:foldl(F, {[], []}, Contents) of
+                        {[], []} -> [];
+                        {Metrics, Dirs} ->
+                            [#metric_dir{name=File,
+                                         metrics=orddict:from_list(Metrics),
+                                         dirs=orddict:from_list(Dirs)}]
+                    end;
                 _Otherwise -> []
             end;
         {ok, {file_info, _, regular, read_write, _, _, _, _, _, _, _, _, _, _}} ->
