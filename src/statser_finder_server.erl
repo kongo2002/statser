@@ -7,10 +7,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-         find_metrics_files/1,
-         find_metrics_files/2,
-         get_suffix/1]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
