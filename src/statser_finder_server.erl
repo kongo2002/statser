@@ -154,20 +154,22 @@ code_change(_OldVsn, State, _Extra) ->
 
 update_metrics_files(#state{data_dir=Dir, count=OldCount}=State) ->
     lager:debug("updating finder metrics files"),
+    Start = erlang:monotonic_time(millisecond),
 
     State0 = case find_metrics_files(Dir) of
                  [#metric_dir{contents=Ms}] ->
                      Count = count_metrics(Ms),
 
                      if OldCount /= Count ->
-                            lager:info("found ~p metrics in data directory '~s'", [Count, Dir]);
+                            Duration = erlang:monotonic_time(millisecond) - Start,
+                            lager:info("found ~p metrics in data directory '~s' [took ~p ms]", [Count, Dir, Duration]);
                         true -> ok
                      end,
 
                      State#state{metrics=Ms, count=Count};
                  _Otherwise ->
                      if OldCount /= 0 ->
-                            lager:info("no metrics found in data directory '~s' ~p", [Dir]);
+                            lager:info("no metrics found in data directory '~s'", [Dir]);
                         true -> ok
                      end,
                      State#state{metrics=[], count=0}
