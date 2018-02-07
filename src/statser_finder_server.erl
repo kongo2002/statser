@@ -22,7 +22,7 @@
 
 -define(FINDER_UPDATE_INTERVAL, 60000).
 
--record(state, {metrics=[], data_dir, timer, count}).
+-record(state, {metrics=[], status=none, data_dir, timer, count}).
 
 -record(metric_file, {
           name :: nonempty_string(),
@@ -98,7 +98,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast(prepare, State) ->
     lager:debug("start initializing metrics finder"),
-    State0 = update_metrics_files(State),
+    State0 = spawn_update_metrics(State),
     {noreply, State0};
 
 handle_cast(_Msg, State) ->
@@ -115,10 +115,15 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(update_metrics, State) ->
-    State0 = update_metrics_files(State),
+    State0 = spawn_update_metrics(State),
     {noreply, State0};
 
-handle_info(_Info, State) ->
+handle_info({finder_result, {Ms, Count}}, State) ->
+    Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
+    {noreply, State#state{metrics=Ms, count=Count, timer=Timer, status=none}};
+
+handle_info(Info, State) ->
+    lager:warning("finder_server: received unexpected message: ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -132,6 +137,10 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+terminate(_Reason, #state{timer=undefined}) ->
+    lager:info("terminating finder server at ~w", [self()]),
+    ok;
+
 terminate(_Reason, #state{timer=Timer}) ->
     lager:info("terminating finder server at ~w", [self()]),
     erlang:cancel_timer(Timer, [{async, true}]),
@@ -152,31 +161,39 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-update_metrics_files(#state{data_dir=Dir, count=OldCount}=State) ->
-    lager:debug("updating finder metrics files"),
+update_metrics_files(Dir, OldCount) ->
     Start = erlang:monotonic_time(millisecond),
 
-    State0 = case find_metrics_files(Dir) of
-                 [#metric_dir{contents=Ms}] ->
-                     Count = count_metrics(Ms),
+    case find_metrics_files(Dir) of
+        [#metric_dir{contents=Ms}] ->
+            Count = count_metrics(Ms),
 
-                     if OldCount /= Count ->
-                            Duration = erlang:monotonic_time(millisecond) - Start,
-                            lager:info("found ~p metrics in data directory '~s' [took ~p ms]", [Count, Dir, Duration]);
-                        true -> ok
-                     end,
+            if OldCount /= Count ->
+                   Duration = erlang:monotonic_time(millisecond) - Start,
+                   lager:info("found ~p metrics in data directory '~s' [took ~p ms]", [Count, Dir, Duration]);
+               true -> ok
+            end,
 
-                     State#state{metrics=Ms, count=Count};
-                 _Otherwise ->
-                     if OldCount /= 0 ->
-                            lager:info("no metrics found in data directory '~s'", [Dir]);
-                        true -> ok
-                     end,
-                     State#state{metrics=[], count=0}
-             end,
+            {Ms, Count};
+        _Otherwise ->
+            if OldCount /= 0 ->
+                   lager:info("no metrics found in data directory '~s'", [Dir]);
+               true -> ok
+            end,
+            {[], 0}
+    end.
 
-    Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
-    State0#state{timer=Timer}.
+spawn_update_metrics(#state{status=pending}=State) ->
+    lager:info("asynchronous metrics finder still running"),
+    State;
+
+spawn_update_metrics(#state{data_dir=Dir, count=OldCount}=State) ->
+    lager:debug("spawning asynchronous metrics finder"),
+
+    Self = self(),
+    spawn_link(fun() -> Self ! {finder_result, update_metrics_files(Dir, OldCount)} end),
+
+    State#state{status=pending}.
 
 
 count_metrics(Metrics) ->
