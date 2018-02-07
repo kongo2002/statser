@@ -4,6 +4,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include_lib("kernel/include/file.hrl").
+
 -behaviour(gen_server).
 
 %% API
@@ -212,7 +214,7 @@ find_metrics_files([$. | _], _Base) -> [];
 find_metrics_files(File, Base) ->
     Path = filename:join(Base, File),
     case file:read_file_info(Path, [raw]) of
-        {ok, {file_info, _, directory, _, _, _, _, _, _, _, _, _, _, _}} ->
+        {ok, #file_info{type=directory}} ->
             case file:list_dir(Path) of
                 {ok, Contents} ->
                     F = fun(Name, {Fs, Ds}=Acc) ->
@@ -231,7 +233,7 @@ find_metrics_files(File, Base) ->
                     end;
                 _Otherwise -> []
             end;
-        {ok, {file_info, _, regular, read_write, _, _, _, _, _, _, _, _, _, _}} ->
+        {ok, #file_info{type=regular, access=read_write}} ->
             case get_suffix(File) of
                 {Name, ".wsp"} -> [#metric_file{name=Name, file=File}];
                 _Otherwise -> []
