@@ -31,8 +31,8 @@
 
 -record(metric_dir, {
           name :: nonempty_string(),
-          metrics,
-          dirs
+          metrics :: orddict:orddict(),
+          dirs :: orddict:orddict()
          }).
 
 %%%===================================================================
