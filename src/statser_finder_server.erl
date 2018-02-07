@@ -26,12 +26,14 @@
 
 -record(metric_file, {
           name :: nonempty_string(),
-          file :: nonempty_string()
+          file :: nonempty_string(),
+          handler=undefined :: pid() | undefined
          }).
 
 -record(metric_dir, {
           name :: nonempty_string(),
-          contents :: []
+          metrics,
+          dirs
          }).
 
 %%%===================================================================
@@ -165,7 +167,7 @@ update_metrics_files(Dir, OldCount) ->
     Start = erlang:monotonic_time(millisecond),
 
     case find_metrics_files(Dir) of
-        [#metric_dir{contents=Ms}] ->
+        [#metric_dir{dirs=Ms}] ->
             Count = count_metrics(Ms),
 
             if OldCount /= Count ->
@@ -199,11 +201,11 @@ spawn_update_metrics(#state{data_dir=Dir, count=OldCount}=State) ->
 count_metrics(Metrics) ->
     count_metrics(Metrics, 0).
 
-count_metrics([], Count) -> Count;
-count_metrics([#metric_file{} | Ms], Count) ->
-    count_metrics(Ms, Count+1);
-count_metrics([#metric_dir{contents=Cs} | Ms], Count) ->
-    count_metrics(Ms, Count + count_metrics(Cs)).
+count_metrics(Dict, Count) ->
+    Sum = fun(_K, #metric_dir{dirs=Dirs, metrics=Metrics}, Acc) ->
+                  Acc + orddict:size(Metrics) + count_metrics(Dirs)
+          end,
+    orddict:fold(Sum, Count, Dict).
 
 
 find_metrics_files(File) ->
@@ -214,11 +216,18 @@ find_metrics_files(File, Base) ->
     case file:read_file_info(Path, [raw]) of
         {ok, {file_info, _, directory, _, _, _, _, _, _, _, _, _, _, _}} ->
             case file:list_dir(Path) of
-                {ok, Fs} ->
-                    case lists:flatmap(fun(F) -> find_metrics_files(F, Path) end, Fs) of
-                        [] -> [];
-                        Contents -> [#metric_dir{name=File, contents=Contents}]
-                    end;
+                {ok, Contents} ->
+                    F = fun(Name, {Fs, Ds}=Acc) ->
+                                case find_metrics_files(Name, Path) of
+                                    [] -> Acc;
+                                    [#metric_file{}=X] -> {[{Name, X} | Fs], Ds};
+                                    [#metric_dir{}=X] -> {Fs, [{Name, X} | Ds]}
+                                end
+                        end,
+                    {Metrics, Dirs} = lists:foldl(F, {[], []}, Contents),
+                    [#metric_dir{name=File,
+                                 metrics=orddict:from_list(Metrics),
+                                 dirs=orddict:from_list(Dirs)}];
                 _Otherwise -> []
             end;
         {ok, {file_info, _, regular, read_write, _, _, _, _, _, _, _, _, _, _}} ->
