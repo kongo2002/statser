@@ -211,6 +211,7 @@ count_metrics(Dict, Count) ->
 find_metrics_files(File) ->
     find_metrics_files(File, ".").
 
+find_metrics_files([$. | _], _Base) -> [];
 find_metrics_files(File, Base) ->
     Path = filename:join(Base, File),
     case file:read_file_info(Path, [raw]) of
