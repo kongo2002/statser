@@ -363,9 +363,25 @@ get_suffix_test_() ->
 
 convert_metric_test_() ->
     [?_assertEqual({<<"foo.bar">>, undefined},
-                   convert_metric(#metric_file{name = <<"bar">>}, [<<"foo">>])),
+                   convert_metric(#metric_file{name = <<"bar">>},
+                                  [<<"foo">>])),
      ?_assertEqual({<<"eggs.ham.foo.bar">>, undefined},
-                   convert_metric(#metric_file{name = <<"bar">>}, [<<"foo">>, <<"ham">>, <<"eggs">>]))
+                   convert_metric(#metric_file{name = <<"bar">>},
+                                  [<<"foo">>, <<"ham">>, <<"eggs">>]))
+    ].
+
+prepare_path_test_() ->
+    Type = fun({T, _}) -> T end,
+
+    [?_assertEqual(all, prepare_path(<<"*">>)),
+     ?_assertEqual({exact, <<"foo">>}, prepare_path(<<"foo">>)),
+     ?_assertEqual({exact, <<"ham eggs">>}, prepare_path(<<"ham eggs">>)),
+     ?_assertEqual(glob, Type(prepare_path(<<"foo*">>))),
+     ?_assertEqual(glob, Type(prepare_path(<<"fo?">>))),
+     ?_assertEqual(glob, Type(prepare_path(<<"* fo?">>))),
+     ?_assertEqual(error, prepare_path(<<"foo*(">>)),
+     ?_assertEqual(error, prepare_path(<<"*(">>)),
+     ?_assertEqual(error, prepare_path(<<"fo? [">>))
     ].
 
 -endif.
