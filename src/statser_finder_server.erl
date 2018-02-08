@@ -11,6 +11,8 @@
 %% API
 -export([start_link/0]).
 
+-export([find_metrics/1]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -19,9 +21,10 @@
          terminate/2,
          code_change/3]).
 
--define(FINDER_UPDATE_INTERVAL, 60000).
+-define(FINDER_UPDATE_INTERVAL, 10000).
+-define(FINDER_SPECIAL_CHARS, [<<"*">>, <<"?">>, <<"{">>, <<"}">>]).
 
--record(state, {metrics=[], status=none, data_dir, timer, count}).
+-record(state, {metrics, status=none, data_dir, timer, count}).
 
 -record(metric_file, {
           name :: nonempty_string(),
@@ -83,6 +86,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call({find_metrics, Paths}, _From, State) ->
+    Metrics = State#state.metrics,
+    Result = find_metrics(Paths, Metrics),
+    {reply, Result, State};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -158,6 +166,97 @@ terminate(_Reason, #state{timer=Timer}) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+find_metrics(Paths) ->
+    PreparedPaths = prepare_paths(Paths),
+    gen_server:call(?MODULE, {find_metrics, PreparedPaths}, 1000).
+
+
+find_metrics(Paths, Dir) ->
+    find_metrics(Paths, Dir, []).
+
+
+find_metrics([error], _Dir, _Parents) -> [];
+find_metrics([all], #metric_dir{metrics=Ms}, Parents) ->
+    lists:map(fun({_, M}) ->
+                      convert_metric(M, Parents) end,
+              orddict:to_list(Ms));
+
+find_metrics([{glob, Path}], #metric_dir{metrics=Ms}, Parents) ->
+    Filter = filter_by_pattern(Path),
+    Filtered = lists:filter(Filter, orddict:to_list(Ms)),
+    lists:map(fun({_K, V}) ->
+                      convert_metric(V, Parents)
+              end, Filtered);
+
+find_metrics([{exact, Path}], #metric_dir{metrics=Ms}, Parents) ->
+    case orddict:find(Path, Ms) of
+        {ok, Metric} -> [convert_metric(Metric, Parents)];
+        error -> []
+    end;
+
+find_metrics([error | _Paths], _Dir, _Parents) -> [];
+find_metrics([all | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+    lists:flatmap(fun({Name, D}) ->
+                          find_metrics(Paths, D, [Name | Parents]) end,
+                  orddict:to_list(Dirs));
+
+find_metrics([{glob, Path} | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+    Filter = filter_by_pattern(Path),
+    lists:flatmap(fun({Name, D}=Dir) ->
+                          case Filter(Dir) of
+                              true -> find_metrics(Paths, D, [Name | Parents]);
+                              false -> []
+                          end
+                  end, orddict:to_list(Dirs));
+
+find_metrics([{exact, Path} | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+    case orddict:find(Path, Dirs) of
+        {ok, Dir} -> find_metrics(Paths, Dir, [Path | Parents]);
+        error -> []
+    end.
+
+
+convert_metric(#metric_file{name=Name, handler=Pid}, Path) ->
+    F = fun(A, <<>>) -> <<A/binary>>;
+           (A, B) -> <<A/binary, ".", B/binary>>
+        end,
+    Path0 = lists:foldl(F, <<>>, [Name | Path]),
+    {Path0, Pid}.
+
+
+prepare_paths(Paths) ->
+    lists:map(fun prepare_path/1, Paths).
+
+
+prepare_path(<<"*">>) -> all;
+prepare_path(Path) ->
+    case binary:match(Path, ?FINDER_SPECIAL_CHARS) of
+        nomatch ->
+            {exact, Path};
+        _Glob ->
+            prepare_blob_pattern(Path)
+    end.
+
+
+filter_by_pattern(Pattern) ->
+    fun({Key, _V}) ->
+            case re:run(Key, Pattern) of
+                match -> true;
+                {match, _} -> true;
+                _Otherwise -> false
+            end
+    end.
+
+
+prepare_blob_pattern(Glob) ->
+    Pattern = binary:replace(Glob, <<"*">>, <<".*">>, [global]),
+    case re:compile(Pattern, [anchored, no_auto_capture]) of
+        {ok, RE} -> {glob, RE};
+        _Otherwise -> error
+    end.
+
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -165,8 +264,8 @@ code_change(_OldVsn, State, _Extra) ->
 update_metrics_files(Dir, OldCount) ->
     Start = erlang:monotonic_time(millisecond),
 
-    case find_metrics_files(Dir) of
-        [#metric_dir{dirs=Ms}] ->
+    case find_metrics_files([], Dir) of
+        [#metric_dir{}=Ms] ->
             Count = count_metrics(Ms),
 
             if OldCount /= Count ->
@@ -198,17 +297,11 @@ spawn_update_metrics(#state{data_dir=Dir, count=OldCount}=State) ->
 
 
 count_metrics(Metrics) ->
-    count_metrics(Metrics, 0).
+    count_metrics(none, Metrics, 0).
 
-count_metrics(Dict, Count) ->
-    Sum = fun(_K, #metric_dir{dirs=Dirs, metrics=Metrics}, Acc) ->
-                  Acc + orddict:size(Metrics) + count_metrics(Dirs)
-          end,
-    orddict:fold(Sum, Count, Dict).
+count_metrics(_K, #metric_dir{dirs=Dirs, metrics=Metrics}, Count) ->
+    Count + orddict:size(Metrics) + orddict:fold(fun count_metrics/3, 0, Dirs).
 
-
-find_metrics_files(File) ->
-    find_metrics_files(File, ".").
 
 find_metrics_files([$. | _], _Base) -> [];
 find_metrics_files(File, Base) ->
@@ -220,14 +313,14 @@ find_metrics_files(File, Base) ->
                     F = fun(Name, {Fs, Ds}=Acc) ->
                                 case find_metrics_files(Name, Path) of
                                     [] -> Acc;
-                                    [#metric_file{}=X] -> {[{Name, X} | Fs], Ds};
-                                    [#metric_dir{}=X] -> {Fs, [{Name, X} | Ds]}
+                                    [#metric_file{name=N}=X] -> {[{N, X} | Fs], Ds};
+                                    [#metric_dir{name=N}=X] -> {Fs, [{N, X} | Ds]}
                                 end
                         end,
                     case lists:foldl(F, {[], []}, Contents) of
                         {[], []} -> [];
                         {Metrics, Dirs} ->
-                            [#metric_dir{name=File,
+                            [#metric_dir{name=binary:list_to_bin(File),
                                          metrics=orddict:from_list(Metrics),
                                          dirs=orddict:from_list(Dirs)}]
                     end;
@@ -235,7 +328,9 @@ find_metrics_files(File, Base) ->
             end;
         {ok, #file_info{type=regular, access=read_write}} ->
             case get_suffix(File) of
-                {Name, ".wsp"} -> [#metric_file{name=Name, file=File}];
+                {Name, ".wsp"} ->
+                    BinName = binary:list_to_bin(Name),
+                    [#metric_file{name=BinName, file=File}];
                 _Otherwise -> []
             end;
         _Otherwise -> []
@@ -263,6 +358,13 @@ get_suffix_test_() ->
      ?_assertEqual({"", "sp"}, get_suffix("sp")),
      ?_assertEqual({"foo", ".wsp"}, get_suffix("foo.WSP")),
      ?_assertEqual({"Foo", ".wsp"}, get_suffix("Foo.WSP"))
+    ].
+
+convert_metric_test_() ->
+    [?_assertEqual({<<"foo.bar">>, undefined},
+                   convert_metric(#metric_file{name = <<"bar">>}, [<<"foo">>])),
+     ?_assertEqual({<<"eggs.ham.foo.bar">>, undefined},
+                   convert_metric(#metric_file{name = <<"bar">>}, [<<"foo">>, <<"ham">>, <<"eggs">>]))
     ].
 
 -endif.
