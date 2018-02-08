@@ -21,7 +21,7 @@
          terminate/2,
          code_change/3]).
 
--define(FINDER_UPDATE_INTERVAL, 10000).
+-define(FINDER_UPDATE_INTERVAL, 60000).
 -define(FINDER_SPECIAL_CHARS, [<<"*">>, <<"?">>, <<"{">>, <<"}">>]).
 
 -record(state, {metrics, status=none, data_dir, timer, count}).
