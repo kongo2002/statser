@@ -61,11 +61,13 @@ find_metrics(Paths) ->
 
 
 register_metric_handler(Path, Pid) ->
-    gen_server:cast(?MODULE, {register_handler, Path, Pid}).
+    Paths = statser_util:split_metric(Path),
+    gen_server:cast(?MODULE, {register_handler, Paths, Pid}).
 
 
 unregister_metric_handler(Path) ->
-    gen_server:cast(?MODULE, {register_handler, Path, undefined}).
+    Paths = statser_util:split_metric(Path),
+    gen_server:cast(?MODULE, {register_handler, Paths, undefined}).
 
 
 %%%===================================================================
@@ -193,11 +195,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-register_handler(Path, Pid, #state{metrics=Ms}=State) ->
-    Parts = statser_util:split_metric(Path),
-    Name = lists:last(Parts),
+register_handler(Paths, Pid, #state{metrics=Ms}=State) ->
+    Name = lists:last(Paths),
     Metric = #metric_file{name=Name, handler=Pid},
-    Ms0 = update_or_insert_metric(Parts, Metric, Ms),
+    Ms0 = update_or_insert_metric(Paths, Metric, Ms),
     State#state{metrics=Ms0}.
 
 
