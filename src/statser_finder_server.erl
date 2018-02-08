@@ -250,8 +250,9 @@ filter_by_pattern(Pattern) ->
 
 
 prepare_blob_pattern(Glob) ->
-    Pattern = binary:replace(Glob, <<"*">>, <<".*">>, [global]),
-    case re:compile(Pattern, [anchored, no_auto_capture]) of
+    P0 = binary:replace(Glob, <<"*">>, <<".*">>, [global]),
+    P1 = binary:replace(P0, <<"?">>, <<".">>, [global]),
+    case re:compile(P1, [anchored, no_auto_capture]) of
         {ok, RE} -> {glob, RE};
         _Otherwise -> error
     end.
