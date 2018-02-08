@@ -119,6 +119,8 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({prepare, Metadata}, State) ->
+    statser_finder_server:register_metric_handler(State#state.path, self()),
+
     % first we have to determine the proper path and file to use
     {ok, Dirs, File} = get_directory(State#state.path),
 
@@ -209,6 +211,8 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     Path = State#state.path,
+    statser_finder_server:unregister_metric_handler(Path),
+
     lager:debug("terminating metric handler of '~s'", [Path]),
 
     flush(State),

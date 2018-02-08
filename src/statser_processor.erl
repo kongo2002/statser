@@ -515,7 +515,7 @@ process_series_values(Series, Func) ->
 
 alias_target(S, []) -> S;
 alias_target(S, Aliases) ->
-    Parts = binary:split(S#series.target, <<".">>, [global, trim_all]),
+    Parts = statser_util:split_metric(S#series.target),
     NumParts = length(Parts),
     Target = to_target(lists:map(fun(Idx) -> get_part(Parts, NumParts, Idx) end, Aliases)),
     S#series{target=Target}.

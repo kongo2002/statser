@@ -105,6 +105,8 @@ init([]) ->
                 ?WORKER(health, statser_health, []),
                 % metrics router
                 ?WORKER(router, statser_router, []),
+                % finder
+                ?WORKER(finder, statser_finder_server, []),
                 % instrumentation service
                 ?WORKER(instrumentation, statser_instrumentation, []),
                 % metrics watcher
@@ -114,8 +116,6 @@ init([]) ->
                        [create_limiter, <<"creates">>, Limits#rate_limit_config.creates_per_sec]),
                 ?WORKER(update_limiter, statser_rate_limiter,
                        [update_limiter, <<"updates">>, Limits#rate_limit_config.updates_per_sec]),
-                % finder
-                ?WORKER(finder, statser_finder_server, []),
                 % API
                 ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
                ],

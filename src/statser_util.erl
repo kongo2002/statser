@@ -14,7 +14,8 @@
          parse_unit/1,
          parse_unit/2,
          seconds/0,
-         epoch_seconds_to_datetime/1]).
+         epoch_seconds_to_datetime/1,
+         split_metric/1]).
 
 
 to_number(Binary) ->
@@ -78,6 +79,10 @@ epoch_seconds_to_datetime(Seconds) ->
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:gregorian_seconds_to_datetime(EpochSeconds + Seconds),
     lists:flatten(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
                                 [Year,Month,Day,Hour,Minute,Second])).
+
+
+split_metric(Metric) ->
+    binary:split(Metric, <<".">>, [global, trim_all]).
 
 
 %%

@@ -11,7 +11,9 @@
 %% API
 -export([start_link/0]).
 
--export([find_metrics/1]).
+-export([find_metrics/1,
+         register_metric_handler/2,
+         unregister_metric_handler/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -51,6 +53,20 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+
+find_metrics(Paths) ->
+    PreparedPaths = prepare_paths(Paths),
+    gen_server:call(?MODULE, {find_metrics, PreparedPaths}, 1000).
+
+
+register_metric_handler(Path, Pid) ->
+    gen_server:cast(?MODULE, {register_handler, Path, Pid}).
+
+
+unregister_metric_handler(Path) ->
+    gen_server:cast(?MODULE, {register_handler, Path, undefined}).
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -110,6 +126,10 @@ handle_cast(prepare, State) ->
     State0 = spawn_update_metrics(State),
     {noreply, State0};
 
+handle_cast({register_handler, Path, Pid}, State) ->
+    State0 = register_handler(Path, Pid, State),
+    {noreply, State0};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -129,6 +149,8 @@ handle_info(update_metrics, State) ->
 
 handle_info({finder_result, {Ms, Count}}, State) ->
     Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
+
+    % TODO: right now this update will reset all previously registered handlers
     {noreply, State#state{metrics=Ms, count=Count, timer=Timer, status=none}};
 
 handle_info(Info, State) ->
@@ -167,9 +189,49 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-find_metrics(Paths) ->
-    PreparedPaths = prepare_paths(Paths),
-    gen_server:call(?MODULE, {find_metrics, PreparedPaths}, 1000).
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+register_handler(Path, Pid, #state{metrics=Ms}=State) ->
+    Parts = statser_util:split_metric(Path),
+    Name = lists:last(Parts),
+    Metric = #metric_file{name=Name, handler=Pid},
+    Ms0 = update_or_insert_metric(Parts, Metric, Ms),
+    State#state{metrics=Ms0}.
+
+
+update_or_insert_metric([], NewMetric, #metric_dir{metrics=Ms}=M) ->
+    Name = NewMetric#metric_file.name,
+    Ms0 = orddict:update(Name,
+                         fun(Metric) ->
+                                 Pid = NewMetric#metric_file.handler,
+                                 Metric#metric_file{handler=Pid} end,
+                         NewMetric, Ms),
+    M#metric_dir{metrics=Ms0};
+
+update_or_insert_metric([Path | Paths]=P, NewMetric, #metric_dir{dirs=Dirs}=M) ->
+    Dir0 = case orddict:find(Path, Dirs) of
+               {ok, Dir} ->
+                   update_or_insert_metric(Paths, NewMetric, Dir);
+               error ->
+                   new_metric_dir(P, NewMetric)
+           end,
+
+    Dirs0 = orddict:store(Path, Dir0, Dirs),
+    M#metric_dir{dirs=Dirs0}.
+
+
+new_metric_dir([Path], NewMetric) ->
+    Name = NewMetric#metric_file.name,
+    [{Path, #metric_dir{name=Path,
+                        metrics=orddict:from_list([{Name, NewMetric}]),
+                        dirs=orddict:new()}}];
+
+new_metric_dir([Path | Paths], NewMetric) ->
+    #metric_dir{name=Path,
+                metrics=orddict:new(),
+                dirs=orddict:from_list(new_metric_dir(Paths, NewMetric))}.
 
 
 find_metrics(Paths, Dir) ->
@@ -257,10 +319,6 @@ prepare_blob_pattern(Glob) ->
         _Otherwise -> error
     end.
 
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 
 update_metrics_files(Dir, OldCount) ->
     Start = erlang:monotonic_time(millisecond),
@@ -382,6 +440,27 @@ prepare_path_test_() ->
      ?_assertEqual(error, prepare_path(<<"foo*(">>)),
      ?_assertEqual(error, prepare_path(<<"*(">>)),
      ?_assertEqual(error, prepare_path(<<"fo? [">>))
+    ].
+
+new_metric_dir_test_() ->
+    Metric = #metric_file{name= <<"test">>},
+    Exp1 = #metric_dir{name= <<"bar">>, dirs=[], metrics=orddict:from_list([{<<"test">>, Metric}])},
+    Exp2 = #metric_dir{name= <<"foo">>, dirs=orddict:from_list([{<<"bar">>, Exp1}]), metrics=[]},
+
+    [?_assertEqual(Exp2, new_metric_dir([<<"foo">>, <<"bar">>], Metric))
+    ].
+
+update_or_insert_metric_test_() ->
+    EmptyDir = #metric_dir{name=[], metrics=orddict:new(), dirs=orddict:new()},
+    Metric = #metric_file{name= <<"test">>},
+    Exp1 = #metric_dir{name= <<"bar">>, dirs=[], metrics=orddict:from_list([{<<"test">>, Metric}])},
+    Exp2 = #metric_dir{name= <<"foo">>, dirs=orddict:from_list([{<<"bar">>, Exp1}]), metrics=[]},
+    Exp3 = EmptyDir#metric_dir{dirs=orddict:from_list([{<<"foo">>, Exp2}])},
+    Exp4 = EmptyDir#metric_dir{dirs=orddict:from_list([{<<"foo">>, Exp2#metric_dir{metrics=orddict:from_list([{<<"test">>, Metric}])}}])},
+
+    [?_assertEqual(Exp3, update_or_insert_metric([<<"foo">>, <<"bar">>], Metric, EmptyDir)),
+     ?_assertEqual(Exp3, update_or_insert_metric([<<"foo">>, <<"bar">>], Metric, Exp3)),
+     ?_assertEqual(Exp4, update_or_insert_metric([<<"foo">>], Metric, Exp3))
     ].
 
 -endif.
