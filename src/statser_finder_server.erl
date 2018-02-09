@@ -62,17 +62,13 @@ find_metrics(Paths) ->
 
 
 register_metric_handler(Path, Pid) ->
-    Paths = statser_util:split_metric(Path),
-    Name = lists:last(Paths),
+    {Paths, Name} = metric_and_paths(Path),
     Metric = #metric_file{name=Name, handler=Pid},
     gen_server:cast(?MODULE, {register_handler, Metric, Paths}).
 
 
 unregister_metric_handler(Path) ->
-    Paths = statser_util:split_metric(Path),
-    Name = lists:last(Paths),
-    Metric = #metric_file{name=Name, handler=undefined},
-    gen_server:cast(?MODULE, {register_handler, Metric, Paths}).
+    register_metric_handler(Path, undefined).
 
 
 %%%===================================================================
@@ -443,6 +439,20 @@ find_metrics_files(File, Base) ->
     end.
 
 
+metric_and_paths(Metric) ->
+    Parts = statser_util:split_metric(Metric),
+    keep_last(Parts).
+
+
+keep_last([]) -> error;
+keep_last(Parts) -> keep_last(Parts, []).
+
+keep_last([Part], Acc) ->
+    {lists:reverse(Acc), Part};
+keep_last([Part | Parts], Acc) ->
+    keep_last(Parts, [Part | Acc]).
+
+
 get_suffix(File) ->
     get_suffix(lists:reverse(File), 4, []).
 
@@ -464,6 +474,13 @@ get_suffix_test_() ->
      ?_assertEqual({"", "sp"}, get_suffix("sp")),
      ?_assertEqual({"foo", ".wsp"}, get_suffix("foo.WSP")),
      ?_assertEqual({"Foo", ".wsp"}, get_suffix("Foo.WSP"))
+    ].
+
+metric_and_paths_test_() ->
+    [?_assertEqual(error, metric_and_paths(<<"">>)),
+     ?_assertEqual({[], <<"foo">>}, metric_and_paths(<<"foo">>)),
+     ?_assertEqual({[<<"foo">>], <<"bar">>}, metric_and_paths(<<"foo.bar">>)),
+     ?_assertEqual({[<<"foo">>, <<"bar">>], <<"test">>}, metric_and_paths(<<"foo.bar.test">>))
     ].
 
 convert_metric_test_() ->
