@@ -12,6 +12,7 @@
 -export([start_link/0]).
 
 -export([find_metrics/1,
+         processor_loop/1,
          register_metric_handler/2,
          unregister_metric_handler/1]).
 
@@ -23,7 +24,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, status=none, data_dir, timer, count}).
+-record(state, {metrics, data_dir, processor}).
 
 -record(metric_file, {
           name :: nonempty_string(),
@@ -88,8 +89,13 @@ unregister_metric_handler(Path) ->
 %%--------------------------------------------------------------------
 init([]) ->
     DataDir = statser_config:get_data_dir(),
+    Processor = spawn_link(?MODULE, processor_loop, [self()]),
+
     gen_server:cast(self(), prepare),
-    {ok, #state{metrics=?EMPTY_METRIC_DIR, data_dir=DataDir}}.
+
+    {ok, #state{metrics=?EMPTY_METRIC_DIR,
+                data_dir=DataDir,
+                processor=Processor}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -124,14 +130,15 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(prepare, State) ->
+handle_cast(prepare, #state{data_dir=Dir, processor=Processor}=State) ->
     lager:debug("start initializing metrics finder"),
-    State0 = spawn_update_metrics(State),
-    {noreply, State0};
+    Processor ! {update_metrics, Dir},
 
-handle_cast({register_handler, Metric, Paths}, State) ->
-    State0 = register_handler(Metric, Paths, State),
-    {noreply, State0};
+    {noreply, State};
+
+handle_cast({register_handler, _Metric, _Paths}=Msg, State) ->
+    State#state.processor ! Msg,
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -146,15 +153,8 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(update_metrics, State) ->
-    State0 = spawn_update_metrics(State),
-    {noreply, State0};
-
-handle_info({finder_result, {Ms, Count}}, State) ->
-    Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
-    Merged = merge_metric_dir(State#state.metrics, Ms),
-
-    {noreply, State#state{metrics=Merged, count=Count, timer=Timer, status=none}};
+handle_info({finder_result, Metrics}, State) ->
+    {noreply, State#state{metrics=Metrics}};
 
 handle_info(Info, State) ->
     lager:warning("finder_server: received unexpected message: ~p", [Info]),
@@ -171,13 +171,8 @@ handle_info(Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{timer=undefined}) ->
+terminate(_Reason, _State) ->
     lager:info("terminating finder server at ~w", [self()]),
-    ok;
-
-terminate(_Reason, #state{timer=Timer}) ->
-    lager:info("terminating finder server at ~w", [self()]),
-    erlang:cancel_timer(Timer, [{async, true}]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -196,9 +191,31 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-register_handler(Metric, Paths, #state{metrics=Ms}=State) ->
-    Ms0 = update_or_insert_metric(Paths, Metric, Ms),
-    State#state{metrics=Ms0}.
+processor_loop(Parent) ->
+    lager:info("spawning asynchronous finder processor at ~p", [self()]),
+    processor_loop(Parent, ?EMPTY_METRIC_DIR, 0).
+
+processor_loop(Parent, Metrics, Count) ->
+    receive
+        {register_handler, Metric, Paths} ->
+            NewMetrics = update_or_insert_metric(Paths, Metric, Metrics),
+            Parent ! {finder_result, NewMetrics},
+
+            processor_loop(Parent, NewMetrics, Count);
+
+        {update_metrics, Dir} ->
+            {NewMetrics, NewCount} = update_metrics_files(Dir, Count),
+            Merged = merge_metric_dir(Metrics, NewMetrics),
+            Parent ! {finder_result, Merged},
+
+            erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), {update_metrics, Dir}),
+
+            processor_loop(Parent, Merged, NewCount);
+
+        Unhandled ->
+            lager:error("unexpected message in finder processor: ~p", [Unhandled]),
+            error
+    end.
 
 
 update_or_insert_metric([], NewMetric, #metric_dir{metrics=Ms}=M) ->
@@ -384,18 +401,6 @@ update_metrics_files(Dir, OldCount) ->
             end,
             {?EMPTY_METRIC_DIR, 0}
     end.
-
-spawn_update_metrics(#state{status=pending}=State) ->
-    lager:info("asynchronous metrics finder still running"),
-    State;
-
-spawn_update_metrics(#state{data_dir=Dir, count=OldCount}=State) ->
-    lager:debug("spawning asynchronous metrics finder"),
-
-    Self = self(),
-    spawn_link(fun() -> Self ! {finder_result, update_metrics_files(Dir, OldCount)} end),
-
-    State#state{status=pending}.
 
 
 count_metrics(Metrics) ->
