@@ -38,7 +38,8 @@
           dirs :: orddict:orddict()
          }).
 
--define(FINDER_UPDATE_INTERVAL, 60000).
+-define(FINDER_UPDATE_MILLIS_MIN, 300000).
+-define(FINDER_UPDATE_MILLIS_PER_METRIC, 50).
 -define(FINDER_SPECIAL_CHARS, [<<"*">>, <<"?">>, <<"{">>, <<"}">>]).
 -define(EMPTY_METRIC_DIR, #metric_dir{metrics=orddict:new(), dirs=orddict:new()}).
 
@@ -208,7 +209,10 @@ processor_loop(Parent, Metrics, Count) ->
             Merged = merge_metric_dir(Metrics, NewMetrics),
             Parent ! {finder_result, Merged},
 
-            erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), {update_metrics, Dir}),
+            % schedule next metrics lookup depending on the current number
+            % of tracked metrics (minimum: 5 min)
+            UpdateIn = max(NewCount * ?FINDER_UPDATE_MILLIS_PER_METRIC, ?FINDER_UPDATE_MILLIS_MIN),
+            erlang:send_after(UpdateIn, self(), {update_metrics, Dir}),
 
             processor_loop(Parent, Merged, NewCount);
 
