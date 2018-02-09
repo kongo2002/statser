@@ -23,9 +23,6 @@
          terminate/2,
          code_change/3]).
 
--define(FINDER_UPDATE_INTERVAL, 60000).
--define(FINDER_SPECIAL_CHARS, [<<"*">>, <<"?">>, <<"{">>, <<"}">>]).
-
 -record(state, {metrics, status=none, data_dir, timer, count}).
 
 -record(metric_file, {
@@ -35,10 +32,14 @@
          }).
 
 -record(metric_dir, {
-          name :: nonempty_string(),
+          name :: nonempty_string() | undefined,
           metrics :: orddict:orddict(),
           dirs :: orddict:orddict()
          }).
+
+-define(FINDER_UPDATE_INTERVAL, 60000).
+-define(FINDER_SPECIAL_CHARS, [<<"*">>, <<"?">>, <<"{">>, <<"}">>]).
+-define(EMPTY_METRIC_DIR, #metric_dir{metrics=orddict:new(), dirs=orddict:new()}).
 
 %%%===================================================================
 %%% API
@@ -91,9 +92,8 @@ unregister_metric_handler(Path) ->
 %%--------------------------------------------------------------------
 init([]) ->
     DataDir = statser_config:get_data_dir(),
-    EmptyMetrics = #metric_dir{name=[], dirs=orddict:new(), metrics=orddict:new()},
     gen_server:cast(self(), prepare),
-    {ok, #state{metrics=EmptyMetrics, data_dir=DataDir}}.
+    {ok, #state{metrics=?EMPTY_METRIC_DIR, data_dir=DataDir}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -228,14 +228,16 @@ update_or_insert_metric([Path | Paths]=P, NewMetric, #metric_dir{dirs=Dirs}=M) -
 
 new_metric_dir([Path], NewMetric) ->
     Name = NewMetric#metric_file.name,
-    [{Path, #metric_dir{name=Path,
-                        metrics=orddict:from_list([{Name, NewMetric}]),
-                        dirs=orddict:new()}}];
+    #metric_dir{name=Path,
+                metrics=orddict:from_list([{Name, NewMetric}]),
+                dirs=orddict:new()};
 
 new_metric_dir([Path | Paths], NewMetric) ->
+    NewDir = new_metric_dir(Paths, NewMetric),
+    Insert = [{NewDir#metric_dir.name, NewDir}],
     #metric_dir{name=Path,
                 metrics=orddict:new(),
-                dirs=orddict:from_list(new_metric_dir(Paths, NewMetric))}.
+                dirs=orddict:from_list(Insert)}.
 
 
 find_metrics(Paths, Dir) ->
@@ -343,7 +345,7 @@ update_metrics_files(Dir, OldCount) ->
                    lager:info("no metrics found in data directory '~s'", [Dir]);
                true -> ok
             end,
-            {[], 0}
+            {?EMPTY_METRIC_DIR, 0}
     end.
 
 spawn_update_metrics(#state{status=pending}=State) ->
