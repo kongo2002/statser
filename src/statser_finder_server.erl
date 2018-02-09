@@ -441,16 +441,16 @@ find_metrics_files(File, Base) ->
 
 metric_and_paths(Metric) ->
     Parts = statser_util:split_metric(Metric),
-    keep_last(Parts).
+    split_last(Parts).
 
 
-keep_last([]) -> error;
-keep_last(Parts) -> keep_last(Parts, []).
+split_last([]) -> error;
+split_last(Parts) -> split_last(Parts, []).
 
-keep_last([Part], Acc) ->
+split_last([Part], Acc) ->
     {lists:reverse(Acc), Part};
-keep_last([Part | Parts], Acc) ->
-    keep_last(Parts, [Part | Acc]).
+split_last([Part | Parts], Acc) ->
+    split_last(Parts, [Part | Acc]).
 
 
 get_suffix(File) ->
