@@ -91,8 +91,9 @@ unregister_metric_handler(Path) ->
 %%--------------------------------------------------------------------
 init([]) ->
     DataDir = statser_config:get_data_dir(),
+    EmptyMetrics = #metric_dir{name=[], dirs=orddict:new(), metrics=orddict:new()},
     gen_server:cast(self(), prepare),
-    {ok, #state{data_dir=DataDir}}.
+    {ok, #state{metrics=EmptyMetrics, data_dir=DataDir}}.
 
 %%--------------------------------------------------------------------
 %% @private
