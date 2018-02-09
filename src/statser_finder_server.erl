@@ -156,9 +156,9 @@ handle_info(update_metrics, State) ->
 
 handle_info({finder_result, {Ms, Count}}, State) ->
     Timer = erlang:send_after(?FINDER_UPDATE_INTERVAL, self(), update_metrics),
+    Merged = merge_metric_dir(State#state.metrics, Ms),
 
-    % TODO: right now this update will reset all previously registered handlers
-    {noreply, State#state{metrics=Ms, count=Count, timer=Timer, status=none}};
+    {noreply, State#state{metrics=Merged, count=Count, timer=Timer, status=none}};
 
 handle_info(Info, State) ->
     lager:warning("finder_server: received unexpected message: ~p", [Info]),
@@ -238,6 +238,47 @@ new_metric_dir([Path | Paths], NewMetric) ->
     #metric_dir{name=Path,
                 metrics=orddict:new(),
                 dirs=orddict:from_list(Insert)}.
+
+
+% this function is supposed to merge two instances of a 'metric_file'
+% into one by combining the set values of both
+% if in doubt, the second metric_file is assumed to be 'the newest' one
+merge_metric_file(#metric_file{}=A, #metric_file{}=B) ->
+    Pid = case {A#metric_file.handler, B#metric_file.handler} of
+              {PidA, undefined} -> PidA;
+              {_, PidB} -> PidB
+          end,
+    Name = case {A#metric_file.name, B#metric_file.name} of
+               {NameA, undefined} -> NameA;
+               {_, NameB} -> NameB
+           end,
+    File = case {A#metric_file.file, B#metric_file.file} of
+               {FileA, undefined} -> FileA;
+               {_, FileB} -> FileB
+           end,
+    #metric_file{name=Name, file=File, handler=Pid}.
+
+
+merge_metric_dir(#metric_dir{}=A, #metric_dir{}=B) ->
+    Metrics = orddict:fold(fun(K, V, Ms) ->
+                                   Update = fun(Existing) ->
+                                                    merge_metric_file(Existing, V)
+                                            end,
+                                   orddict:update(K, Update, V, Ms)
+                           end,
+                           A#metric_dir.metrics,
+                           B#metric_dir.metrics),
+
+    Dirs = orddict:fold(fun(K, V, Ds) ->
+                            Update = fun(Existing) ->
+                                             merge_metric_dir(Existing, V)
+                                     end,
+                            orddict:update(K, Update, V, Ds)
+                        end,
+                        A#metric_dir.dirs,
+                        B#metric_dir.dirs),
+
+    A#metric_dir{metrics=Metrics, dirs=Dirs}.
 
 
 find_metrics(Paths, Dir) ->
@@ -467,6 +508,16 @@ update_or_insert_metric_test_() ->
     [?_assertEqual(Exp3, update_or_insert_metric([<<"foo">>, <<"bar">>], Metric, EmptyDir)),
      ?_assertEqual(Exp3, update_or_insert_metric([<<"foo">>, <<"bar">>], Metric, Exp3)),
      ?_assertEqual(Exp4, update_or_insert_metric([<<"foo">>], Metric, Exp3))
+    ].
+
+merge_metric_dir_test_() ->
+    EmptyDir = #metric_dir{name=[], metrics=orddict:new(), dirs=orddict:new()},
+    Metric = #metric_file{name= <<"test">>},
+    Exp1 = #metric_dir{name= <<"bar">>, dirs=[], metrics=orddict:from_list([{<<"test">>, Metric}])},
+    Exp2 = #metric_dir{name= <<"foo">>, dirs=orddict:from_list([{<<"bar">>, Exp1}]), metrics=[]},
+    Exp3 = EmptyDir#metric_dir{dirs=orddict:from_list([{<<"foo">>, Exp2}])},
+
+    [?_assertEqual(Exp3, merge_metric_dir(Exp3, Exp3))
     ].
 
 -endif.
