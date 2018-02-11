@@ -60,6 +60,8 @@ start_link() ->
 
 find_metrics(Paths) ->
     PreparedPaths = prepare_paths(Paths),
+
+    % TODO: what happens on timeout exactly, again..?
     gen_server:call(?MODULE, {find_metrics, PreparedPaths}, 1000).
 
 
@@ -376,6 +378,7 @@ filter_by_pattern(Pattern) ->
 
 
 prepare_blob_pattern(Glob) ->
+    % TODO: consider memoization
     P0 = binary:replace(Glob, <<"*">>, <<".*">>, [global]),
     P1 = binary:replace(P0, <<"?">>, <<".">>, [global]),
     case re:compile(P1, [anchored, no_auto_capture]) of

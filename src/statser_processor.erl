@@ -35,6 +35,22 @@ fetch_data(Paths, From, Until, Now) ->
                   end, Fetchers).
 
 
+% if the arguments contain a valid pid we can directly call
+% that metric_handler instead of requesting the ETS table
+% this should usually be the case as soon as the metric_handler
+% is registered with the statser_finder_server
+fetch_inner({Path, Pid}, From, Until, Now) when is_pid(Pid) ->
+    Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
+    case Result of
+        #series{} -> [Result#series{target=Path}];
+        _Error -> []
+    end;
+
+% otherwise we will request the metric_handler's pid from the
+% ETS table or even fetch the file directly from disk instead
+fetch_inner({Path, _Pid}, From, Until, Now) ->
+    fetch_inner(Path, From, Until, Now);
+
 fetch_inner(Path, From, Until, Now) ->
     Result = case ets:lookup(metrics, Path) of
                  [] ->
@@ -48,9 +64,7 @@ fetch_inner(Path, From, Until, Now) ->
              end,
     case Result of
         #series{} -> [Result#series{target=Path}];
-        _Error ->
-            % XXX: log warning? return error?
-            []
+        _Error -> []
     end.
 
 

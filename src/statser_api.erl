@@ -153,8 +153,7 @@ process(Argument, _Params, _Now) -> Argument.
 
 
 process_paths(Path, {From, Until, _MaxPoints}, Now) ->
-    FoundPaths = statser_finder:find_metrics(Path),
-    Paths = lists:map(fun({P}) -> proplists:get_value(<<"id">>, P) end, FoundPaths),
+    Paths = statser_finder_server:find_metrics(Path),
     lager:debug("found ~w paths to process: ~p", [length(Paths), Paths]),
     Processed = statser_processor:fetch_data(Paths, From, Until, Now),
     lager:debug("processing resulted in ~p", [Processed]),
