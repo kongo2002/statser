@@ -111,8 +111,7 @@ handle_info({tcp, _Sock, Data}, State) ->
         {skip, _, _} ->
             statser_instrumentation:increment(<<"metrics-blacklisted">>);
         {Path, {ok, Value}, {ok, TimeStamp}} ->
-            Line = {line, Path, Value, TimeStamp},
-            gen_server:cast(statser_router, Line),
+            statser_router:line(Path, Value, TimeStamp),
 
             statser_instrumentation:increment(<<"metrics-received">>),
             lager:debug("received ~p: ~w at ~w", [Path, Value, TimeStamp]);

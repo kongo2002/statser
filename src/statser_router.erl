@@ -7,6 +7,9 @@
 %% API
 -export([start_link/0]).
 
+-export([line/2,
+         line/3]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -30,6 +33,14 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+
+line(Metric, Value) ->
+    line(Metric, Value, statser_util:seconds()).
+
+
+line(Metric, Value, Timestamp) ->
+    gen_server:cast(?MODULE, {line, Metric, Value, Timestamp}).
 
 %%%===================================================================
 %%% gen_server callbacks

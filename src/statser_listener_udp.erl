@@ -243,7 +243,7 @@ publish(Key, Value, TS) ->
     % TODO: configurable global prefix
     GlobalPrefix = <<"stats.">>,
     Metric = <<GlobalPrefix/binary, Key/binary>>,
-    gen_server:cast(statser_router, {line, Metric, Value, TS}).
+    statser_router:line(Metric, Value, TS).
 
 
 calculate_timer([]) ->

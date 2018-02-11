@@ -124,8 +124,8 @@ handle_info(read, #state{socket=Socket} = State) ->
 
             Metrics = protobuf_to_metrics(Payload, State#state.filters),
 
-            lists:foreach(fun(Line) ->
-                                  gen_server:cast(statser_router, Line),
+            lists:foreach(fun({M, V, TS}) ->
+                                  statser_router:line(M, V, TS),
                                   statser_instrumentation:increment(<<"protobuf.handled-values">>)
                           end, Metrics),
 
@@ -197,7 +197,7 @@ protobuf_to_metrics(#'Payload'{metrics=Metrics}, Filters) ->
                           case statser_config:metric_passes_filters(Metric, Filters) of
                               true ->
                                   lists:map(fun(#'Point'{value=V, timestamp=TS}) ->
-                                                    {line, Metric, V, TS}
+                                                    {Metric, V, TS}
                                             end, Ps);
                               false ->
                                   statser_instrumentation:increment(<<"metrics-blacklisted">>),
@@ -233,9 +233,9 @@ protobuf_to_metrics_test_() ->
     Filters = #metric_filters{blacklist=[mk_pattern("^foo")]},
 
     [?_assertEqual([], protobuf_to_metrics(MS1, none)),
-     ?_assertEqual([{line, <<"foo.bar">>, 100, 10},
-                    {line, <<"foo.bar">>, 200, 20},
-                    {line, <<"foo.bar">>, 300, 30}],
+     ?_assertEqual([{<<"foo.bar">>, 100, 10},
+                    {<<"foo.bar">>, 200, 20},
+                    {<<"foo.bar">>, 300, 30}],
                    protobuf_to_metrics(MS2, none)),
      ?_assertEqual([], protobuf_to_metrics(MS2, Filters)),
      ?_assertEqual(3, length(protobuf_to_metrics(MS3, Filters)))].

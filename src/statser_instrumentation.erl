@@ -204,7 +204,7 @@ schedule_update_metrics(#state{interval=Interval} = State) ->
 
 publish(Key, Value, TS, Path) ->
     Metric = <<Path/binary, Key/binary>>,
-    gen_server:cast(statser_router, {line, Metric, Value, TS}).
+    statser_router:line(Metric, Value, TS).
 
 
 increment_metrics(Key, Amount, Map) when is_number(Amount) ->
