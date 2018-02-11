@@ -79,7 +79,7 @@ handle_metrics(Request) ->
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
             statser_instrumentation:increment(<<"api.query.requests">>),
-            Metrics = statser_finder:find_metrics_tree(Path),
+            Metrics = statser_finder_server:find_metrics_tree(Path),
             Formatted = format(Metrics, json),
             {ok, ?DEFAULT_HEADERS, Formatted};
         _Invalid ->

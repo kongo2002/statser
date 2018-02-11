@@ -12,6 +12,7 @@
 -export([start_link/0]).
 
 -export([find_metrics/1,
+         find_metrics_tree/1,
          processor_loop/1,
          register_metric_handler/2,
          unregister_metric_handler/1]).
@@ -62,7 +63,17 @@ find_metrics(Paths) ->
     PreparedPaths = prepare_paths(Paths),
 
     % TODO: what happens on timeout exactly, again..?
-    gen_server:call(?MODULE, {find_metrics, PreparedPaths}, 1000).
+    gen_server:call(?MODULE, {find_metrics, PreparedPaths, false}, 1000).
+
+find_metrics_tree(Paths) ->
+    PreparedPaths = prepare_paths(Paths),
+
+    % TODO: what happens on timeout exactly, again..?
+    Result = gen_server:call(?MODULE, {find_metrics, PreparedPaths, true}, 1000),
+
+    % now we have to strip out duplicates based on the 'name' of the metric
+    Result0 = lists:ukeysort(1, Result),
+    lists:map(fun({_Name, Node}) -> Node end, Result0).
 
 
 register_metric_handler(Path, Pid) ->
@@ -114,9 +125,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({find_metrics, Paths}, _From, State) ->
+handle_call({find_metrics, Paths, GlobDirs}, _From, State) ->
     Metrics = State#state.metrics,
-    Result = find_metrics(Paths, Metrics),
+    Result = find_metrics(Paths, Metrics, GlobDirs),
     {reply, Result, State};
 
 handle_call(_Request, _From, State) ->
@@ -300,57 +311,115 @@ merge_metric_dir(#metric_dir{}=A, #metric_dir{}=B) ->
     A#metric_dir{metrics=Metrics, dirs=Dirs}.
 
 
-find_metrics(Paths, Dir) ->
-    find_metrics(Paths, Dir, []).
+find_metrics(Paths, Dir, GlobDirs) ->
+    find_metrics(Paths, Dir, [], GlobDirs).
 
 
-find_metrics([error], _Dir, _Parents) -> [];
-find_metrics([all], #metric_dir{metrics=Ms}, Parents) ->
+find_metrics([error], _Dir, _Parents, _Glob) -> [];
+find_metrics([all], #metric_dir{metrics=Ms}, Parents, false) ->
     lists:map(fun({_, M}) ->
                       convert_metric(M, Parents) end,
               orddict:to_list(Ms));
 
-find_metrics([{glob, Path}], #metric_dir{metrics=Ms}, Parents) ->
+find_metrics([all], #metric_dir{metrics=Ms, dirs=Ds}, Parents, true) ->
+    Ms0 = lists:map(fun({_, M}) ->
+                            convert_metric(M, Parents, true) end,
+                    orddict:to_list(Ms)),
+    Ds0 = lists:map(fun({_, M}) ->
+                            convert_dir(M, Parents) end,
+                    orddict:to_list(Ds)),
+    Ms0 ++ Ds0;
+
+find_metrics([{glob, Path}], #metric_dir{metrics=Ms}, Parents, false) ->
     Filter = filter_by_pattern(Path),
     Filtered = lists:filter(Filter, orddict:to_list(Ms)),
     lists:map(fun({_K, V}) ->
                       convert_metric(V, Parents)
               end, Filtered);
 
-find_metrics([{exact, Path}], #metric_dir{metrics=Ms}, Parents) ->
+find_metrics([{glob, Path}], #metric_dir{metrics=Ms, dirs=Ds}, Parents, true) ->
+    Filter = filter_by_pattern(Path),
+    MsFiltered = lists:filter(Filter, orddict:to_list(Ms)),
+    Ms0 = lists:map(fun({_K, V}) ->
+                      convert_metric(V, Parents, true)
+              end, MsFiltered),
+    DsFiltered = lists:filter(Filter, orddict:to_list(Ds)),
+    Ds0 = lists:map(fun({_K, V}) ->
+                            convert_dir(V, Parents)
+              end, DsFiltered),
+    Ms0 ++ Ds0;
+
+find_metrics([{exact, Path}], #metric_dir{metrics=Ms}, Parents, false) ->
     case orddict:find(Path, Ms) of
         {ok, Metric} -> [convert_metric(Metric, Parents)];
         error -> []
     end;
 
-find_metrics([error | _Paths], _Dir, _Parents) -> [];
-find_metrics([all | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+find_metrics([{exact, Path}], #metric_dir{metrics=Ms, dirs=Ds}, Parents, true) ->
+    Ms0 = case orddict:find(Path, Ms) of
+              {ok, Metric} -> [convert_metric(Metric, Parents, true)];
+              error -> []
+          end,
+    Ds0 = case orddict:find(Path, Ds) of
+              {ok, Dir} -> [convert_dir(Dir, Parents)];
+              error -> []
+          end,
+    Ms0 ++ Ds0;
+
+find_metrics([error | _Paths], _Dir, _Parents, _Glob) -> [];
+find_metrics([all | Paths], #metric_dir{dirs=Dirs}, Parents, Glob) ->
     lists:flatmap(fun({Name, D}) ->
-                          find_metrics(Paths, D, [Name | Parents]) end,
+                          find_metrics(Paths, D, [Name | Parents], Glob) end,
                   orddict:to_list(Dirs));
 
-find_metrics([{glob, Path} | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+find_metrics([{glob, Path} | Paths], #metric_dir{dirs=Dirs}, Parents, Glob) ->
     Filter = filter_by_pattern(Path),
     lists:flatmap(fun({Name, D}=Dir) ->
                           case Filter(Dir) of
-                              true -> find_metrics(Paths, D, [Name | Parents]);
+                              true -> find_metrics(Paths, D, [Name | Parents], Glob);
                               false -> []
                           end
                   end, orddict:to_list(Dirs));
 
-find_metrics([{exact, Path} | Paths], #metric_dir{dirs=Dirs}, Parents) ->
+find_metrics([{exact, Path} | Paths], #metric_dir{dirs=Dirs}, Parents, Glob) ->
     case orddict:find(Path, Dirs) of
-        {ok, Dir} -> find_metrics(Paths, Dir, [Path | Parents]);
+        {ok, Dir} -> find_metrics(Paths, Dir, [Path | Parents], Glob);
         error -> []
     end.
 
 
-convert_metric(#metric_file{name=Name, handler=Pid}, Path) ->
+convert_metric(Metric, Path) ->
+    convert_metric(Metric, Path, false).
+
+convert_metric(#metric_file{name=Name, handler=Pid}, Path, false) ->
+    Path0 = to_path(Name, Path),
+    {Path0, Pid};
+
+convert_metric(#metric_file{name=Name}, Path, true) ->
+    Path0 = to_path(Name, Path),
+    Node = {[{<<"leaf">>, true},
+             {<<"allowChildren">>, false},
+             {<<"expandable">>, false},
+             {<<"text">>, Name},
+             {<<"id">>, Path0}]},
+    {Name, Node}.
+
+
+convert_dir(#metric_dir{name=Name}, Path) ->
+    Path0 = to_path(Name, Path),
+    Node = {[{<<"leaf">>, false},
+             {<<"allowChildren">>, true},
+             {<<"expandable">>, true},
+             {<<"text">>, Name},
+             {<<"id">>, Path0}]},
+    {Name, Node}.
+
+
+to_path(Name, Path) ->
     F = fun(A, <<>>) -> <<A/binary>>;
            (A, B) -> <<A/binary, ".", B/binary>>
         end,
-    Path0 = lists:foldl(F, <<>>, [Name | Path]),
-    {Path0, Pid}.
+    lists:foldl(F, <<>>, [Name | Path]).
 
 
 prepare_paths(Paths) ->
