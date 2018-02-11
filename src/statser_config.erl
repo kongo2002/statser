@@ -139,7 +139,6 @@ first_or_fallback(_GetPattern, Fallback, _Path, []) -> Fallback;
 first_or_fallback(GetPattern, Fallback, Path, [C | Cs]) ->
     Pattern = GetPattern(C),
     case re:run(Path, Pattern) of
-        match -> C;
         {match, _} -> C;
         _Otherwise -> first_or_fallback(GetPattern, Fallback, Path, Cs)
     end.

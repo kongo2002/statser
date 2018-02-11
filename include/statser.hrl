@@ -18,6 +18,10 @@
 
 -type duration_unit() :: default | seconds | minutes | hours | days | weeks | years.
 
+-type metric_value() :: number() | null.
+
+-type metric_tuple() :: {integer(), metric_value()}.
+
 -record(udp_config, {
           port :: integer(),
           interval :: integer(),
@@ -77,7 +81,7 @@
 
 -record(series, {
           target :: nonempty_string() | undefined,
-          values :: [{integer(), number()}],
+          values :: [metric_tuple()],
           step :: integer(),
           start :: integer(),
           until :: integer(),

@@ -155,7 +155,6 @@ safe_invert(Value) -> math:pow(Value, -1).
 safe_stddev(Vs) ->
     safe_stddev(Vs, safe_average(Vs), 0.0, 0).
 
-safe_stddev(_Vs, null, _Sum, _Len) -> null;
 safe_stddev([], _Avg, Sum, Len) when Len > 0 ->
     math:sqrt(Sum / Len);
 safe_stddev([], _Avg, _Sum, _Len) -> null;

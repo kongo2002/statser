@@ -37,7 +37,7 @@ aggregation_value(min) -> 5;
 aggregation_value(average_zero) -> 6.
 
 
--spec read_metadata(binary()) -> {ok, #whisper_metadata{}} | error.
+-spec read_metadata(binary()) -> {ok, #whisper_metadata{}} | {error, _}.
 read_metadata(File) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -48,7 +48,7 @@ read_metadata(File) ->
     end.
 
 
--spec read_metadata_inner(file:io_device()) -> {ok, #whisper_metadata{}} | error.
+-spec read_metadata_inner(file:io_device()) -> {ok, #whisper_metadata{}} | {error, _}.
 read_metadata_inner(IO) ->
     Read = file:read(IO, ?METADATA_HEADER_SIZE),
     case read_header(Read) of

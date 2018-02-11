@@ -216,8 +216,7 @@ terminate(_Reason, State) ->
     lager:debug("terminating metric handler of '~s'", [Path]),
 
     flush(State),
-    ets:delete(metrics, Path),
-    ok.
+    ets:delete(metrics, Path).
 
 %%--------------------------------------------------------------------
 %% @private

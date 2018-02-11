@@ -179,7 +179,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 read_length(Socket) ->
-    case gen_udp:recv(Socket, ?LENGTH_SIZE) of
+    case gen_tcp:recv(Socket, ?LENGTH_SIZE) of
         {ok, <<Length:32/unsigned-integer-big>> = Data} ->
             lager:debug("read length: ~p (~p)", [Length, Data]),
             {ok, Length};
