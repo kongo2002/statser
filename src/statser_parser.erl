@@ -80,13 +80,13 @@ Rest = [lists:nth(2, I) || I <- proplists:get_value(tail, Node)],
 
 -spec 'path_alternatives'(input(), index()) -> parse_result().
 'path_alternatives'(Input, Index) ->
-  p(Input, Index, 'path_alternatives', fun(I,D) -> (p_seq([p_string(<<"{">>), fun 'path_alternative'/2, p_string(<<"}">>)]))(I,D) end, fun(Node, _Idx) ->iolist_to_binary(Node) end).
+  p(Input, Index, 'path_alternatives', fun(I,D) -> (p_seq([p_string(<<"{">>), fun 'path_alternative'/2, p_string(<<"}">>)]))(I,D) end, fun(Node, _Idx) ->{alternative, lists:nth(2, Node)} end).
 
 -spec 'path_alternative'(input(), index()) -> parse_result().
 'path_alternative'(Input, Index) ->
   p(Input, Index, 'path_alternative', fun(I,D) -> (p_seq([fun 'spaces'/2, p_label('head', fun 'alternative'/2), p_label('tail', p_zero_or_more(p_seq([fun 'spaces'/2, fun 'comma'/2, fun 'spaces'/2, fun 'alternative'/2, fun 'spaces'/2])))]))(I,D) end, fun(Node, _Idx) ->
 Head = proplists:get_value(head, Node),
-Rest = [[<<",">>, lists:nth(4, I)] || I <- proplists:get_value(tail, Node)],
+Rest = [lists:nth(4, I) || I <- proplists:get_value(tail, Node)],
 [Head | Rest]
  end).
 

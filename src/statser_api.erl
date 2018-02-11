@@ -79,8 +79,14 @@ handle_metrics(Request) ->
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
             statser_instrumentation:increment(<<"api.query.requests">>),
-            Metrics = statser_finder_server:find_metrics_tree(Path),
-            Formatted = format(Metrics, json),
+            Metrics = lists:flatmap(fun statser_finder_server:find_metrics_tree/1,
+                                    explode_path(Path)),
+
+            % now we have to strip out duplicates based on the 'name' of the metric
+            Metrics0 = lists:map(fun({_Name, Node}) -> Node end,
+                                 lists:ukeysort(1, Metrics)),
+
+            Formatted = format(Metrics0, json),
             {ok, ?DEFAULT_HEADERS, Formatted};
         _Invalid ->
             lager:warning("invalid metrics query: ~p", [Query]),
@@ -153,7 +159,8 @@ process(Argument, _Params, _Now) -> Argument.
 
 
 process_paths(Path, {From, Until, _MaxPoints}, Now) ->
-    Paths = statser_finder_server:find_metrics(Path),
+    Paths = lists:flatmap(fun statser_finder_server:find_metrics/1,
+                          explode_path(Path)),
     lager:debug("found ~w paths to process: ~p", [length(Paths), Paths]),
     Processed = statser_processor:fetch_data(Paths, From, Until, Now),
     lager:debug("processing resulted in ~p", [Processed]),
@@ -170,6 +177,18 @@ process_function(Fctn, Args, {From, Until, _MaxPoints} = Params, Now) ->
 process_template(_Expr, _Args, {_From, _Until, _MaxPoints} = _Params, _Now) ->
     % TODO: template handling
     [{0, 0}].
+
+
+explode_path(Parts) ->
+    explode_path(Parts, []).
+
+explode_path([], Acc) -> [Acc];
+
+explode_path([{alternative, Alts} | Parts], Acc) ->
+    lists:flatmap(fun(A) -> explode_path(Parts, Acc ++ [A]) end, Alts);
+
+explode_path([Part | Parts], Acc) ->
+    explode_path(Parts, Acc ++ [Part]).
 
 
 many_by_key(Key, List) ->
@@ -255,8 +274,22 @@ parse_test_() ->
                    statser_parser:parse(<<"aliasByMetric(foo.bar,'test')">>)),
      ?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>,<<"*">>]},<<"test">>]},
                    statser_parser:parse(<<"aliasByMetric(foo.*,'test')">>)),
-     ?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>,<<"{one,two}">>]},<<"test">>]},
-                   statser_parser:parse(<<"aliasByMetric(foo.{one,two},'test')">>))
+     ?_assertEqual({call,<<"aliasByMetric">>, [{paths,[<<"foo">>, {alternative, [<<"one">>, <<"two">>]}]},<<"test">>]},
+                   statser_parser:parse(<<"aliasByMetric(foo.{ one , two },'test')">>))
+    ].
+
+explode_path_test_() ->
+    Path1 = [<<"foo">>, <<"bar">>],
+    [?_assertEqual([Path1],
+                   explode_path(Path1)),
+     ?_assertEqual([Path1 ++ [<<"one">>], Path1 ++ [<<"two">>]],
+                   explode_path(Path1 ++ [{alternative, [<<"one">>, <<"two">>]}])),
+     ?_assertEqual([[<<"a">>, <<"one">>],
+                    [<<"a">>, <<"two">>],
+                    [<<"b">>, <<"one">>],
+                    [<<"b">>, <<"two">>]],
+                   explode_path([{alternative, [<<"a">>, <<"b">>]}] ++
+                                [{alternative, [<<"one">>, <<"two">>]}]))
     ].
 
 -endif.

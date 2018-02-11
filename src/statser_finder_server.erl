@@ -59,21 +59,17 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
-find_metrics(Paths) ->
-    PreparedPaths = prepare_paths(Paths),
+find_metrics(Path) ->
+    PreparedPath = prepare_path_components(Path),
 
     % TODO: what happens on timeout exactly, again..?
-    gen_server:call(?MODULE, {find_metrics, PreparedPaths, false}, 1000).
+    gen_server:call(?MODULE, {find_metrics, PreparedPath, false}, 1000).
 
-find_metrics_tree(Paths) ->
-    PreparedPaths = prepare_paths(Paths),
+find_metrics_tree(Path) ->
+    PreparedPath = prepare_path_components(Path),
 
     % TODO: what happens on timeout exactly, again..?
-    Result = gen_server:call(?MODULE, {find_metrics, PreparedPaths, true}, 1000),
-
-    % now we have to strip out duplicates based on the 'name' of the metric
-    Result0 = lists:ukeysort(1, Result),
-    lists:map(fun({_Name, Node}) -> Node end, Result0).
+    gen_server:call(?MODULE, {find_metrics, PreparedPath, true}, 1000).
 
 
 register_metric_handler(Path, Pid) ->
@@ -422,12 +418,12 @@ to_path(Name, Path) ->
     lists:foldl(F, <<>>, [Name | Path]).
 
 
-prepare_paths(Paths) ->
-    lists:map(fun prepare_path/1, Paths).
+prepare_path_components(Paths) ->
+    lists:map(fun prepare_path_component/1, Paths).
 
 
-prepare_path(<<"*">>) -> all;
-prepare_path(Path) ->
+prepare_path_component(<<"*">>) -> all;
+prepare_path_component(Path) ->
     case binary:match(Path, ?FINDER_SPECIAL_CHARS) of
         nomatch ->
             {exact, Path};
@@ -573,18 +569,18 @@ convert_metric_test_() ->
                                   [<<"foo">>, <<"ham">>, <<"eggs">>]))
     ].
 
-prepare_path_test_() ->
+prepare_path_component_test_() ->
     Type = fun({T, _}) -> T end,
 
-    [?_assertEqual(all, prepare_path(<<"*">>)),
-     ?_assertEqual({exact, <<"foo">>}, prepare_path(<<"foo">>)),
-     ?_assertEqual({exact, <<"ham eggs">>}, prepare_path(<<"ham eggs">>)),
-     ?_assertEqual(glob, Type(prepare_path(<<"foo*">>))),
-     ?_assertEqual(glob, Type(prepare_path(<<"fo?">>))),
-     ?_assertEqual(glob, Type(prepare_path(<<"* fo?">>))),
-     ?_assertEqual(error, prepare_path(<<"foo*(">>)),
-     ?_assertEqual(error, prepare_path(<<"*(">>)),
-     ?_assertEqual(error, prepare_path(<<"fo? [">>))
+    [?_assertEqual(all, prepare_path_component(<<"*">>)),
+     ?_assertEqual({exact, <<"foo">>}, prepare_path_component(<<"foo">>)),
+     ?_assertEqual({exact, <<"ham eggs">>}, prepare_path_component(<<"ham eggs">>)),
+     ?_assertEqual(glob, Type(prepare_path_component(<<"foo*">>))),
+     ?_assertEqual(glob, Type(prepare_path_component(<<"fo?">>))),
+     ?_assertEqual(glob, Type(prepare_path_component(<<"* fo?">>))),
+     ?_assertEqual(error, prepare_path_component(<<"foo*(">>)),
+     ?_assertEqual(error, prepare_path_component(<<"*(">>)),
+     ?_assertEqual(error, prepare_path_component(<<"fo? [">>))
     ].
 
 new_metric_dir_test_() ->
