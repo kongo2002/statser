@@ -37,7 +37,7 @@ aggregation_value(min) -> 5;
 aggregation_value(average_zero) -> 6.
 
 
--spec read_metadata(binary()) -> tuple().
+-spec read_metadata(binary()) -> {ok, #whisper_metadata{}} | error.
 read_metadata(File) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -48,6 +48,7 @@ read_metadata(File) ->
     end.
 
 
+-spec read_metadata_inner(file:io_device()) -> {ok, #whisper_metadata{}} | error.
 read_metadata_inner(IO) ->
     Read = file:read(IO, ?METADATA_HEADER_SIZE),
     case read_header(Read) of
@@ -90,12 +91,12 @@ read_archive_info(IO, As, Archives) ->
     end.
 
 
--spec fetch(binary(), integer(), integer()) -> #series{}.
+-spec fetch(binary(), integer(), integer()) -> #series{} | {error, _}.
 fetch(File, From, Until) ->
     fetch(File, From, Until, statser_util:seconds()).
 
 
--spec fetch(binary(), integer(), integer(), integer()) -> #series{}.
+-spec fetch(binary(), integer(), integer(), integer()) -> #series{} | {error, _}.
 fetch(File, From, Until, Now) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -106,14 +107,14 @@ fetch(File, From, Until, Now) ->
     end.
 
 
+-spec fetch_inner(file:io_device(), integer(), integer(), integer()) -> {ok, #whisper_metadata{}} | {error, _}.
 fetch_inner(IO, From, Until, Now) ->
     case read_metadata_inner(IO) of
         {ok, Metadata} ->
             Oldest = Now - Metadata#whisper_metadata.retention,
 
             if From > Now orelse Until < Oldest ->
-                   % XXX: is this the right return value?
-                   #series{values=[]};
+                   {error, badarg};
                true ->
                    FromAdjusted = adjust_from(From, Oldest),
                    UntilAdjusted = adjust_until(Until, Now),
@@ -131,6 +132,7 @@ adjust_until(Until, Now) when Until > Now -> Now;
 adjust_until(Until, _Now) -> Until.
 
 
+-spec fetch_with_metadata(file:io_device(), #whisper_metadata{}, integer(), integer(), integer()) -> #series{}.
 fetch_with_metadata(IO, Metadata, Now, From, Until) ->
     Distance = Now - From,
     Archive = target_archive(Distance, Metadata#whisper_metadata.archives),
@@ -212,7 +214,7 @@ create(File, Archives, Aggregation, XFF) ->
     end.
 
 
--spec prepare_metadata([{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
+-spec prepare_metadata([{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}} | error.
 prepare_metadata(Archives, Aggregation, XFF) ->
     GetDefault = fun([], Def) -> Def;
                     (Val, _) -> Val end,
@@ -568,7 +570,7 @@ distribute_points(Now, [{TS, _}=P | Ps]=Pss, [Archive | As]=Ass, APs, Acc) ->
     end.
 
 
--spec update_point(binary(), number(), integer()) -> tuple().
+-spec update_point(binary(), number(), integer()) -> ok | error.
 update_point(File, Value, TimeStamp) ->
     case file:open(File, [write, read, binary, raw]) of
         {ok, IO} ->
@@ -579,6 +581,7 @@ update_point(File, Value, TimeStamp) ->
     end.
 
 
+-spec do_update(file:io_device(), number(), integer()) -> ok | error.
 do_update(IO, Value, TimeStamp) ->
     case read_metadata_inner(IO) of
         {ok, Metadata} ->
@@ -700,6 +703,7 @@ write_propagated_values(IO, Header, Lower, LowerInterval, Values, NumPoints) ->
     end.
 
 
+-spec aggregate(aggregation(), list(), integer(), integer()) -> number() | null.
 aggregate(sum, Values, _, _) -> lists:sum(Values);
 aggregate(_, [], _, _) -> null;
 aggregate(average, Values, NumValues, _) -> lists:sum(Values) / NumValues;
@@ -709,6 +713,7 @@ aggregate(min, Values, _, _) -> lists:min(Values);
 aggregate(average_zero, Values, _, NumPoints) -> lists:sum(Values) / NumPoints.
 
 
+-spec write_point(file:io_device(), #whisper_metadata{}, number(), integer()) -> ok | error.
 write_point(IO, Header, Value, TimeStamp) ->
     Now = erlang:system_time(second),
     TimeDiff = Now - TimeStamp,
@@ -847,7 +852,9 @@ update_points_test_() ->
     Check = fun(Archives, Points, From, To) ->
                     WithF = fun(File) ->
                                     {ok, _} = create(File, Archives, average, 0.5),
-                                    lists:foreach(fun({T, P}) -> ok = update_point(File, P, T) end, Points),
+                                    lists:foreach(fun({T, P}) ->
+                                                          ok = update_point(File, P, T)
+                                                  end, Points),
                                     Series1 = fetch(File, From, To),
                                     ok = update_points(File, Points),
                                     Series2 = fetch(File, From, To),

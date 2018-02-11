@@ -76,7 +76,7 @@
          }).
 
 -record(series, {
-          target :: nonempty_string(),
+          target :: nonempty_string() | undefined,
           values :: [{integer(), number()}],
           step :: integer(),
           start :: integer(),
