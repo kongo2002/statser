@@ -97,9 +97,9 @@ handle_metrics(Request) ->
 handle_render([], _From, _Until, _MaxPoints) ->
     {400, [], <<"no target(s) specified">>};
 handle_render(_Targets, error, _Until, _MaxPoints) ->
-    {400, [], <<"no 'from' specified">>};
+    {400, [], <<"no or invalid 'from' specified">>};
 handle_render(_Targets, _From, error, _MaxPoints) ->
-    {400, [], <<"no 'until' specified">>};
+    {400, [], <<"no or invalid 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
     Now = erlang:system_time(second),
     statser_instrumentation:increment(<<"api.render.requests">>),
