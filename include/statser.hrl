@@ -80,7 +80,7 @@
          }).
 
 -record(series, {
-          target :: nonempty_string() | undefined,
+          target :: binary() | undefined,
           values :: [metric_tuple()],
           step :: integer(),
           start :: integer(),

@@ -14,7 +14,7 @@
 -define(TIMEOUT, 2000).
 -define(FETCHER_TIMEOUT, 2500).
 
-
+-spec fetch_data([binary()], integer(), integer(), integer()) -> [#series{}].
 fetch_data([], _From, _Until, _Now) -> [];
 
 fetch_data([Path], From, Until, Now) ->
@@ -448,7 +448,7 @@ evaluate_call(<<"randomWalk">>, [Target, Step], From, Until, _Now) when is_numbe
     Length = (Until - From) div Step,
     Vs = lists:map(fun(Idx) -> {From + Step * Idx, rand:uniform()} end,
                    lists:seq(0, Length)),
-    [#series{values=Vs, target=Target, start=From, until=Until, step=Step}];
+    [#series{values=Vs, target=Target, start=From, until=Until, step=Step, aggregation=average}];
 
 % rangeOfSeries
 evaluate_call(<<"rangeOfSeries">>, Series, _From, _Until, _Now) ->
@@ -627,6 +627,7 @@ select_low_n(Series, N, Name, Func) ->
     end.
 
 
+-spec consolidate(#series{}, integer()) -> #series{}.
 consolidate(Series, ValuesPP) when ValuesPP =< 1 -> Series;
 consolidate(Series, ValuesPP) ->
     Aggregate = Series#series.aggregation,

@@ -96,9 +96,9 @@ handle_metrics(Request) ->
 
 handle_render([], _From, _Until, _MaxPoints) ->
     {400, [], <<"no target(s) specified">>};
-handle_render(_Targets, false, _Until, _MaxPoints) ->
+handle_render(_Targets, error, _Until, _MaxPoints) ->
     {400, [], <<"no 'from' specified">>};
-handle_render(_Targets, _From, false, _MaxPoints) ->
+handle_render(_Targets, _From, error, _MaxPoints) ->
     {400, [], <<"no 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
     Now = erlang:system_time(second),

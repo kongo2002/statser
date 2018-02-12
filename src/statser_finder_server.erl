@@ -28,13 +28,13 @@
 -record(state, {metrics, data_dir, processor}).
 
 -record(metric_file, {
-          name :: nonempty_string(),
-          file :: nonempty_string(),
-          handler=undefined :: pid() | undefined
+          name :: binary(),
+          file :: nonempty_string() | undefined,
+          handler :: pid() | undefined
          }).
 
 -record(metric_dir, {
-          name :: nonempty_string() | undefined,
+          name :: binary() | undefined,
           metrics :: orddict:orddict(),
           dirs :: orddict:orddict()
          }).
@@ -59,12 +59,15 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
+-spec find_metrics([binary()]) -> [{binary(), pid() | undefined}].
 find_metrics(Path) ->
     PreparedPath = prepare_path_components(Path),
 
     % TODO: what happens on timeout exactly, again..?
     gen_server:call(?MODULE, {find_metrics, PreparedPath, false}, 1000).
 
+
+-spec find_metrics_tree([binary()]) -> [{binary(), tuple()}].
 find_metrics_tree(Path) ->
     PreparedPath = prepare_path_components(Path),
 
@@ -72,12 +75,14 @@ find_metrics_tree(Path) ->
     gen_server:call(?MODULE, {find_metrics, PreparedPath, true}, 1000).
 
 
+-spec register_metric_handler(binary(), pid() | undefined) -> ok.
 register_metric_handler(Path, Pid) ->
     {Paths, Name} = metric_and_paths(Path),
     Metric = #metric_file{name=Name, handler=Pid},
     gen_server:cast(?MODULE, {register_handler, Metric, Paths}).
 
 
+-spec unregister_metric_handler(binary()) -> ok.
 unregister_metric_handler(Path) ->
     register_metric_handler(Path, undefined).
 
@@ -435,7 +440,6 @@ prepare_path_component(Path) ->
 filter_by_pattern(Pattern) ->
     fun({Key, _V}) ->
             case re:run(Key, Pattern) of
-                match -> true;
                 {match, _} -> true;
                 _Otherwise -> false
             end
