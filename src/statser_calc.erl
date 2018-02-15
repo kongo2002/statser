@@ -24,6 +24,11 @@
          safe_square_root/1]).
 
 
+-type variadic_metric() :: metric_tuple() | metric_value().
+-type variadic_metrics() :: [variadic_metric()].
+
+
+-spec safe_average(variadic_metrics()) -> number().
 safe_average(Values) ->
     safe_average(Values, 1, 0.0).
 
@@ -40,6 +45,7 @@ safe_average([Val | Vs], Cnt, Avg) ->
     safe_average(Vs, Cnt + 1, NewAvg).
 
 
+-spec safe_length(variadic_metrics()) -> integer().
 safe_length(Vs) ->
     safe_length(Vs, 0).
 
@@ -52,6 +58,7 @@ safe_length([_ | Xs], Len) ->
     safe_length(Xs, Len + 1).
 
 
+-spec safe_max(variadic_metrics()) -> metric_value().
 safe_max(Vs) ->
     safe_max(Vs, null).
 
@@ -70,6 +77,7 @@ safe_max([Val | Vs], Max) ->
     safe_max(Vs, max(Val, Max)).
 
 
+-spec safe_pow(variadic_metrics()) -> metric_value().
 safe_pow([]) -> null;
 safe_pow([null | _Vs]) -> null;
 safe_pow([{_TS, null} | _Vs]) -> null;
@@ -87,6 +95,7 @@ safe_pow([Val | Vs], Current) ->
     safe_pow(Vs, math:pow(Current, Val)).
 
 
+-spec safe_min(variadic_metrics()) -> metric_value().
 safe_min(Vs) ->
     safe_min(Vs, null).
 
@@ -101,11 +110,13 @@ safe_min([Val | Vs], Min) ->
     safe_min(Vs, min(Val, Min)).
 
 
+-spec safe_max_compare(metric_value(), metric_value()) -> metric_value().
 safe_max_compare(A, null) -> A;
 safe_max_compare(null, B) -> B;
 safe_max_compare(A, B) -> max(A, B).
 
 
+-spec safe_range(variadic_metrics()) -> metric_value().
 safe_range(Vs) ->
     safe_range(Vs, {null, null}).
 
@@ -123,6 +134,7 @@ safe_range([Val | Vs], {Min, Max}) ->
     safe_range(Vs, MinMax).
 
 
+-spec safe_diff(variadic_metrics()) -> number().
 safe_diff([]) -> 0;
 safe_diff([{_TS, Value} | Vs]) -> safe_diff(Vs, Value);
 safe_diff([Value | Vs]) -> safe_diff(Vs, Value).
@@ -143,15 +155,18 @@ safe_diff([Value | Vs], Acc) ->
     safe_diff(Vs, Acc - Value).
 
 
+-spec safe_substract(metric_value(), metric_value()) -> metric_value().
 safe_substract(_A, null) -> null;
 safe_substract(null, _B) -> null;
 safe_substract(A, B) -> A - B.
 
 
+-spec safe_invert(metric_value()) -> metric_value().
 safe_invert(null) -> null;
 safe_invert(Value) -> math:pow(Value, -1).
 
 
+-spec safe_stddev(variadic_metrics()) -> metric_value().
 safe_stddev(Vs) ->
     safe_stddev(Vs, safe_average(Vs), 0.0, 0).
 
@@ -170,6 +185,7 @@ safe_stddev([V | Vs], Avg, Sum, Len) ->
     safe_stddev(Vs, Avg, Sum + Dev, Len + 1).
 
 
+-spec safe_sum(variadic_metrics()) -> number().
 safe_sum(Vs) ->
     safe_sum(Vs, 0).
 
@@ -184,10 +200,12 @@ safe_sum([Value | Vs], Acc) ->
     safe_sum(Vs, Acc + Value).
 
 
+-spec safe_square_root(metric_value()) -> metric_value().
 safe_square_root(null) -> null;
 safe_square_root(Value) -> math:pow(Value, 0.5).
 
 
+-spec safe_div(variadic_metric(), variadic_metric()) -> variadic_metric().
 safe_div(_A, 0) -> null;
 safe_div(_A, null) -> null;
 safe_div({TS, _A}, {_, 0}) -> {TS, null};
@@ -199,6 +217,7 @@ safe_div({TS, A}, B) -> {TS, A / B};
 safe_div(A, B) -> A / B.
 
 
+-spec sort_non_null(variadic_metrics()) -> {variadic_metrics(), integer()}.
 sort_non_null(Values) ->
     sort_non_null(Values, [], 0).
 
@@ -214,13 +233,16 @@ sort_non_null([Val | Vs], Acc, Len) ->
     sort_non_null(Vs, [Val | Acc], Len + 1).
 
 
+-spec median([metric_value()]) -> metric_value().
 median(Values) ->
     percentile(Values, 50, true).
 
 
+-spec percentile([metric_value()], integer()) -> metric_value().
 percentile(Values, N) ->
     percentile(Values, N, false).
 
+-spec percentile([metric_value()], integer(), boolean()) -> metric_value().
 percentile(Values, N, Interpolate) ->
     {Sorted, Len} = sort_non_null(Values),
     FractionalRank = (N / 100.0) * (Len + 1),
