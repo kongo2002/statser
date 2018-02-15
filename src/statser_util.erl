@@ -18,6 +18,7 @@
          split_metric/1]).
 
 
+-spec to_number(binary()) -> {ok, number()} | error.
 to_number(Binary) ->
     List = binary_to_list(Binary),
     case string:to_float(List) of
@@ -30,6 +31,7 @@ to_number(Binary) ->
     end.
 
 
+-spec floor(number()) -> integer().
 floor(X) when X < 0 ->
     Truncated = trunc(X),
     case X - Truncated == 0 of
@@ -40,6 +42,7 @@ floor(X) ->
     trunc(X).
 
 
+-spec ceiling(number()) -> integer().
 ceiling(X) when X < 0 ->
     trunc(X);
 ceiling(X) ->
@@ -50,6 +53,7 @@ ceiling(X) ->
     end.
 
 
+-spec parse_unit(binary()) -> integer() | error.
 parse_unit(Value) ->
     List = binary_to_list(Value),
     case string:to_integer(List) of
@@ -58,6 +62,7 @@ parse_unit(Value) ->
     end.
 
 
+-spec parse_unit(integer(), unicode:chardata()) -> integer() | error.
 parse_unit(Value, [$s | _])   -> Value;
 parse_unit(Value, [$S | _])   -> Value;
 parse_unit(Value, "min" ++ _) -> Value * 60;
@@ -69,10 +74,12 @@ parse_unit(Value, [$y | _])   -> Value * 31536000;
 parse_unit(_, _)              -> error.
 
 
+-spec seconds() -> integer().
 seconds() ->
     erlang:system_time(second).
 
 
+-spec epoch_seconds_to_datetime(integer()) -> string().
 epoch_seconds_to_datetime(Seconds) ->
     % calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0})
     EpochSeconds = 62167219200,
@@ -81,6 +88,7 @@ epoch_seconds_to_datetime(Seconds) ->
                                 [Year,Month,Day,Hour,Minute,Second])).
 
 
+-spec split_metric(binary()) -> [binary()].
 split_metric(Metric) ->
     binary:split(Metric, <<".">>, [global, trim_all]).
 

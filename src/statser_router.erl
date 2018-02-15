@@ -35,10 +35,12 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
+-spec line(binary(), number()) -> ok.
 line(Metric, Value) ->
     line(Metric, Value, statser_util:seconds()).
 
 
+-spec line(binary(), number(), integer()) -> ok.
 line(Metric, Value, Timestamp) ->
     gen_server:cast(?MODULE, {line, Metric, Value, Timestamp}).
 
@@ -146,6 +148,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec dispatch({line, binary(), number(), integer()}) -> ok.
 dispatch({line, Path, _, _} = Line) ->
     Target = case ets:lookup(metrics, Path) of
         [] ->

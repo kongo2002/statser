@@ -5,6 +5,8 @@
 
 -module(statser_metrics_sup).
 
+-include("statser.hrl").
+
 -behaviour(supervisor).
 
 %% API
@@ -27,14 +29,17 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> supervisor:startlink_ret().
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
+-spec start_handler(binary()) -> supervisor:startchild_ret().
 start_handler(Path) ->
     supervisor:start_child(?MODULE, [Path]).
 
 
+-spec start_handler(binary(), #whisper_metadata{} | none) -> supervisor:startchild_ret().
 start_handler(Path, Config) ->
     supervisor:start_child(?MODULE, [Path, Config]).
 

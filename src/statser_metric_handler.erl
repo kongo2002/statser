@@ -27,7 +27,14 @@
 
 -define(INACTIVITY_FACTOR, 5).
 
--record(state, {path, fspath, metadata, cache=[], cache_size=0, heartbeat}).
+-record(state, {
+          path :: binary(),
+          fspath :: binary() | undefined,
+          metadata :: #whisper_metadata{} | none,
+          cache=[] :: [metric_tuple()],
+          heartbeat=0 :: integer(),
+          cache_size=0 :: integer()
+         }).
 
 %%%===================================================================
 %%% API
@@ -40,12 +47,20 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(binary()) -> {ok, _} | ignore | {error, _}.
 start_link(Path) ->
     gen_server:start_link(?MODULE, {Path, none}, []).
 
 
+-spec start_link(binary(), #whisper_metadata{} | none) -> {ok, _} | ignore | {error, _}.
 start_link(Path, Metadata) ->
     gen_server:start_link(?MODULE, {Path, Metadata}, []).
+
+
+-spec get_whisper_file(binary()) -> binary().
+get_whisper_file(Path) ->
+    {ok, Dirs, File} = get_directory(Path),
+    prepare_file(Dirs, File).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -70,7 +85,7 @@ init({Path, Metadata}) ->
         true ->
             % we could register ourself, let's continue with preparation
             gen_server:cast(self(), {prepare, Metadata}),
-            {ok, set_heartbeat(#state{path=Path})};
+            {ok, set_heartbeat(#state{path=Path, metadata=none})};
         false ->
             % there is a metric handler already for this path
             % let's shut down now
@@ -228,11 +243,6 @@ terminate(_Reason, State) ->
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-
-get_whisper_file(Path) ->
-    {ok, Dirs, File} = get_directory(Path),
-    prepare_file(Dirs, File).
 
 
 %%%===================================================================
@@ -413,7 +423,7 @@ flush(#state{cache=Cache, fspath=File} = State) ->
 
 
 set_heartbeat(State) ->
-    State#state{heartbeat=erlang:system_time(second)}.
+    State#state{heartbeat=statser_util:seconds()}.
 
 
 %%
