@@ -258,7 +258,7 @@ request_flush() ->
 
 
 heartbeat_expired(#state{heartbeat=HB, metadata=#whisper_metadata{archives=[A | _]}}) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     IntervalMillis = A#whisper_archive.seconds * ?INACTIVITY_FACTOR,
     Expired = Now - IntervalMillis,
     HB < Expired;

@@ -50,7 +50,7 @@ alive(Name) ->
     erlang:send_after(?DEFAULT_HEALTH_TIMER_INTERVAL, self(), health),
 
     % and send an alive report immediately
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     gen_server:cast(?MODULE, {alive, Name, Now}),
     ok.
 
@@ -186,7 +186,7 @@ schedule_refresh(#state{interval=Interval} = State) ->
 
 
 notify(Subs, Interval, Metrics, Services) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     Stats = lists:map(fun({K, V}) when is_number(V) ->
                                PerSecond = V / Interval * ?MILLIS_PER_SEC,
                                {[{name, K}, {value, PerSecond}, {type, counter}]};

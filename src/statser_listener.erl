@@ -180,7 +180,7 @@ process_line(#state{pattern=Pattern, filters=Filters}, Data) ->
         % graphite format w/o timestamp: 'path value'
         [Path, ValueBS] ->
             Value = statser_util:to_number(ValueBS),
-            TimeStamp = erlang:system_time(second),
+            TimeStamp = statser_util:seconds(),
             {filter_path(Path, Filters), Value, {ok, TimeStamp}};
 
         _Otherwise ->

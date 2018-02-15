@@ -418,7 +418,7 @@ sort_by_newest(Points) ->
 
 update_points(_File, []) -> ok;
 update_points(File, Points) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
 
     % order points by timestamp (newest first)
     OrderedPoints = sort_by_newest(Points),
@@ -715,7 +715,7 @@ aggregate(average_zero, Values, _, NumPoints) -> lists:sum(Values) / NumPoints.
 
 -spec write_point(file:io_device(), #whisper_metadata{}, number(), integer()) -> ok | error.
 write_point(IO, Header, Value, TimeStamp) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     TimeDiff = Now - TimeStamp,
     MaxRetention = Header#whisper_metadata.retention,
     if
@@ -791,7 +791,7 @@ build_consecutive_points_test_() ->
 
 
 get_data_point_offset_test_() ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     Offset = 28,
     Archive = make_archive_header(Offset, 60, 1440),
 
@@ -863,7 +863,7 @@ update_points_test_() ->
                     {ok, S1, S2} = test_util:with_tempfile(WithF),
                     [?_assertEqual(S1, S2)]
             end,
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     lists:flatten([Check(Archives1, [{Now, 100}], Now, Now+60),
                    Check(Archives1, [{Now, 100}], Now-20, Now),
                    Check(Archives1, [{Now, 100}, {Now+10, 110}, {Now+20, 120}, {Now+30, 130}], Now, Now+60),

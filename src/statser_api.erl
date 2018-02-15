@@ -40,7 +40,7 @@ handle('POST', [<<"render">>], Req) ->
 
     case Format of
         <<"json">> ->
-            Now = erlang:system_time(second),
+            Now = statser_util:seconds(),
             From = parse_time(From0, Now),
             Until = parse_time(Until0, Now),
             handle_render(Targets, From, Until, MaxPoints);
@@ -101,7 +101,7 @@ handle_render(_Targets, error, _Until, _MaxPoints) ->
 handle_render(_Targets, _From, error, _MaxPoints) ->
     {400, [], <<"no or invalid 'until' specified">>};
 handle_render(Targets, From, Until, MaxPoints) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     statser_instrumentation:increment(<<"api.render.requests">>),
     Processed = lists:flatmap(fun(Target) ->
                                       % one target definition may result in 0-n results

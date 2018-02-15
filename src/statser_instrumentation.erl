@@ -136,7 +136,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(update_metrics, State) ->
-    Now = erlang:system_time(second),
+    Now = statser_util:seconds(),
     Path = State#state.path,
     Metrics = State#state.metrics,
     lager:debug("instrumentation: handle metrics update - current ~p", [Metrics]),
