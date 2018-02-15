@@ -191,14 +191,18 @@ read_length(Socket) ->
     end.
 
 
+extract_metric_values(Metric, Points) ->
+    lists:map(fun(#'Point'{value=V, timestamp=TS}) ->
+                      {Metric, V, TS}
+              end, Points).
+
+
 protobuf_to_metrics(#'Payload'{metrics=Metrics}, Filters) ->
     lists:flatmap(fun(#'Metric'{metric=M, points=Ps}) ->
                           Metric = list_to_binary(M),
                           case statser_config:metric_passes_filters(Metric, Filters) of
                               true ->
-                                  lists:map(fun(#'Point'{value=V, timestamp=TS}) ->
-                                                    {Metric, V, TS}
-                                            end, Ps);
+                                  extract_metric_values(Metric, Ps);
                               false ->
                                   statser_instrumentation:increment(<<"metrics-blacklisted">>),
                                   []

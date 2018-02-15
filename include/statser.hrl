@@ -53,12 +53,16 @@
           size :: integer()
          }).
 
+-type whisper_archive() :: #whisper_archive{}.
+
 -record(whisper_metadata, {
           aggregation :: aggregation(),
           retention :: integer(),
           xff :: float(),
           archives :: [#whisper_archive{}]
          }).
+
+-type whisper_metadata() :: #whisper_metadata{}.
 
 -record(retention_definition, {
           raw :: string(),
@@ -79,6 +83,8 @@
           factor :: float()
          }).
 
+-type aggregation_definition() :: #aggregation_definition{}.
+
 -record(series, {
           target :: binary() | undefined,
           values :: [metric_tuple()],
@@ -88,12 +94,18 @@
           aggregation :: aggregation()
          }).
 
+-type series() :: #series{}.
+
 -record(metric_pattern, {
           name :: nonempty_string(),
           pattern :: tuple()
          }).
 
+-type metric_pattern() :: #metric_pattern{}.
+
 -record(metric_filters, {
           whitelist=[] :: [#metric_pattern{}],
           blacklist=[] :: [#metric_pattern{}]
          }).
+
+-type metric_filters() :: #metric_filters{}.

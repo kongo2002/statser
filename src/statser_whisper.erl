@@ -19,6 +19,9 @@
          update_points/2]).
 
 
+-type second_points() :: {integer(), integer()}.
+
+
 -spec aggregation_type(integer()) -> aggregation().
 aggregation_type(1) -> average;
 aggregation_type(2) -> sum;
@@ -37,7 +40,7 @@ aggregation_value(min) -> 5;
 aggregation_value(average_zero) -> 6.
 
 
--spec read_metadata(binary()) -> {ok, #whisper_metadata{}} | {error, _}.
+-spec read_metadata(binary()) -> {ok, whisper_metadata()} | {error, _}.
 read_metadata(File) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -48,7 +51,7 @@ read_metadata(File) ->
     end.
 
 
--spec read_metadata_inner(file:io_device()) -> {ok, #whisper_metadata{}} | {error, _}.
+-spec read_metadata_inner(file:io_device()) -> {ok, whisper_metadata()} | {error, _}.
 read_metadata_inner(IO) ->
     Read = file:read(IO, ?METADATA_HEADER_SIZE),
     case read_header(Read) of
@@ -91,12 +94,12 @@ read_archive_info(IO, As, Archives) ->
     end.
 
 
--spec fetch(binary(), integer(), integer()) -> #series{} | {error, _}.
+-spec fetch(binary(), integer(), integer()) -> series() | {error, _}.
 fetch(File, From, Until) ->
     fetch(File, From, Until, statser_util:seconds()).
 
 
--spec fetch(binary(), integer(), integer(), integer()) -> #series{} | {error, _}.
+-spec fetch(binary(), integer(), integer(), integer()) -> series() | {error, _}.
 fetch(File, From, Until, Now) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -107,7 +110,7 @@ fetch(File, From, Until, Now) ->
     end.
 
 
--spec fetch_inner(file:io_device(), integer(), integer(), integer()) -> {ok, #whisper_metadata{}} | {error, _}.
+-spec fetch_inner(file:io_device(), integer(), integer(), integer()) -> {ok, whisper_metadata()} | {error, _}.
 fetch_inner(IO, From, Until, Now) ->
     case read_metadata_inner(IO) of
         {ok, Metadata} ->
@@ -132,7 +135,7 @@ adjust_until(Until, Now) when Until > Now -> Now;
 adjust_until(Until, _Now) -> Until.
 
 
--spec fetch_with_metadata(file:io_device(), #whisper_metadata{}, integer(), integer(), integer()) -> #series{}.
+-spec fetch_with_metadata(file:io_device(), whisper_metadata(), integer(), integer(), integer()) -> series().
 fetch_with_metadata(IO, Metadata, Now, From, Until) ->
     Distance = Now - From,
     Archive = target_archive(Distance, Metadata#whisper_metadata.archives),
@@ -158,7 +161,12 @@ fetch_with_metadata(IO, Metadata, Now, From, Until) ->
     Series = fetch_series(IO, Archive, FromOffset, UntilOffset),
     Values = fetch_series_values(Archive, FromInterval, Series),
     Aggregation = Metadata#whisper_metadata.aggregation,
-    #series{values=Values,start=FromInterval,until=UntilInterval,step=ArchiveSeconds,aggregation=Aggregation}.
+
+    #series{values=Values,
+            start=FromInterval,
+            until=UntilInterval,
+            step=ArchiveSeconds,
+            aggregation=Aggregation}.
 
 
 fetch_series(IO, _Archive, FromOffset, UntilOffset) when FromOffset < UntilOffset ->
@@ -197,13 +205,13 @@ target_archive(_Distance, _Archives) ->
     none.
 
 
--spec create(binary(), #whisper_metadata{}) -> {ok, #whisper_metadata{}}.
+-spec create(binary(), whisper_metadata()) -> {ok, whisper_metadata()}.
 create(File, #whisper_metadata{archives=As, aggregation=Agg, xff=XFF}) ->
     Archives = lists:map(fun(A) -> {A#whisper_archive.seconds, A#whisper_archive.points} end, As),
     create(File, Archives, Agg, XFF).
 
 
--spec create(binary(), [{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}}.
+-spec create(binary(), [second_points()], aggregation(), float()) -> {ok, whisper_metadata()}.
 create(File, Archives, Aggregation, XFF) ->
     case file:open(File, [write, binary, raw]) of
         {ok, IO} ->
@@ -214,7 +222,7 @@ create(File, Archives, Aggregation, XFF) ->
     end.
 
 
--spec prepare_metadata([{integer(), integer()}], aggregation(), float()) -> {ok, #whisper_metadata{}} | error.
+-spec prepare_metadata([second_points()], aggregation(), float()) -> {ok, whisper_metadata()} | error.
 prepare_metadata(Archives, Aggregation, XFF) ->
     GetDefault = fun([], Def) -> Def;
                     (Val, _) -> Val end,
@@ -339,7 +347,7 @@ make_archive_header(Offset, Seconds, Points) ->
 
 
 write_archive_info(_IO, []) -> ok;
-write_archive_info(IO, [#whisper_archive{offset=Offset,seconds=Secs,points=Points} | As]) ->
+write_archive_info(IO, [#whisper_archive{offset=Offset, seconds=Secs, points=Points} | As]) ->
     Bytes = <<Offset:32/integer-unsigned-big, Secs:32/integer-unsigned-big, Points:32/integer-unsigned-big>>,
     ok = file:write(IO, Bytes),
     write_archive_info(IO, As).
@@ -713,7 +721,7 @@ aggregate(min, Values, _, _) -> lists:min(Values);
 aggregate(average_zero, Values, _, NumPoints) -> lists:sum(Values) / NumPoints.
 
 
--spec write_point(file:io_device(), #whisper_metadata{}, number(), integer()) -> ok | error.
+-spec write_point(file:io_device(), whisper_metadata(), number(), integer()) -> ok | error.
 write_point(IO, Header, Value, TimeStamp) ->
     Now = statser_util:seconds(),
     TimeDiff = Now - TimeStamp,

@@ -52,7 +52,7 @@ start_link(Path) ->
     gen_server:start_link(?MODULE, {Path, none}, []).
 
 
--spec start_link(binary(), #whisper_metadata{} | none) -> {ok, _} | ignore | {error, _}.
+-spec start_link(binary(), whisper_metadata() | none) -> {ok, _} | ignore | {error, _}.
 start_link(Path, Metadata) ->
     gen_server:start_link(?MODULE, {Path, Metadata}, []).
 

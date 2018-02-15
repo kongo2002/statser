@@ -308,7 +308,7 @@ safe_div_test_() ->
 
 safe_pow_test_() ->
     [?_assertEqual(null, safe_pow([])),
-     ?_assertEqual(null, safe_pow([1,2,4,3,null,2])),
+     ?_assertEqual(null, safe_pow([1, 2, 4, 3, null, 2])),
      ?_assertEqual(1, safe_pow([1])),
      ?_assertEqual(math:pow(1, 2), safe_pow([1, 2])),
      ?_assertEqual(math:pow(1, 2), safe_pow([{100, 1}, {110, 2}]))
@@ -337,8 +337,8 @@ safe_diff_test_() ->
 safe_stddev_test_() ->
     [?_assertEqual(null, safe_stddev([])),
      ?_assertEqual(null, safe_stddev([null])),
-     ?_assertEqual(0.0, safe_stddev([null,1])),
-     ?_assertEqual(math:sqrt(8/3), safe_stddev([2,4,null,6]))
+     ?_assertEqual(0.0, safe_stddev([null, 1])),
+     ?_assertEqual(math:sqrt(8/3), safe_stddev([2, 4, null, 6]))
     ].
 
 safe_length_test_() ->

@@ -299,11 +299,7 @@ handle_packet(Packet, State) ->
         [Metric | Rest] ->
             case statser_config:metric_passes_filters(Metric, State#state.filters) of
                 true ->
-                    lists:foldl(fun (_Bit, error) -> error;
-                                    (Bit, {ok, S0}) ->
-                                        Split = binary:split(Bit, ?DELIMITER_PIPE, [global, trim_all]),
-                                        handle_metric(S0, Metric, Split)
-                                end, {ok, State}, Rest);
+                    handle_metrics(Metric, Rest, State);
                 false ->
                     statser_instrumentation:increment(<<"metrics-blacklisted">>),
                     {ok, State}
@@ -312,6 +308,14 @@ handle_packet(Packet, State) ->
             % TODO: check for valid metrics name
             handle_metric(State, Packet)
     end.
+
+
+handle_metrics(Metric, Rest, State) ->
+    lists:foldl(fun (_Bit, error) -> error;
+                    (Bit, {ok, S0}) ->
+                        Split = binary:split(Bit, ?DELIMITER_PIPE, [global, trim_all]),
+                        handle_metric(S0, Metric, Split)
+                end, {ok, State}, Rest).
 
 
 handle_metric(State, Metric) ->

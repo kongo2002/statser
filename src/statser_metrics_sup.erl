@@ -39,7 +39,7 @@ start_handler(Path) ->
     supervisor:start_child(?MODULE, [Path]).
 
 
--spec start_handler(binary(), #whisper_metadata{} | none) -> supervisor:startchild_ret().
+-spec start_handler(binary(), whisper_metadata() | none) -> supervisor:startchild_ret().
 start_handler(Path, Config) ->
     supervisor:start_child(?MODULE, [Path, Config]).
 

@@ -85,7 +85,7 @@ epoch_seconds_to_datetime(Seconds) ->
     EpochSeconds = 62167219200,
     {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:gregorian_seconds_to_datetime(EpochSeconds + Seconds),
     lists:flatten(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
-                                [Year,Month,Day,Hour,Minute,Second])).
+                                [Year, Month, Day, Hour, Minute, Second])).
 
 
 -spec split_metric(binary()) -> [binary()].
