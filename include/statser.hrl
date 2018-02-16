@@ -28,9 +28,13 @@
           prune_after :: integer()
          }).
 
+-type udp_config() :: #udp_config{}.
+
 -record(protobuf_config, {
           port :: integer()
          }).
+
+-type protobuf_config() :: #protobuf_config{}.
 
 -record(listener_config, {
           listeners :: integer(),
@@ -40,10 +44,14 @@
           options=[] :: [atom() | tuple()]
          }).
 
+-type listener_config() :: #listener_config{}.
+
 -record(rate_limit_config, {
           creates_per_sec :: integer(),
           updates_per_sec :: integer()
          }).
+
+-type rate_limit_config() :: #rate_limit_config{}.
 
 -record(whisper_archive, {
           offset :: integer(),
@@ -70,11 +78,15 @@
           points :: integer()
          }).
 
+-type retention_definition() :: #retention_definition{}.
+
 -record(storage_definition, {
           name :: nonempty_string(),
           pattern :: tuple() | undefined,
-          retentions :: [#retention_definition{},...]
+          retentions :: [retention_definition(),...]
          }).
+
+-type storage_definition() :: #storage_definition{}.
 
 -record(aggregation_definition, {
           name :: nonempty_string(),
@@ -109,3 +121,11 @@
          }).
 
 -type metric_filters() :: #metric_filters{}.
+
+-record(node_info, {
+          node :: node(),
+          pid :: pid() | undefined,
+          last_seen=0 :: integer()
+         }).
+
+-type node_info() :: #node_info{}.

@@ -4,18 +4,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("api.hrl").
 -include("statser.hrl").
 
--export([handle/2, handle_event/3]).
+-export([handle/2,
+         handle_event/3]).
 
 -include_lib("elli/include/elli.hrl").
--behaviour(elli_handler).
 
--define(NO_CACHE, <<"no-cache">>).
--define(DEFAULT_HEADERS, [{<<"Pragma">>, ?NO_CACHE},
-                          {<<"Cache-Control">>, ?NO_CACHE},
-                          {<<"Content-Type">>, <<"application/json; charset=utf-8">>},
-                          {<<"Access-Control-Allow-Origin">>, <<"*">>}]).
+-behaviour(elli_handler).
 
 handle(Req, _Args) ->
     handle(Req#req.method, elli_request:path(Req), Req).
@@ -48,8 +45,14 @@ handle('POST', [<<"render">>], Req) ->
             {400, [], <<"unsupported format '", Unsupported/binary, "'">>}
     end;
 
-handle('GET', [<<".statser">> | Path], Req) ->
+handle(Mthd, [<<".statser">>, <<"control">> | Path], Req) ->
+    statser_control:handle(Mthd, Path, Req);
+
+handle('GET', [<<".statser">>, <<"status">> | Path], Req) ->
     statser_dashboard:handle('GET', Path, Req);
+
+handle('GET', [<<".statser">>], Req) ->
+    statser_dashboard:handle('GET', [], Req);
 
 handle(_, _, _Req) ->
     {404, [], <<"not found">>}.
@@ -87,7 +90,7 @@ handle_metrics(Request) ->
                                  lists:ukeysort(1, Metrics)),
 
             Formatted = format(Metrics0, json),
-            {ok, ?DEFAULT_HEADERS, Formatted};
+            {ok, ?DEFAULT_HEADERS_CORS, Formatted};
         _Invalid ->
             lager:warning("invalid metrics query: ~p", [Query]),
             {400, [], <<"invalid query specified">>}
@@ -111,7 +114,7 @@ handle_render(Targets, From, Until, MaxPoints) ->
     % sort the processed series in here so the result is stable
     Sorted = lists:sort(fun by_target/2, Processed),
     Formatted = format(lists:map(fun format_to_json/1, Sorted), json),
-    {ok, ?DEFAULT_HEADERS, Formatted}.
+    {ok, ?DEFAULT_HEADERS_CORS, Formatted}.
 
 
 by_target(#series{target=TargetA}, #series{target=TargetB}) when TargetA =< TargetB -> true;

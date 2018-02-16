@@ -117,7 +117,11 @@ init([]) ->
                 ?WORKER(update_limiter, statser_rate_limiter,
                        [update_limiter, <<"updates">>, Limits#rate_limit_config.updates_per_sec]),
                 % API
-                ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]])
+                ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]]),
+
+                % REPLICATION
+                % discoverer
+                ?WORKER(discoverer, statser_discoverer, [])
                ],
 
     {ok, {{one_for_one, 5, 10}, Children ++ UdpChild ++ ProtobufSup}}.
