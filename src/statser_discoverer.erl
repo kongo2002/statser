@@ -7,7 +7,8 @@
 %% API
 -export([start_link/0]).
 
--export([connect/1]).
+-export([connect/1,
+         get_nodes/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -39,6 +40,11 @@ start_link() ->
 -spec connect(node()) -> boolean() | ignored.
 connect(Node) ->
     gen_server:call(?MODULE, {connect, Node}).
+
+
+-spec get_nodes() -> [node_info()].
+get_nodes() ->
+    gen_server:call(?MODULE, get_nodes).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -74,13 +80,14 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({connect, Node}, _From, #state{nodes=Ns} = State) ->
-    lager:info("try to connect to node ~p", [Node]),
+    lager:info("trying to connect to node ~p", [Node]),
 
     Result = net_kernel:connect_node(Node),
     State0 = case Result of
                  true ->
+                     lager:info("successfully connected to node ~p", [Node]),
                      Info = #node_info{node=Node, last_seen=statser_util:seconds()},
-                     Ns0 = maps:update(Node, Info, Ns),
+                     Ns0 = maps:put(Node, Info, Ns),
                      State#state{nodes=Ns0};
                  false ->
                      lager:warning("connecting to node ~p failed", [Node]),
@@ -90,6 +97,10 @@ handle_call({connect, Node}, _From, #state{nodes=Ns} = State) ->
                      State
              end,
     {reply, Result, State0};
+
+handle_call(get_nodes, _From, State) ->
+    Nodes = maps:values(State#state.nodes),
+    {reply, Nodes, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

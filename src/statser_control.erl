@@ -15,8 +15,9 @@
 %%%===================================================================
 
 handle('GET', [<<"nodes">>], _Req) ->
-    % TODO
-    json([]);
+    Nodes = statser_discoverer:get_nodes(),
+    Nodes0 = lists:map(fun node_to_json/1, Nodes),
+    json(Nodes0);
 
 handle('POST', [<<"nodes">>], Req) ->
     Body = elli_request:body(Req),
@@ -25,8 +26,10 @@ handle('POST', [<<"nodes">>], Req) ->
     Json = jiffy:decode(Body),
     case parse_node_info(Json) of
         {ok, Node} ->
-            % TODO
-            ok();
+            case statser_discoverer:connect(Node) of
+                true -> ok();
+                _Else -> bad_request(<<"failed to connect">>)
+            end;
         {error, Error} ->
             bad_request(Error)
     end;
@@ -44,13 +47,27 @@ parse_node_info({Nodes}) when is_list(Nodes) ->
         undefined ->
             {error, <<"missing 'node'">>};
         Node when is_binary(Node) ->
-            {ok, Node};
+            {ok, prepare_node(Node)};
         _Otherwise ->
             {error, <<"invalid 'node' data">>}
     end;
 
 parse_node_info(_Json) ->
     {error, <<"invalid json">>}.
+
+
+prepare_node(Node) ->
+    Node0 = case binary:match(Node, <<"@">>) of
+                nomatch -> <<"statser@", Node/binary>>;
+                _Otherwise -> Node
+            end,
+
+    % not too sure if I am happy with this `list_to_atom`
+    list_to_atom(binary_to_list(Node0)).
+
+
+node_to_json(#node_info{node=Node}) ->
+    {[{<<"node">>, Node}]}.
 
 
 bad_request(Error) ->
