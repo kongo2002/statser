@@ -223,6 +223,16 @@ blacklist:
 whitelist:
   - ^stats\.
 
+# metrics and render API
+api:
+  port: 8080
+
+# TCP listener
+# this listener is basically equivalent to the carbon
+# plaintext listener you might know from graphite
+tcp:
+  port: 2003
+
 # StatsD compatible adapter
 udp:
   # UDP port to listen on
