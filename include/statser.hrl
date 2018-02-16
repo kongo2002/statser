@@ -36,6 +36,18 @@
 
 -type protobuf_config() :: #protobuf_config{}.
 
+-record(tcp_config, {
+          port :: integer()
+         }).
+
+-type tcp_config() :: #tcp_config{}.
+
+-record(api_config, {
+          port :: integer()
+         }).
+
+-type api_config() :: #api_config{}.
+
 -record(listener_config, {
           listeners :: integer(),
           port :: integer(),

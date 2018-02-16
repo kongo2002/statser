@@ -63,12 +63,12 @@ init([]) ->
     % TODO: investigate into 'read_concurrency'
     ets:new(metrics, [set, named_table, public]),
 
-    % TODO: configurable API port
-    ApiPort = application:get_env(statser, api_port, 8080),
-
-    Limits = statser_config:get_rate_limits(),
+    ApiConfig = statser_config:get_api_config(),
+    TcpConfig = statser_config:get_tcp_config(),
     UdpConfig = statser_config:get_udp_config(),
     ProtobufConfig = statser_config:get_protobuf_config(),
+
+    Limits = statser_config:get_rate_limits(),
 
     UdpChild =
     case statser_config:udp_is_enabled(UdpConfig) of
@@ -89,14 +89,13 @@ init([]) ->
         false -> []
     end,
 
-    lager:info("start listening for API requests on port ~w", [ApiPort]),
+    lager:info("start listening for API requests on port ~w", [ApiConfig#api_config.port]),
 
     Children = [?WORKER(listeners, statser_listeners_parent,
                         [#listener_config{
                             supervisor=listeners,
                             child_name=statser_listener,
-                            % TODO: configurable
-                            port=2003,
+                            port=TcpConfig#tcp_config.port,
                             listeners=20,
                             options=[{packet, line}]
                            }]),
@@ -117,7 +116,7 @@ init([]) ->
                 ?WORKER(update_limiter, statser_rate_limiter,
                        [update_limiter, <<"updates">>, Limits#rate_limit_config.updates_per_sec]),
                 % API
-                ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiPort}]]),
+                ?WORKER(api, elli, [[{callback, statser_api}, {port, ApiConfig#api_config.port}]]),
 
                 % REPLICATION
                 % discoverer
