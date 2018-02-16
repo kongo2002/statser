@@ -79,24 +79,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({connect, Node}, _From, #state{nodes=Ns} = State) ->
+handle_call({connect, Node}, _From, State) ->
     lager:info("trying to connect to node ~p", [Node]),
 
-    Result = net_kernel:connect_node(Node),
-    State0 = case Result of
-                 true ->
-                     lager:info("successfully connected to node ~p", [Node]),
-                     Info = #node_info{node=Node, last_seen=statser_util:seconds()},
-                     Ns0 = maps:put(Node, Info, Ns),
-                     State#state{nodes=Ns0};
-                 false ->
-                     lager:warning("connecting to node ~p failed", [Node]),
-                     State;
-                 ignored ->
-                     lager:warning("connecting to node ~p failed - local node not alive", [Node]),
-                     State
-             end,
-    {reply, Result, State0};
+    {Reply, State0} = try_connect(Node, State),
+    {reply, Reply, State0};
 
 handle_call(get_nodes, _From, State) ->
     Nodes = maps:values(State#state.nodes),
@@ -116,6 +103,15 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({publish, Node}, State) ->
+    % publish current node set to everyone but `Node` and ourselves
+    maps:fold(fun(K, _Info, _) when K /= Node andalso K /= node() ->
+                      {K, statser_discoverer} ! node_update;
+                 (_, _, _) -> ok
+              end, ok, State#state.nodes),
+
+    {noreply, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -129,7 +125,8 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    lager:warning("discoverer: unhandled message ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -160,3 +157,28 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+try_connect(Node, #state{nodes=Ns} = State) ->
+    case maps:is_key(Node, Ns) of
+        true ->
+            lager:info("node ~p is already known/connected", [Node]),
+            {true, State};
+        false ->
+            case net_kernel:connect_node(Node) of
+                true ->
+                    lager:info("successfully connected to node ~p", [Node]),
+                    Info = #node_info{node=Node, last_seen=statser_util:seconds()},
+                    Ns0 = maps:put(Node, Info, Ns),
+
+                    % publish new/updated node
+                    gen_server:cast(self(), {publish, Node}),
+
+                    {true, State#state{nodes=Ns0}};
+                false ->
+                    lager:warning("connecting to node ~p failed", [Node]),
+                    {false, State};
+                ignored ->
+                    lager:warning("connecting to node ~p failed - local node not alive", [Node]),
+                    {ignored, State}
+            end
+    end.
