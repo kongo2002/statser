@@ -1,5 +1,9 @@
 -module(statser_discoverer).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -behaviour(gen_server).
 
 -include("statser.hrl").
@@ -18,8 +22,12 @@
          terminate/2,
          code_change/3]).
 
+-define(PERSIST_TIMER_INTERVAL, 60 * ?MILLIS_PER_SEC).
+-define(PERSIST_FILE, <<"nodes.json">>).
+
 -record(state, {
-          nodes :: #{node() => node_info()}
+          nodes :: #{node() => node_info()},
+          persist_timer :: reference() | undefined
          }).
 
 %%%===================================================================
@@ -67,7 +75,11 @@ init([]) ->
     % put ourselves into the nodes as well
     Me = #node_info{node=node(), last_seen=statser_util:seconds(), state=me},
     Nodes = maps:put(node(), Me, maps:new()),
-    {ok, #state{nodes=Nodes}}.
+
+    gen_server:cast(self(), prepare),
+
+    State = #state{nodes=Nodes},
+    {ok, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -107,6 +119,21 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(prepare, State) ->
+    KnownNodes = load_nodes(),
+
+    lager:info("discoverer: loaded ~p configured nodes from persisted '~s' file",
+               [maps:size(KnownNodes), ?PERSIST_FILE]),
+
+    % merge loaded nodes with 'current' ones
+    Merged = maps:fold(fun(N, Info, Nodes) when N /= node() ->
+                               % TODO: trigger node discovery/connection
+                               maps:put(N, Info, Nodes);
+                          (_N, _Info, Nodes) -> Nodes
+                       end, State#state.nodes, KnownNodes),
+
+    {noreply, State#state{nodes=Merged}};
+
 handle_cast({publish, Node}, State) ->
     % publish current node set to everyone but `Node` and ourselves
     maps:fold(fun(K, _Info, _) when K /= Node ->
@@ -138,6 +165,12 @@ handle_cast(_Msg, State) ->
 handle_info({connect, Node}, State) ->
     {_, State0} = try_connect(Node, State),
     {noreply, State0};
+
+handle_info(persist, State) ->
+    lager:debug("persisting known nodes now"),
+    persist_nodes(State#state.nodes),
+
+    {noreply, State#state{persist_timer=undefined}};
 
 handle_info(Info, State) ->
     lager:warning("discoverer: unhandled message ~p", [Info]),
@@ -172,6 +205,80 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+schedule_persist_timer(#state{persist_timer=undefined} = State) ->
+    Timer = erlang:send_after(?PERSIST_TIMER_INTERVAL, self(), persist),
+    State#state{persist_timer=Timer};
+
+schedule_persist_timer(State) ->
+    % a timer is already scheduled
+    State.
+
+
+-spec persist_nodes([node_info()]) -> ok | error.
+persist_nodes(Ns) ->
+    persist_nodes(Ns, ?PERSIST_FILE).
+
+
+-spec persist_nodes([node_info()], binary()) -> ok | error.
+persist_nodes(Ns, File) ->
+    % as of now we convert the nodes into a JSON representation
+    % no specific reason for this - maybe because we might
+    % easily extend this format over time pretty easily
+    Nodes = maps:fold(fun(_Node, #node_info{state=me}, Xs) -> Xs;
+                         (Node, _Info, Xs) ->
+                              [{[{<<"node">>, Node}]} | Xs]
+                      end, [], Ns),
+    Json = jiffy:encode(Nodes),
+
+    case file:open(File, [write, binary, raw]) of
+        {ok, IO} ->
+            try
+                ok = file:write(IO, Json),
+                lager:info("successfully persisted ~p entries to nodes file", [length(Nodes)]),
+                ok
+            after file:close(IO)
+            end;
+        _Error -> error
+    end.
+
+
+-spec load_nodes() -> [node_info()].
+load_nodes() ->
+    load_nodes(?PERSIST_FILE).
+
+
+-spec load_nodes(binary()) -> [node_info()].
+load_nodes(File) ->
+    case file:open(File, [read, binary, raw]) of
+        {ok, IO} ->
+            try load_nodes_from(IO)
+            after file:close(IO)
+            end;
+        {error, enoent} ->
+            % file does not exist -> this is totally alright
+            [];
+        Error ->
+            lager:warning("error on loading nodes file: ~p", [Error]),
+            []
+    end.
+
+
+load_nodes_from(IO) ->
+    {ok, Data} = file:read(IO, 65536),
+    Decoded = jiffy:decode(Data),
+
+    Ns = lists:flatmap(fun({Parts}) ->
+                               case proplists:get_value(<<"node">>, Parts, undefined) of
+                                   undefined -> [];
+                                   Value ->
+                                       Node = list_to_atom(binary_to_list(Value)),
+                                       [#node_info{node=Node}]
+                               end;
+                          (_Invalid) -> []
+                       end, Decoded),
+    maps:from_list(lists:map(fun(#node_info{node=N} = Info) -> {N, Info} end, Ns)).
+
+
 try_connect(Node, #state{nodes=Ns} = State) ->
     case maps:is_key(Node, Ns) of
         true ->
@@ -189,7 +296,7 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     % publish new/updated node
                     gen_server:cast(self(), {publish, Node}),
 
-                    {true, State#state{nodes=Ns0}};
+                    {true, schedule_persist_timer(State#state{nodes=Ns0})};
                 false ->
                     lager:warning("connecting to node ~p failed", [Node]),
                     {false, State};
@@ -198,3 +305,32 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     {ignored, State}
             end
     end.
+
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+persist_nodes_test_() ->
+    MkNode = fun(N) -> {N, #node_info{node=N}} end,
+    Nodes = maps:from_list(lists:map(MkNode, [statser@foo, statser@bar])),
+
+    [?_assertEqual(ok, persist_nodes(maps:new())),
+     ?_assertEqual(ok, persist_nodes(Nodes))
+    ].
+
+load_nodes_test_() ->
+    MkNode = fun(N) -> {N, #node_info{node=N}} end,
+    Nodes = maps:from_list(lists:map(MkNode, [statser@foo, statser@bar])),
+    PersistAndLoad = fun(Xs) ->
+                             ok = persist_nodes(Xs),
+                             load_nodes()
+                     end,
+
+    [?_assertEqual([], load_nodes(<<"/tmp/probably/does/not/exist.json">>)),
+     ?_assertEqual(Nodes, PersistAndLoad(Nodes))
+    ].
+
+-endif.
