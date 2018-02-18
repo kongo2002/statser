@@ -1,0 +1,3 @@
+-name ${NODE_NAME}
+-setcookie statser
++K true

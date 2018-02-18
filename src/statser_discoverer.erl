@@ -63,7 +63,11 @@ get_nodes() ->
 %%--------------------------------------------------------------------
 init([]) ->
     lager:debug("starting discoverer at ~p", [self()]),
-    {ok, #state{nodes=maps:new()}}.
+
+    % put ourselves into the nodes as well
+    Me = #node_info{node=node(), last_seen=statser_util:seconds()},
+    Nodes = maps:put(node(), Me, maps:new()),
+    {ok, #state{nodes=Nodes}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -105,8 +109,14 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({publish, Node}, State) ->
     % publish current node set to everyone but `Node` and ourselves
-    maps:fold(fun(K, _Info, _) when K /= Node andalso K /= node() ->
-                      {K, statser_discoverer} ! node_update;
+    maps:fold(fun(K, _Info, _) when K /= Node ->
+                      if K /= node() ->
+                             lager:debug("publishing ~p to ~p", [Node, K]),
+                             {statser_discoverer, K} ! {connect, Node};
+                         true -> ok
+                      end,
+                      lager:debug("publishing ~p to ~p", [K, Node]),
+                      {statser_discoverer, Node} ! {connect, K};
                  (_, _, _) -> ok
               end, ok, State#state.nodes),
 
@@ -125,6 +135,10 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({connect, Node}, State) ->
+    {_, State0} = try_connect(Node, State),
+    {noreply, State0};
+
 handle_info(Info, State) ->
     lager:warning("discoverer: unhandled message ~p", [Info]),
     {noreply, State}.
