@@ -25,8 +25,10 @@
 -define(PERSIST_TIMER_INTERVAL, 60 * ?MILLIS_PER_SEC).
 -define(PERSIST_FILE, <<"nodes.json">>).
 
+-type nodes_map() :: #{node() => node_info()}.
+
 -record(state, {
-          nodes :: #{node() => node_info()},
+          nodes :: nodes_map(),
           persist_timer :: reference() | undefined
          }).
 
@@ -214,12 +216,12 @@ schedule_persist_timer(State) ->
     State.
 
 
--spec persist_nodes([node_info()]) -> ok | error.
+-spec persist_nodes(nodes_map()) -> ok | error.
 persist_nodes(Ns) ->
     persist_nodes(Ns, ?PERSIST_FILE).
 
 
--spec persist_nodes([node_info()], binary()) -> ok | error.
+-spec persist_nodes(nodes_map(), binary()) -> ok | error.
 persist_nodes(Ns, File) ->
     % as of now we convert the nodes into a JSON representation
     % no specific reason for this - maybe because we might
@@ -242,12 +244,12 @@ persist_nodes(Ns, File) ->
     end.
 
 
--spec load_nodes() -> [node_info()].
+-spec load_nodes() -> nodes_map().
 load_nodes() ->
     load_nodes(?PERSIST_FILE).
 
 
--spec load_nodes(binary()) -> [node_info()].
+-spec load_nodes(binary()) -> nodes_map().
 load_nodes(File) ->
     case file:open(File, [read, binary, raw]) of
         {ok, IO} ->
@@ -256,10 +258,10 @@ load_nodes(File) ->
             end;
         {error, enoent} ->
             % file does not exist -> this is totally alright
-            [];
+            maps:new();
         Error ->
             lager:warning("error on loading nodes file: ~p", [Error]),
-            []
+            maps:new()
     end.
 
 
@@ -329,7 +331,7 @@ load_nodes_test_() ->
                              load_nodes()
                      end,
 
-    [?_assertEqual([], load_nodes(<<"/tmp/probably/does/not/exist.json">>)),
+    [?_assertEqual(maps:new(), load_nodes(<<"/tmp/probably/does/not/exist.json">>)),
      ?_assertEqual(Nodes, PersistAndLoad(Nodes))
     ].
 
