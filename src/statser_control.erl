@@ -66,8 +66,18 @@ prepare_node(Node) ->
     list_to_atom(binary_to_list(Node0)).
 
 
-node_to_json(#node_info{node=Node}) ->
-    {[{<<"node">>, Node}]}.
+-spec connection_state(node_status()) -> connected | disconnected.
+connection_state(connected) -> connected;
+connection_state(me) -> connected;
+connection_state(_State) -> disconnected.
+
+
+node_to_json(#node_info{node=Node, state=State}) ->
+    IsSelf = State == me,
+
+    {[{<<"node">>, Node},
+      {<<"state">>, connection_state(State)},
+      {<<"self">>, IsSelf}]}.
 
 
 bad_request(Error) ->

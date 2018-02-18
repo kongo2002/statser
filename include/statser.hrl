@@ -134,9 +134,13 @@
 
 -type metric_filters() :: #metric_filters{}.
 
+
+-type node_status() :: connected | disconnected | me.
+
 -record(node_info, {
           node :: node(),
           pid :: pid() | undefined,
+          state=disconnected :: node_status(),
           last_seen=0 :: integer()
          }).
 

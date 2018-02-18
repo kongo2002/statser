@@ -65,7 +65,7 @@ init([]) ->
     lager:debug("starting discoverer at ~p", [self()]),
 
     % put ourselves into the nodes as well
-    Me = #node_info{node=node(), last_seen=statser_util:seconds()},
+    Me = #node_info{node=node(), last_seen=statser_util:seconds(), state=me},
     Nodes = maps:put(node(), Me, maps:new()),
     {ok, #state{nodes=Nodes}}.
 
@@ -181,7 +181,9 @@ try_connect(Node, #state{nodes=Ns} = State) ->
             case net_kernel:connect_node(Node) of
                 true ->
                     lager:info("successfully connected to node ~p", [Node]),
-                    Info = #node_info{node=Node, last_seen=statser_util:seconds()},
+                    Info = #node_info{node=Node,
+                                      state=connected,
+                                      last_seen=statser_util:seconds()},
                     Ns0 = maps:put(Node, Info, Ns),
 
                     % publish new/updated node
