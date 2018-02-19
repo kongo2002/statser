@@ -154,16 +154,16 @@ handle_cast(prepare, State) ->
 
     {noreply, State#state{nodes=Merged}};
 
-handle_cast({publish, Node}, State) ->
+handle_cast({publish, Type, Node}, State) ->
     % publish current node set to everyone but `Node` and ourselves
     maps:fold(fun(K, _Info, _) when K /= Node ->
                       if K /= node() ->
-                             lager:debug("publishing ~p to ~p", [Node, K]),
-                             {statser_discoverer, K} ! {connect, Node};
+                             lager:debug("publishing ~p to ~p [~p]", [Node, K, Type]),
+                             {statser_discoverer, K} ! {Type, Node};
                          true -> ok
                       end,
-                      lager:debug("publishing ~p to ~p", [K, Node]),
-                      {statser_discoverer, Node} ! {connect, K};
+                      lager:debug("publishing ~p to ~p [~p]", [K, Node, Type]),
+                      {statser_discoverer, Node} ! {Type, K};
                  (_, _, _) -> ok
               end, ok, State#state.nodes),
 
@@ -184,6 +184,10 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({connect, Node}, State) ->
     {_, State0} = try_connect(Node, State),
+    {noreply, State0};
+
+handle_info({disconnect, Node}, State) ->
+    {_, State0} = try_disconnect(Node, State),
     {noreply, State0};
 
 handle_info(persist, State) ->
@@ -315,7 +319,7 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     Ns0 = maps:put(Node, Info, Ns),
 
                     % publish new/updated node
-                    gen_server:cast(self(), {publish, Node}),
+                    gen_server:cast(self(), {publish, connect, Node}),
 
                     {true, schedule_persist_timer(State#state{nodes=Ns0})};
                 false ->
@@ -339,6 +343,9 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
                 ignored ->
                     lager:info("disconnection from node ~p failed - local node is not alive", [Node])
             end,
+
+            % publish removed/disconnected node
+            gen_server:cast(self(), {publish, disconnect, Node}),
 
             Ns0 = maps:remove(Node, Ns),
             {true, schedule_persist_timer(State#state{nodes=Ns0})};
