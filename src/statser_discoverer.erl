@@ -127,9 +127,15 @@ handle_cast(prepare, State) ->
     lager:info("discoverer: loaded ~p configured nodes from persisted '~s' file",
                [maps:size(KnownNodes), ?PERSIST_FILE]),
 
+    DiscoveryDelay = 2 * ?MILLIS_PER_SEC,
+
     % merge loaded nodes with 'current' ones
     Merged = maps:fold(fun(N, Info, Nodes) when N /= node() ->
-                               % TODO: trigger node discovery/connection
+                               % trigger the discovery/connection in a
+                               % minor delayed fashion
+                               Delay = maps:size(Nodes) * DiscoveryDelay,
+                               erlang:send_after(Delay, self(), {connect, N}),
+
                                maps:put(N, Info, Nodes);
                           (_N, _Info, Nodes) -> Nodes
                        end, State#state.nodes, KnownNodes),
