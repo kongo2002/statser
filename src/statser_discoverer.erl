@@ -23,7 +23,7 @@
          code_change/3]).
 
 -define(PERSIST_TIMER_INTERVAL, 60 * ?MILLIS_PER_SEC).
--define(PERSIST_FILE, <<"nodes.json">>).
+-define(PERSIST_FILE, <<".nodes.json">>).
 
 -type nodes_map() :: #{node() => node_info()}.
 
