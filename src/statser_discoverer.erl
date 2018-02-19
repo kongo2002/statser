@@ -318,21 +318,27 @@ try_connect(Node, #state{nodes=Ns} = State) ->
 persist_nodes_test_() ->
     MkNode = fun(N) -> {N, #node_info{node=N}} end,
     Nodes = maps:from_list(lists:map(MkNode, [statser@foo, statser@bar])),
+    Persist = fun(X) ->
+                      test_util:with_tempfile(fun(F) -> persist_nodes(X, F) end)
+              end,
 
-    [?_assertEqual(ok, persist_nodes(maps:new())),
-     ?_assertEqual(ok, persist_nodes(Nodes))
+    [?_assertEqual(ok, Persist(maps:new())),
+     ?_assertEqual(ok, Persist(Nodes))
     ].
 
 load_nodes_test_() ->
     MkNode = fun(N) -> {N, #node_info{node=N}} end,
     Nodes = maps:from_list(lists:map(MkNode, [statser@foo, statser@bar])),
-    PersistAndLoad = fun(Xs) ->
-                             ok = persist_nodes(Xs),
-                             load_nodes()
-                     end,
+    InOut = fun(Xs) ->
+                    WithFile = fun(F) ->
+                                       ok = persist_nodes(Xs, F),
+                                       load_nodes(F)
+                               end,
+                    test_util:with_tempfile(WithFile)
+            end,
 
     [?_assertEqual(maps:new(), load_nodes(<<"/tmp/probably/does/not/exist.json">>)),
-     ?_assertEqual(Nodes, PersistAndLoad(Nodes))
+     ?_assertEqual(Nodes, InOut(Nodes))
     ].
 
 -endif.
