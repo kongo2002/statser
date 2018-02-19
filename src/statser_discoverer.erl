@@ -12,6 +12,7 @@
 -export([start_link/0]).
 
 -export([connect/1,
+         disconnect/1,
          get_nodes/0]).
 
 %% gen_server callbacks
@@ -50,6 +51,11 @@ start_link() ->
 -spec connect(node()) -> boolean() | ignored.
 connect(Node) ->
     gen_server:call(?MODULE, {connect, Node}).
+
+
+-spec disconnect(node()) -> boolean().
+disconnect(Node) ->
+    gen_server:call(?MODULE, {disconnect, Node}).
 
 
 -spec get_nodes() -> [node_info()].
@@ -101,6 +107,12 @@ handle_call({connect, Node}, _From, State) ->
     lager:info("trying to connect to node ~p", [Node]),
 
     {Reply, State0} = try_connect(Node, State),
+    {reply, Reply, State0};
+
+handle_call({disconnect, Node}, _From, State) ->
+    lager:info("disconnecting from node ~p", [Node]),
+
+    {Reply, State0} = try_disconnect(Node, State),
     {reply, Reply, State0};
 
 handle_call(get_nodes, _From, State) ->
@@ -312,6 +324,28 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     lager:warning("connecting to node ~p failed - local node not alive", [Node]),
                     {ignored, State}
             end
+    end.
+
+
+try_disconnect(Node, #state{nodes=Ns} = State) ->
+    case maps:find(Node, Ns) of
+        {ok, #node_info{state=S}} when S /= me ->
+            case erlang:disconnect_node(Node) of
+                true ->
+                    lager:info("successfully disconnected from node ~p", [Node]);
+                false ->
+                    lager:info("disconnection from node ~p failed", [Node]);
+                ignored ->
+                    lager:info("disconnection from node ~p failed - local node is not alive", [Node])
+            end,
+
+            Ns0 = maps:remove(Node, Ns),
+            {true, schedule_persist_timer(State#state{nodes=Ns0})};
+        {ok, _Info} ->
+            lager:warning("you cannot disconnect the target node itself"),
+            {false, State};
+        error ->
+            {false, State}
     end.
 
 
