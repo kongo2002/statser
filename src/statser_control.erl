@@ -23,7 +23,7 @@ handle('DELETE', [<<"nodes">>, Node], _Req) ->
     Node0 = prepare_node(Node),
     Result = statser_discoverer:disconnect(Node0),
     case Result of
-        true -> ok;
+        true -> ok();
         false -> bad_request(<<"disconnecting from node ", Node/binary, " failed">>)
     end;
 

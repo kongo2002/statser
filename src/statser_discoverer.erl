@@ -23,7 +23,7 @@
          terminate/2,
          code_change/3]).
 
--define(PERSIST_TIMER_INTERVAL, 60 * ?MILLIS_PER_SEC).
+-define(PERSIST_DELAY, 10 * ?MILLIS_PER_SEC).
 -define(PERSIST_FILE, <<".nodes.json">>).
 
 -type nodes_map() :: #{node() => node_info()}.
@@ -226,7 +226,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 schedule_persist_timer(#state{persist_timer=undefined} = State) ->
-    Timer = erlang:send_after(?PERSIST_TIMER_INTERVAL, self(), persist),
+    Timer = erlang:send_after(?PERSIST_DELAY, self(), persist),
     State#state{persist_timer=Timer};
 
 schedule_persist_timer(State) ->
@@ -300,11 +300,12 @@ load_nodes_from(IO) ->
 
 
 try_connect(Node, #state{nodes=Ns} = State) ->
-    case maps:is_key(Node, Ns) of
-        true ->
-            lager:info("node ~p is already known/connected", [Node]),
+    case maps:find(Node, Ns) of
+        {ok, #node_info{state=connected}} ->
+            lager:debug("node ~p is already connected", [Node]),
             {true, State};
-        false ->
+        _Otherwise ->
+            % this is either a new node or a (still) disconnected one
             case net_kernel:connect_node(Node) of
                 true ->
                     lager:info("successfully connected to node ~p", [Node]),
