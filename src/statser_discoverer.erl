@@ -154,16 +154,28 @@ handle_cast(prepare, State) ->
 
     {noreply, State#state{nodes=Merged}};
 
-handle_cast({publish, Type, Node}, State) ->
-    % publish current node set to everyone but `Node` and ourselves
+handle_cast({publish, connect, Node}, State) ->
+    % publish current node set to everyone but `Node`
     maps:fold(fun(K, _Info, _) when K /= Node ->
-                      if K /= node() ->
-                             lager:debug("publishing ~p to ~p [~p]", [Node, K, Type]),
-                             {statser_discoverer, K} ! {Type, Node};
-                         true -> ok
-                      end,
-                      lager:debug("publishing ~p to ~p [~p]", [K, Node, Type]),
-                      {statser_discoverer, Node} ! {Type, K};
+                      % publish the connection to all other known nodes
+                      lager:info("publishing ~p to ~p [connect]", [Node, K]),
+                      {statser_discoverer, K} ! {connect, Node},
+
+                      % moreover we publish all remaining known nodes as well
+                      % this is interesting for new nodes only
+                      lager:info("publishing ~p to ~p [connect]", [K, Node]),
+                      {statser_discoverer, Node} ! {connect, K};
+                 (_, _, _) -> ok
+              end, ok, State#state.nodes),
+    {noreply, State};
+
+handle_cast({publish, disconnect, Node}, State) ->
+    % publish current node set to everyone but `Node` and ourselves
+    maps:fold(fun(_, #node_info{state=me}, _) -> ok;
+                 (K, _Info, _) when K /= Node ->
+                      % publish the disconnect to all other known nodes
+                      lager:info("publishing ~p to ~p [disconnect]", [Node, K]),
+                      {statser_discoverer, K} ! {disconnect, Node};
                  (_, _, _) -> ok
               end, ok, State#state.nodes),
 
@@ -338,6 +350,9 @@ try_connect(Node, #state{nodes=Ns} = State) ->
 try_disconnect(Node, #state{nodes=Ns} = State) ->
     case maps:find(Node, Ns) of
         {ok, #node_info{state=S}} when S /= me ->
+            % notify the target node of the disconnect from our side
+            {statser_discoverer, Node} ! {disconnect, Node},
+
             case erlang:disconnect_node(Node) of
                 true ->
                     lager:info("successfully disconnected from node ~p", [Node]);
@@ -353,8 +368,18 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
             Ns0 = maps:remove(Node, Ns),
             {true, schedule_persist_timer(State#state{nodes=Ns0})};
         {ok, _Info} ->
-            lager:warning("you cannot disconnect the target node itself"),
-            {false, State};
+            % disconnecting from ourselves is equivalent to disconnecting
+            % from all known nodes
+            lager:info("disconnecting ourselves from known nodes"),
+
+            Ns0 = maps:fold(fun(K, #node_info{state=S}, Nss) when S /= me ->
+                                    {statser_discoverer, K} ! {disconnect, Node},
+                                    erlang:disconnect_node(K),
+                                    maps:remove(K, Nss);
+                               (_, _, Nss) -> Nss
+                            end, Ns, Ns),
+
+            {true, schedule_persist_timer(State#state{nodes=Ns0})};
         error ->
             {false, State}
     end.
