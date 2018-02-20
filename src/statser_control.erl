@@ -19,17 +19,23 @@ handle('GET', [<<"nodes">>], _Req) ->
     Nodes0 = lists:map(fun node_to_json/1, Nodes),
     json(Nodes0);
 
-handle('DELETE', [<<"nodes">>, Node], _Req) ->
-    Node0 = prepare_node(Node),
-    Result = statser_discoverer:disconnect(Node0),
-    case Result of
-        true -> ok();
-        false -> bad_request(<<"disconnecting from node ", Node/binary, " failed">>)
+handle('DELETE', [<<"nodes">>], Req) ->
+    Body = elli_request:body(Req),
+    lager:debug("DELETE /control/nodes: ~p", [Body]),
+
+    case parse_node_info(Body) of
+        {ok, Node} ->
+            case statser_discoverer:disconnect(Node) of
+                true -> ok();
+                _Else -> bad_request(<<"disconnect failed">>)
+            end;
+        {error, Error} ->
+            bad_request(Error)
     end;
 
 handle('POST', [<<"nodes">>], Req) ->
     Body = elli_request:body(Req),
-    lager:debug("/control/nodes: ~p", [Body]),
+    lager:debug("POST /control/nodes: ~p", [Body]),
 
     case parse_node_info(Body) of
         {ok, Node} ->
