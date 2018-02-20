@@ -31,8 +31,7 @@ handle('POST', [<<"nodes">>], Req) ->
     Body = elli_request:body(Req),
     lager:debug("/control/nodes: ~p", [Body]),
 
-    Json = jiffy:decode(Body),
-    case parse_node_info(Json) of
+    case parse_node_info(Body) of
         {ok, Node} ->
             case statser_discoverer:connect(Node) of
                 true -> ok();
@@ -50,7 +49,16 @@ handle(_Method, _Path, _Req) ->
 %%% Internal functions
 %%%===================================================================
 
-parse_node_info({Nodes}) when is_list(Nodes) ->
+parse_node_info(Binary) ->
+    try
+        Json = jiffy:decode(Binary),
+        parse_node_info0(Json)
+    catch
+        _Error -> {error, <<"malformed JSON">>}
+    end.
+
+
+parse_node_info0({Nodes}) when is_list(Nodes) ->
     case proplists:get_value(<<"node">>, Nodes) of
         undefined ->
             {error, <<"missing 'node'">>};
@@ -60,8 +68,8 @@ parse_node_info({Nodes}) when is_list(Nodes) ->
             {error, <<"invalid 'node' data">>}
     end;
 
-parse_node_info(_Json) ->
-    {error, <<"invalid json">>}.
+parse_node_info0(_Json) ->
+    {error, <<"invalid JSON">>}.
 
 
 prepare_node(Node) ->

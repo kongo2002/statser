@@ -308,6 +308,9 @@ try_connect(Node, #state{nodes=Ns} = State) ->
         {ok, #node_info{state=connected}} ->
             lager:debug("node ~p is already connected", [Node]),
             {true, State};
+        {ok, #node_info{state=me}} ->
+            % there is no reason to connect to ourselves
+            {false, State};
         _Otherwise ->
             % this is either a new node or a (still) disconnected one
             case net_kernel:connect_node(Node) of
