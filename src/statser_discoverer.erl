@@ -336,6 +336,9 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     % publish new/updated node
                     gen_server:cast(self(), {publish, connect, Node}),
 
+                    % TODO: maybe replace this explicit call with smth like gen_event
+                    statser_finder_server:register_remote(Node),
+
                     {true, schedule_persist_timer(State#state{nodes=Ns0})};
                 false ->
                     lager:warning("connecting to node ~p failed", [Node]),

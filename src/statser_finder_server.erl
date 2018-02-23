@@ -8,6 +8,8 @@
 
 -behaviour(gen_server).
 
+-include("statser.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -15,7 +17,9 @@
          find_metrics_tree/1,
          processor_loop/1,
          register_metric_handler/2,
-         unregister_metric_handler/1]).
+         unregister_metric_handler/1,
+         register_remote/1,
+         unregister_remote/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,7 +29,6 @@
          terminate/2,
          code_change/3]).
 
--record(state, {metrics, data_dir, processor}).
 
 -type local_handler() :: {local, pid()}.
 
@@ -44,6 +47,8 @@
           metrics :: orddict:orddict(),
           dirs :: orddict:orddict()
          }).
+
+-record(state, {metrics, data_dir, processor, remotes}).
 
 -define(FINDER_UPDATE_MILLIS_MIN, 300000).
 -define(FINDER_UPDATE_MILLIS_PER_METRIC, 50).
@@ -93,6 +98,16 @@ unregister_metric_handler(Path) ->
     register_metric_handler(Path, undefined).
 
 
+-spec register_remote(node()) -> ok.
+register_remote(Node) ->
+    gen_server:cast(?MODULE, {register_remote, Node}).
+
+
+-spec unregister_remote(node()) -> ok.
+unregister_remote(Node) ->
+    gen_server:cast(?MODULE, {unregister_remote, Node}).
+
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -116,7 +131,8 @@ init([]) ->
 
     {ok, #state{metrics=?EMPTY_METRIC_DIR,
                 data_dir=DataDir,
-                processor=Processor}}.
+                processor=Processor,
+                remotes=sets:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -136,6 +152,9 @@ handle_call({find_metrics, Paths, GlobDirs}, _From, State) ->
     Metrics = State#state.metrics,
     Result = find_metrics(Paths, Metrics, GlobDirs),
     {reply, Result, State};
+
+handle_call(get_metrics, _From, State) ->
+    {reply, {get_metrics, State#state.metrics}, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -157,8 +176,41 @@ handle_cast(prepare, #state{data_dir=Dir, processor=Processor}=State) ->
 
     {noreply, State};
 
-handle_cast({register_handler, _Metric, _Paths}=Msg, State) ->
+handle_cast({register_handler, Metric, Paths}=Msg, State) ->
+    % trigger local handling
     State#state.processor ! Msg,
+
+    % in case of a local handler we publish this one to all
+    % known remote nodes
+    case Metric of
+        #metric_file{handler={local, Pid}} ->
+            sets:fold(fun(Node, _) ->
+                              M = Metric#metric_file{handler={remote, node(), Pid}},
+                              gen_server:cast({?MODULE, Node}, {register_handler, M, Paths})
+                      end, ok, State#state.remotes);
+        _Otherwise ->
+            lager:debug("finder_server: registering a remote handler ~p", [Metric]),
+            ok
+    end,
+
+    {noreply, State};
+
+handle_cast({register_remote, Node}, State) ->
+    lager:info("finder_server: registered new node ~p", [Node]),
+
+    Remotes = sets:add_element(Node, State#state.remotes),
+
+    % TODO
+    erlang:send_after(10 * ?MILLIS_PER_SEC, self(), {fetch_remote_metrics, Node}),
+
+    {noreply, State#state{remotes=Remotes}};
+
+handle_cast({unregister_remote, Node}, State) ->
+    Remotes = sets:del_element(Node, State#state.remotes),
+    {noreply, State#state{remotes=Remotes}};
+
+handle_cast({remote_metrics, Node, Ms}, State) ->
+    % TODO
     {noreply, State};
 
 handle_cast(_Msg, State) ->
@@ -176,6 +228,13 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({finder_result, Metrics}, State) ->
     {noreply, State#state{metrics=Metrics}};
+
+handle_info({fetch_remote_metrics, Node}, State) ->
+    % TODO
+    {get_metrics, Ms} = gen_server:call({statser_finder_server, Node}, get_metrics),
+    gen_server:cast(self(), {remote_metrics, Node, Ms}),
+
+    {noreply, State};
 
 handle_info(Info, State) ->
     lager:warning("finder_server: received unexpected message: ~p", [Info]),
@@ -280,7 +339,13 @@ new_metric_dir([Path | Paths], NewMetric) ->
 % this function is supposed to merge two instances of a 'metric_file'
 % into one by combining the set values of both
 % if in doubt, the second metric_file is assumed to be 'the newest' one
+%
+% as of now we won't overwrite any local handlers with remote ones
+merge_metric_file(#metric_file{handler={local, _}}=A,
+                  #metric_file{handler={remote, _, _}}) -> A;
+
 merge_metric_file(#metric_file{}=A, #metric_file{}=B) ->
+    % as of now we will favor 'local' handler for 'remote' handlers
     Pid = case {A#metric_file.handler, B#metric_file.handler} of
               {PidA, undefined} -> PidA;
               {_, PidB} -> PidB

@@ -47,7 +47,8 @@ fetch_inner({Path, {local, Pid}}, From, Until, Now) when is_pid(Pid) ->
     end;
 
 fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
-    lager:info("fetching from remote [~p] ~p: '~s'", [Node, Pid, Path]),
+    lager:debug("fetching from remote [~p] ~p: '~s'", [Node, Pid, Path]),
+
     Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
     case Result of
         #series{} -> [Result#series{target=Path}];
