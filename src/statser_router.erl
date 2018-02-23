@@ -8,7 +8,8 @@
 -export([start_link/0]).
 
 -export([line/2,
-         line/3]).
+         line/3,
+         ping_handler/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -43,6 +44,18 @@ line(Metric, Value) ->
 -spec line(binary(), number(), integer()) -> ok.
 line(Metric, Value, Timestamp) ->
     gen_server:cast(?MODULE, {line, Metric, Value, Timestamp}).
+
+
+-spec ping_handler(binary()) -> ok.
+ping_handler(Path) ->
+    case ets:lookup(metrics, Path) of
+        [] ->
+            statser_metrics_sup:start_handler(Path),
+            ok;
+        _Existing ->
+            % metrics handler already exists -> nothing to be done here
+            ok
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks

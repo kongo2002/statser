@@ -63,9 +63,14 @@ fetch_inner({Path, _Handler}, From, Until, Now) ->
 fetch_inner(Path, From, Until, Now) ->
     Result = case ets:lookup(metrics, Path) of
                  [] ->
-                     % there is no metrics handler already meaning
+                     % there is no metrics handler alive right now
+                     % let's go ahead and trigger a handler creation
+                     % which helps remote nodes to retrieve these
+                     % metrics as well
+                     statser_router:ping_handler(Path),
+
                      % there is nothing cached to be merged
-                     % -> just read from fs directly instead
+                     % -> for now just read from fs directly
                      File = statser_metric_handler:get_whisper_file(Path),
                      statser_whisper:fetch(File, From, Until, Now);
                  [{_Path, Pid}] ->
