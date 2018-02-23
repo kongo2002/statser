@@ -48,11 +48,8 @@ handle('POST', [<<"render">>], Req) ->
 handle(Mthd, [<<".statser">>, <<"control">> | Path], Req) ->
     statser_control:handle(Mthd, Path, Req);
 
-handle('GET', [<<".statser">>, <<"status">> | Path], Req) ->
+handle('GET', [<<".statser">> | Path], Req) ->
     statser_dashboard:handle('GET', Path, Req);
-
-handle('GET', [<<".statser">>], Req) ->
-    statser_dashboard:handle('GET', [], Req);
 
 handle(_, _, _Req) ->
     {404, [], <<"not found">>}.
