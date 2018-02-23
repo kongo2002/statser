@@ -27,10 +27,16 @@
 
 -record(state, {metrics, data_dir, processor}).
 
+-type local_handler() :: {local, pid()}.
+
+-type remote_handler() :: {remote, node(), pid()}.
+
+-type handler() :: local_handler() | remote_handler() | undefined.
+
 -record(metric_file, {
           name :: binary(),
           file :: nonempty_string() | undefined,
-          handler :: pid() | undefined
+          handler :: handler()
          }).
 
 -record(metric_dir, {
@@ -75,7 +81,7 @@ find_metrics_tree(Path) ->
     gen_server:call(?MODULE, {find_metrics, PreparedPath, true}, 1000).
 
 
--spec register_metric_handler(binary(), pid() | undefined) -> ok.
+-spec register_metric_handler(binary(), handler()) -> ok.
 register_metric_handler(Path, Pid) ->
     {Paths, Name} = metric_and_paths(Path),
     Metric = #metric_file{name=Name, handler=Pid},
@@ -392,9 +398,9 @@ find_metrics([{exact, Path} | Paths], #metric_dir{dirs=Dirs}, Parents, Glob) ->
 convert_metric(Metric, Path) ->
     convert_metric(Metric, Path, false).
 
-convert_metric(#metric_file{name=Name, handler=Pid}, Path, false) ->
+convert_metric(#metric_file{name=Name, handler=Handler}, Path, false) ->
     Path0 = to_path(Name, Path),
-    {Path0, Pid};
+    {Path0, Handler};
 
 convert_metric(#metric_file{name=Name}, Path, true) ->
     Path0 = to_path(Name, Path),

@@ -39,7 +39,15 @@ fetch_data(Paths, From, Until, Now) ->
 % that metric_handler instead of requesting the ETS table
 % this should usually be the case as soon as the metric_handler
 % is registered with the statser_finder_server
-fetch_inner({Path, Pid}, From, Until, Now) when is_pid(Pid) ->
+fetch_inner({Path, {local, Pid}}, From, Until, Now) when is_pid(Pid) ->
+    Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
+    case Result of
+        #series{} -> [Result#series{target=Path}];
+        _Error -> []
+    end;
+
+fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
+    lager:info("fetching from remote [~p] ~p: '~s'", [Node, Pid, Path]),
     Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
     case Result of
         #series{} -> [Result#series{target=Path}];
@@ -48,7 +56,7 @@ fetch_inner({Path, Pid}, From, Until, Now) when is_pid(Pid) ->
 
 % otherwise we will request the metric_handler's pid from the
 % ETS table or even fetch the file directly from disk instead
-fetch_inner({Path, _Pid}, From, Until, Now) ->
+fetch_inner({Path, _Handler}, From, Until, Now) ->
     fetch_inner(Path, From, Until, Now);
 
 fetch_inner(Path, From, Until, Now) ->
