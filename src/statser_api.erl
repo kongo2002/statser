@@ -79,7 +79,7 @@ handle_metrics(Request) ->
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
             statser_instrumentation:increment(<<"api.query.requests">>),
-            Metrics = lists:flatmap(fun statser_finder_server:find_metrics_tree/1,
+            Metrics = lists:flatmap(fun statser_finder:find_metrics_tree/1,
                                     explode_path(Path)),
 
             % now we have to strip out duplicates based on the 'name' of the metric
@@ -159,7 +159,7 @@ process(Argument, _Params, _Now) -> Argument.
 
 
 process_paths(Path, {From, Until, _MaxPoints}, Now) ->
-    Paths = lists:flatmap(fun statser_finder_server:find_metrics/1,
+    Paths = lists:flatmap(fun statser_finder:find_metrics/1,
                           explode_path(Path)),
     lager:debug("found ~w paths to process: ~p", [length(Paths), Paths]),
     Processed = statser_processor:fetch_data(Paths, From, Until, Now),

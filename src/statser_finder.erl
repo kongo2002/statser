@@ -1,4 +1,4 @@
--module(statser_finder_server).
+-module(statser_finder).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -189,14 +189,14 @@ handle_cast({register_handler, Metric, Paths}=Msg, State) ->
                               gen_server:cast({?MODULE, Node}, {register_handler, M, Paths})
                       end, ok, State#state.remotes);
         _Otherwise ->
-            lager:debug("finder_server: registering a remote handler ~p", [Metric]),
+            lager:debug("finder: registering a remote handler ~p", [Metric]),
             ok
     end,
 
     {noreply, State};
 
 handle_cast({register_remote, Node}, State) ->
-    lager:info("finder_server: registered new node ~p", [Node]),
+    lager:info("finder: registered new node ~p", [Node]),
 
     Remotes = sets:add_element(Node, State#state.remotes),
 
@@ -231,13 +231,13 @@ handle_info({finder_result, Metrics}, State) ->
 
 handle_info({fetch_remote_metrics, Node}, State) ->
     % TODO
-    {get_metrics, Ms} = gen_server:call({statser_finder_server, Node}, get_metrics),
+    {get_metrics, Ms} = gen_server:call({statser_finder, Node}, get_metrics),
     gen_server:cast(self(), {remote_metrics, Node, Ms}),
 
     {noreply, State};
 
 handle_info(Info, State) ->
-    lager:warning("finder_server: received unexpected message: ~p", [Info]),
+    lager:warning("finder: received unexpected message: ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

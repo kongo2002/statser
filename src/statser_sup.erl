@@ -105,7 +105,7 @@ init([]) ->
                 % metrics router
                 ?WORKER(router, statser_router, []),
                 % finder
-                ?WORKER(finder, statser_finder_server, []),
+                ?WORKER(finder, statser_finder, []),
                 % instrumentation service
                 ?WORKER(instrumentation, statser_instrumentation, []),
                 % metrics watcher

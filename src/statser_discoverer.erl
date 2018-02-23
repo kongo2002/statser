@@ -30,7 +30,8 @@
 
 -record(state, {
           nodes :: nodes_map(),
-          persist_timer :: reference() | undefined
+          persist_timer :: reference() | undefined,
+          event_manager :: pid()
          }).
 
 %%%===================================================================
@@ -84,9 +85,12 @@ init([]) ->
     Me = #node_info{node=node(), last_seen=statser_util:seconds(), state=me},
     Nodes = maps:put(node(), Me, maps:new()),
 
+    % start event manager
+    {ok, EventManager} = gen_event:start_link(),
+
     gen_server:cast(self(), prepare),
 
-    State = #state{nodes=Nodes},
+    State = #state{nodes=Nodes, event_manager=EventManager},
     {ok, State}.
 
 %%--------------------------------------------------------------------
@@ -336,8 +340,10 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     % publish new/updated node
                     gen_server:cast(self(), {publish, connect, Node}),
 
+                    gen_event:notify(State#state.event_manager, {connected, Node}),
+
                     % TODO: maybe replace this explicit call with smth like gen_event
-                    statser_finder_server:register_remote(Node),
+                    statser_finder:register_remote(Node),
 
                     {true, schedule_persist_timer(State#state{nodes=Ns0})};
                 false ->
@@ -368,6 +374,9 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
             % publish removed/disconnected node
             gen_server:cast(self(), {publish, disconnect, Node}),
 
+            % publish disconnect event
+            gen_event:notify(State#state.event_manager, {disconnected, Node}),
+
             Ns0 = maps:remove(Node, Ns),
             {true, schedule_persist_timer(State#state{nodes=Ns0})};
         {ok, _Info} ->
@@ -378,6 +387,11 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
             Ns0 = maps:fold(fun(K, #node_info{state=S}, Nss) when S /= me ->
                                     {statser_discoverer, K} ! {disconnect, Node},
                                     erlang:disconnect_node(K),
+
+                                    % publish disconnect event
+                                    gen_event:notify(State#state.event_manager,
+                                                     {disconnected, K}),
+
                                     maps:remove(K, Nss);
                                (_, _, Nss) -> Nss
                             end, Ns, Ns),
