@@ -227,12 +227,12 @@ handle_cast(_Msg, State) ->
 handle_info({finder_result, Metrics}, State) ->
     {noreply, State#state{metrics=Metrics}};
 
-handle_info({get_metrics, From}, State) ->
-    Reply = {remote_metrics, node(), State#state.metrics},
-    From ! Reply,
+handle_info({get_metrics, _} = Msg, State) ->
+    % dispatch remote metrics merge to processor
+    State#state.processor ! Msg,
     {noreply, State};
 
-handle_info({remote_metrics, _, _}=Msg, State) ->
+handle_info({remote_metrics, _, _} = Msg, State) ->
     % dispatch remote metrics merge to processor
     State#state.processor ! Msg,
     {noreply, State};
@@ -295,14 +295,50 @@ processor_loop(Parent, Metrics, Count) ->
             erlang:send_after(UpdateIn, self(), {update_metrics, Dir}),
 
             processor_loop(Parent, Merged, NewCount);
-        {remote_metrics, RemoteNode, Ms} ->
-            % TODO
 
+        {get_metrics, From} ->
+            ForRemote = prepare_metrics_for_remote(Metrics),
+            From ! {remote_metrics, node(), ForRemote},
             processor_loop(Parent, Metrics, Count);
+
+        {remote_metrics, RemoteNode, RemoteMetrics} ->
+            lager:debug("processing metrics from remote node ~p", [RemoteNode]),
+
+            Merged = merge_metric_dir(Metrics, RemoteMetrics),
+            Parent ! {finder_result, Merged},
+
+            % TODO: update count?
+            processor_loop(Parent, Merged, Count);
         Unhandled ->
             lager:error("unexpected message in finder processor: ~p", [Unhandled]),
             error
     end.
+
+
+% before sending our local metrics structure we want to
+% prepare it for the target/remote node, meaning
+%   * filter out non-local metrics
+%   * filter out metrics w/o handler
+prepare_metrics_for_remote(#metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
+    Ms0 = orddict:fold(fun(K, V, Ms) ->
+                               case V#metric_file.handler of
+                                   {local, Pid} ->
+                                       Handler = {remote, node(), Pid},
+                                       V0 = V#metric_file{handler=Handler},
+                                       orddict:store(K, V0, Ms);
+                                   _Otherwise -> Ms
+                               end
+                       end, orddict:new(), Metrics),
+
+    Ds0 = orddict:fold(fun(K, V, Ds) ->
+                               V0 = prepare_metrics_for_remote(V),
+                               case orddict:is_empty(V0#metric_dir.metrics) of
+                                   false -> orddict:store(K, V0, Ds);
+                                   true -> Ds
+                               end
+                       end, orddict:new(), Dirs),
+
+    Dir#metric_dir{metrics=Ms0, dirs=Ds0}.
 
 
 on_event({connected, Node}) ->
