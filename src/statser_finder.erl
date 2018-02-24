@@ -228,11 +228,11 @@ handle_info({finder_result, Metrics}, State) ->
     {noreply, State#state{metrics=Metrics}};
 
 handle_info({get_metrics, From}, State) ->
-    Reply = {remote_metrics, State#state.metrics},
+    Reply = {remote_metrics, node(), State#state.metrics},
     From ! Reply,
     {noreply, State};
 
-handle_info({remote_metrics, _}=Msg, State) ->
+handle_info({remote_metrics, _, _}=Msg, State) ->
     % dispatch remote metrics merge to processor
     State#state.processor ! Msg,
     {noreply, State};
@@ -295,7 +295,7 @@ processor_loop(Parent, Metrics, Count) ->
             erlang:send_after(UpdateIn, self(), {update_metrics, Dir}),
 
             processor_loop(Parent, Merged, NewCount);
-        {remote_metrics, Ms} ->
+        {remote_metrics, RemoteNode, Ms} ->
             % TODO
 
             processor_loop(Parent, Metrics, Count);
