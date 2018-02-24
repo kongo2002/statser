@@ -100,6 +100,8 @@ init([]) ->
                             options=[{packet, line}]
                            }]),
                 ?SUP(metrics, statser_metrics_sup, []),
+                % event manager
+                ?WORKER(statser_event, statser_event, []),
                 % health endpoint
                 ?WORKER(health, statser_health, []),
                 % metrics router

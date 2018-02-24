@@ -30,8 +30,7 @@
 
 -record(state, {
           nodes :: nodes_map(),
-          persist_timer :: reference() | undefined,
-          event_manager :: pid()
+          persist_timer :: reference() | undefined
          }).
 
 %%%===================================================================
@@ -85,12 +84,9 @@ init([]) ->
     Me = #node_info{node=node(), last_seen=statser_util:seconds(), state=me},
     Nodes = maps:put(node(), Me, maps:new()),
 
-    % start event manager
-    {ok, EventManager} = gen_event:start_link(),
-
     gen_server:cast(self(), prepare),
 
-    State = #state{nodes=Nodes, event_manager=EventManager},
+    State = #state{nodes=Nodes},
     {ok, State}.
 
 %%--------------------------------------------------------------------
@@ -340,7 +336,7 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                     % publish new/updated node
                     gen_server:cast(self(), {publish, connect, Node}),
 
-                    gen_event:notify(State#state.event_manager, {connected, Node}),
+                    statser_event:notify({connected, Node}),
 
                     % TODO: maybe replace this explicit call with smth like gen_event
                     statser_finder:register_remote(Node),
@@ -375,7 +371,7 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
             gen_server:cast(self(), {publish, disconnect, Node}),
 
             % publish disconnect event
-            gen_event:notify(State#state.event_manager, {disconnected, Node}),
+            statser_event:notify({disconnected, Node}),
 
             Ns0 = maps:remove(Node, Ns),
             {true, schedule_persist_timer(State#state{nodes=Ns0})};
@@ -389,8 +385,7 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
                                     erlang:disconnect_node(K),
 
                                     % publish disconnect event
-                                    gen_event:notify(State#state.event_manager,
-                                                     {disconnected, K}),
+                                    statser_event:notify({disconnected, K}),
 
                                     maps:remove(K, Nss);
                                (_, _, Nss) -> Nss
