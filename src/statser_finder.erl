@@ -341,8 +341,8 @@ processor_loop(Parent, Metrics, Count) ->
 
 convert_to_remote(Node, #metric_file{handler={local, Pid}}=MF, Ms) ->
     Handler = {remote, node(), Pid},
-    V0 = MF#metric_file{handler=Handler},
-    orddict:store(Node, V0, Ms);
+    Metric = MF#metric_file{handler=Handler},
+    orddict:store(Node, Metric, Ms);
 
 convert_to_remote(_Node, _MetricFile, Metrics) ->
     Metrics.
@@ -356,7 +356,11 @@ prepare_metrics_for_remote(#metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
     Ms0 = orddict:fold(fun convert_to_remote/3, orddict:new(), Metrics),
     Ds0 = orddict:fold(fun(K, V, Ds) ->
                                V0 = prepare_metrics_for_remote(V),
-                               case orddict:is_empty(V0#metric_dir.metrics) of
+                               NoMetrics = orddict:is_empty(V0#metric_dir.metrics),
+                               NoDirs = orddict:is_empty(V0#metric_dir.dirs),
+
+                               % remove empty metric entries
+                               case NoMetrics andalso NoDirs of
                                    false -> orddict:store(K, V0, Ds);
                                    true -> Ds
                                end
@@ -767,7 +771,7 @@ new_metric_dir_test_() ->
     ].
 
 update_or_insert_metric_test_() ->
-    EmptyDir = #metric_dir{name=[], metrics=orddict:new(), dirs=orddict:new()},
+    EmptyDir = ?EMPTY_METRIC_DIR,
     Metric = #metric_file{name= <<"test">>},
     Exp1 = #metric_dir{name= <<"bar">>, dirs=[], metrics=orddict:from_list([{<<"test">>, Metric}])},
     Exp2 = #metric_dir{name= <<"foo">>, dirs=orddict:from_list([{<<"bar">>, Exp1}]), metrics=[]},
@@ -780,13 +784,33 @@ update_or_insert_metric_test_() ->
     ].
 
 merge_metric_dir_test_() ->
-    EmptyDir = #metric_dir{name=[], metrics=orddict:new(), dirs=orddict:new()},
+    EmptyDir = ?EMPTY_METRIC_DIR,
     Metric = #metric_file{name= <<"test">>},
     Exp1 = #metric_dir{name= <<"bar">>, dirs=[], metrics=orddict:from_list([{<<"test">>, Metric}])},
     Exp2 = #metric_dir{name= <<"foo">>, dirs=orddict:from_list([{<<"bar">>, Exp1}]), metrics=[]},
     Exp3 = EmptyDir#metric_dir{dirs=orddict:from_list([{<<"foo">>, Exp2}])},
 
     [?_assertEqual(Exp3, merge_metric_dir(Exp3, Exp3))
+    ].
+
+metrics_from_paths(Paths) ->
+    lists:foldl(fun(Path, Ms) ->
+                        Name = lists:last(Path),
+                        Metric = #metric_file{name=Name},
+                        update_or_insert_metric(Path, Metric, Ms)
+                end, ?EMPTY_METRIC_DIR, Paths).
+
+prepare_metrics_for_remote_test_() ->
+    BaseMetrics = metrics_from_paths([[<<"foo">>, <<"bar">>],
+                                      [<<"foo">>, <<"ham">>],
+                                      [<<"ham">>, <<"eggs">>]]),
+
+    WithLocalPid = update_or_insert_metric([<<"foo">>, <<"bar">>],
+                                           #metric_file{name= <<"bar">>, handler={local, self()}},
+                                           BaseMetrics),
+
+    [?_assertEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(BaseMetrics)),
+     ?_assertNotEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(WithLocalPid))
     ].
 
 -endif.
