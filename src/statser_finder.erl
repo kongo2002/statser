@@ -276,18 +276,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+% internal receive-loop that handles all potentially 'long' running
+% tasks of the 'finder' so that the main metrics finder service is
+% as responsive as possible
+% the processing loop asynchronously maintains the main metrics data
+% structure and reports back to the parent server with the results
 processor_loop(Parent) ->
     lager:info("spawning asynchronous finder processor at ~p", [self()]),
     processor_loop(Parent, ?EMPTY_METRIC_DIR, 0).
 
 processor_loop(Parent, Metrics, Count) ->
     receive
+        % register new metrics handler
         {register_handler, Metric, Paths} ->
             NewMetrics = update_or_insert_metric(Paths, Metric, Metrics),
             Parent ! {finder_result, NewMetrics},
 
             processor_loop(Parent, NewMetrics, Count);
 
+        % search local file system for metrics files and integrate
+        % those in the metrics data structure
         {update_metrics, Dir} ->
             {NewMetrics, NewCount} = update_metrics_files(Dir, Count),
             Merged = merge_metric_dir(Metrics, NewMetrics),
@@ -300,11 +308,13 @@ processor_loop(Parent, Metrics, Count) ->
 
             processor_loop(Parent, Merged, NewCount);
 
+        % prepare local metrics structure to be sent to another remote node
         {get_metrics, From} ->
             ForRemote = prepare_metrics_for_remote(Metrics),
             From ! {remote_metrics, node(), ForRemote},
             processor_loop(Parent, Metrics, Count);
 
+        % unregister all metrics handler of a specific remote node
         {unregister_remote, Remote} ->
             lager:debug("remove metrics from remote ~p", [Remote]),
 
@@ -312,6 +322,9 @@ processor_loop(Parent, Metrics, Count) ->
             Parent ! {finder_result, WithoutRemotes},
             processor_loop(Parent, WithoutRemotes, Count);
 
+        % integrate the metrics of another remote node into our local
+        % metrics data structure so that we are able to directly address
+        % 'foreign' metrics via the associated remote node
         {remote_metrics, RemoteNode, RemoteMetrics} ->
             lager:debug("processing metrics from remote node ~p", [RemoteNode]),
 
@@ -326,21 +339,21 @@ processor_loop(Parent, Metrics, Count) ->
     end.
 
 
+convert_to_remote(Node, #metric_file{handler={local, Pid}}=MF, Ms) ->
+    Handler = {remote, node(), Pid},
+    V0 = MF#metric_file{handler=Handler},
+    orddict:store(Node, V0, Ms);
+
+convert_to_remote(_Node, _MetricFile, Metrics) ->
+    Metrics.
+
+
 % before sending our local metrics structure we want to
 % prepare it for the target/remote node, meaning
 %   * filter out non-local metrics
 %   * filter out metrics w/o handler
 prepare_metrics_for_remote(#metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
-    Ms0 = orddict:fold(fun(K, V, Ms) ->
-                               case V#metric_file.handler of
-                                   {local, Pid} ->
-                                       Handler = {remote, node(), Pid},
-                                       V0 = V#metric_file{handler=Handler},
-                                       orddict:store(K, V0, Ms);
-                                   _Otherwise -> Ms
-                               end
-                       end, orddict:new(), Metrics),
-
+    Ms0 = orddict:fold(fun convert_to_remote/3, orddict:new(), Metrics),
     Ds0 = orddict:fold(fun(K, V, Ds) ->
                                V0 = prepare_metrics_for_remote(V),
                                case orddict:is_empty(V0#metric_dir.metrics) of
@@ -352,6 +365,9 @@ prepare_metrics_for_remote(#metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
     Dir#metric_dir{metrics=Ms0, dirs=Ds0}.
 
 
+% this function is used on node disconnect/removal
+% so that all metrics that reference that specific remote node
+% are removed from the metrics structure
 remove_remotes(Remote, #metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
     Ms0 = orddict:fold(fun(K, V, Ms) ->
                                case V#metric_file.handler of
