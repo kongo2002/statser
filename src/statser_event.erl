@@ -3,9 +3,9 @@
 -behaviour(gen_event).
 
 -export([start_link/0,
-         add_handler/1,
-         add_handler/2,
-         notify/1]).
+         start_link/1,
+         notify/1,
+         stop/1]).
 
 %% gen_event callbacks
 -export([init/1,
@@ -20,20 +20,17 @@ start_link() ->
     gen_event:start_link({local, ?MODULE}).
 
 
+start_link(Fun) ->
+    Handler = {statser_event, make_ref()},
+    statser_event_sup:start_link(statser_event, Handler, Fun).
+
+
 notify(Event) ->
     gen_event:notify(?MODULE, Event).
 
 
-add_handler(Func) ->
-    Id = {?MODULE, make_ref()},
-    gen_event:add_handler(?MODULE, Id, [Func]),
-    Id.
-
-
-add_handler(Func, Acc) ->
-    Id = {?MODULE, make_ref()},
-    gen_event:add_handler(?MODULE, Id, [{Func, Acc}]),
-    Id.
+stop(Pid) ->
+    statser_event_sup:stop(Pid).
 
 
 %%%===================================================================

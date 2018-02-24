@@ -172,7 +172,12 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast(prepare, #state{data_dir=Dir, processor=Processor}=State) ->
     lager:debug("start initializing metrics finder"),
+
+    % tigger initial metric lookup
     Processor ! {update_metrics, Dir},
+
+    % subscribe to events
+    statser_event:start_link(fun on_event/1),
 
     {noreply, State};
 
@@ -200,7 +205,7 @@ handle_cast({register_remote, Node}, State) ->
 
     Remotes = sets:add_element(Node, State#state.remotes),
 
-    % TODO
+    % TODO: this delay seems like a hack
     erlang:send_after(10 * ?MILLIS_PER_SEC, self(), {fetch_remote_metrics, Node}),
 
     {noreply, State#state{remotes=Remotes}};
@@ -230,7 +235,7 @@ handle_info({finder_result, Metrics}, State) ->
     {noreply, State#state{metrics=Metrics}};
 
 handle_info({fetch_remote_metrics, Node}, State) ->
-    % TODO
+    % TODO: don't call
     {get_metrics, Ms} = gen_server:call({statser_finder, Node}, get_metrics),
     gen_server:cast(self(), {remote_metrics, Node, Ms}),
 
@@ -299,6 +304,15 @@ processor_loop(Parent, Metrics, Count) ->
             lager:error("unexpected message in finder processor: ~p", [Unhandled]),
             error
     end.
+
+
+on_event({connected, Node}) ->
+    ?MODULE:register_remote(Node);
+
+on_event({disconnected, Node}) ->
+    ?MODULE:unregister_remote(Node);
+
+on_event(_Event) -> ok.
 
 
 update_or_insert_metric([], NewMetric, #metric_dir{metrics=Ms}=M) ->

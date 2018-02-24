@@ -134,8 +134,10 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(prepare, State) ->
-    KnownNodes = load_nodes(),
+    % subscribe to the event bus - we are basically receiving our own events
+    statser_event:start_link(fun on_event/1),
 
+    KnownNodes = load_nodes(),
     lager:info("discoverer: loaded ~p configured nodes from persisted '~s' file",
                [maps:size(KnownNodes), ?PERSIST_FILE]),
 
@@ -241,6 +243,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+on_event({connected, Node}) ->
+    gen_server:cast(statser_discoverer, {publish, connect, Node});
+
+on_event({disconnected, Node}) ->
+    gen_server:cast(statser_discoverer, {publish, disconnect, Node});
+
+on_event(_Event) -> ok.
+
+
 schedule_persist_timer(#state{persist_timer=undefined} = State) ->
     Timer = erlang:send_after(?PERSIST_DELAY, self(), persist),
     State#state{persist_timer=Timer};
@@ -333,13 +344,7 @@ try_connect(Node, #state{nodes=Ns} = State) ->
                                       last_seen=statser_util:seconds()},
                     Ns0 = maps:put(Node, Info, Ns),
 
-                    % publish new/updated node
-                    gen_server:cast(self(), {publish, connect, Node}),
-
                     statser_event:notify({connected, Node}),
-
-                    % TODO: maybe replace this explicit call with smth like gen_event
-                    statser_finder:register_remote(Node),
 
                     {true, schedule_persist_timer(State#state{nodes=Ns0})};
                 false ->
@@ -366,9 +371,6 @@ try_disconnect(Node, #state{nodes=Ns} = State) ->
                 ignored ->
                     lager:info("disconnection from node ~p failed - local node is not alive", [Node])
             end,
-
-            % publish removed/disconnected node
-            gen_server:cast(self(), {publish, disconnect, Node}),
 
             % publish disconnect event
             statser_event:notify({disconnected, Node}),
