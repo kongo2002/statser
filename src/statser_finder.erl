@@ -153,9 +153,6 @@ handle_call({find_metrics, Paths, GlobDirs}, _From, State) ->
     Result = find_metrics(Paths, Metrics, GlobDirs),
     {reply, Result, State};
 
-handle_call(get_metrics, _From, State) ->
-    {reply, {get_metrics, State#state.metrics}, State};
-
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -205,18 +202,14 @@ handle_cast({register_remote, Node}, State) ->
 
     Remotes = sets:add_element(Node, State#state.remotes),
 
-    % TODO: this delay seems like a hack
-    erlang:send_after(10 * ?MILLIS_PER_SEC, self(), {fetch_remote_metrics, Node}),
+    % request new node's metrics to be merged with ours
+    {statser_finder, Node} ! {get_metrics, self()},
 
     {noreply, State#state{remotes=Remotes}};
 
 handle_cast({unregister_remote, Node}, State) ->
     Remotes = sets:del_element(Node, State#state.remotes),
     {noreply, State#state{remotes=Remotes}};
-
-handle_cast({remote_metrics, Node, Ms}, State) ->
-    % TODO
-    {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -234,11 +227,14 @@ handle_cast(_Msg, State) ->
 handle_info({finder_result, Metrics}, State) ->
     {noreply, State#state{metrics=Metrics}};
 
-handle_info({fetch_remote_metrics, Node}, State) ->
-    % TODO: don't call
-    {get_metrics, Ms} = gen_server:call({statser_finder, Node}, get_metrics),
-    gen_server:cast(self(), {remote_metrics, Node, Ms}),
+handle_info({get_metrics, From}, State) ->
+    Reply = {remote_metrics, State#state.metrics},
+    From ! Reply,
+    {noreply, State};
 
+handle_info({remote_metrics, _}=Msg, State) ->
+    % dispatch remote metrics merge to processor
+    State#state.processor ! Msg,
     {noreply, State};
 
 handle_info(Info, State) ->
@@ -299,7 +295,10 @@ processor_loop(Parent, Metrics, Count) ->
             erlang:send_after(UpdateIn, self(), {update_metrics, Dir}),
 
             processor_loop(Parent, Merged, NewCount);
+        {remote_metrics, Ms} ->
+            % TODO
 
+            processor_loop(Parent, Metrics, Count);
         Unhandled ->
             lager:error("unexpected message in finder processor: ~p", [Unhandled]),
             error
