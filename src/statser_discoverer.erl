@@ -183,6 +183,15 @@ handle_cast({publish, disconnect, Node}, State) ->
 
     {noreply, State};
 
+handle_cast({down, Node}, #state{nodes=Nodes} = State) ->
+    Ns = case maps:find(Node, Nodes) of
+             {ok, Info} ->
+                 maps:put(Node, Info#node_info{state=disconnected}, Nodes);
+             _Otherwise ->
+                 Nodes
+         end,
+    {noreply, State#state{nodes=Ns}};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -244,10 +253,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 on_event({connected, Node}) ->
-    gen_server:cast(statser_discoverer, {publish, connect, Node});
+    gen_server:cast(?MODULE, {publish, connect, Node});
 
 on_event({disconnected, Node}) ->
-    gen_server:cast(statser_discoverer, {publish, disconnect, Node});
+    gen_server:cast(?MODULE, {publish, disconnect, Node});
+
+on_event({down, _Node} = Msg) ->
+    gen_server:cast(?MODULE, Msg);
 
 on_event(_Event) -> ok.
 

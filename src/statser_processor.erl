@@ -49,10 +49,25 @@ fetch_inner({Path, {local, Pid}}, From, Until, Now) when is_pid(Pid) ->
 fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
     lager:debug("fetching from remote [~p] ~p: '~s'", [Node, Pid, Path]),
 
-    Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
-    case Result of
-        #series{} -> [Result#series{target=Path}];
-        _Error -> []
+    try
+        Result = gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT),
+        case Result of
+            #series{} -> [Result#series{target=Path}];
+            _Error -> []
+        end
+    catch
+        exit:{{nodedown, Node}, _} ->
+            lager:warning("remote fetch call failed - node ~p is down", [Node]),
+
+            % 'nodedown' is a clear indication that the given node is not available
+            % anymore - but we did try to reach it just now
+            % that's why we publish a 'down' for that given node using the event bus
+            statser_event:notify({down, Node}),
+
+            [];
+        Class:Reason ->
+            lager:warning("remote fetch call failed with: ~p:~p", [Class, Reason]),
+            []
     end;
 
 % otherwise we will request the metric_handler's pid from the

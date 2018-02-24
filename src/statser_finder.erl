@@ -207,8 +207,12 @@ handle_cast({register_remote, Node}, State) ->
 
     {noreply, State#state{remotes=Remotes}};
 
-handle_cast({unregister_remote, Node}, State) ->
+handle_cast({unregister_remote, Node} = Msg, State) ->
     Remotes = sets:del_element(Node, State#state.remotes),
+
+    % remove metrics of that remote node
+    State#state.processor ! Msg,
+
     {noreply, State#state{remotes=Remotes}};
 
 handle_cast(_Msg, State) ->
@@ -301,14 +305,21 @@ processor_loop(Parent, Metrics, Count) ->
             From ! {remote_metrics, node(), ForRemote},
             processor_loop(Parent, Metrics, Count);
 
+        {unregister_remote, Remote} ->
+            lager:debug("remove metrics from remote ~p", [Remote]),
+
+            WithoutRemotes = remove_remotes(Remote, Metrics),
+            Parent ! {finder_result, WithoutRemotes},
+            processor_loop(Parent, WithoutRemotes, Count);
+
         {remote_metrics, RemoteNode, RemoteMetrics} ->
             lager:debug("processing metrics from remote node ~p", [RemoteNode]),
 
             Merged = merge_metric_dir(Metrics, RemoteMetrics),
             Parent ! {finder_result, Merged},
 
-            % TODO: update count?
             processor_loop(Parent, Merged, Count);
+
         Unhandled ->
             lager:error("unexpected message in finder processor: ~p", [Unhandled]),
             error
@@ -341,10 +352,34 @@ prepare_metrics_for_remote(#metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
     Dir#metric_dir{metrics=Ms0, dirs=Ds0}.
 
 
+remove_remotes(Remote, #metric_dir{metrics=Metrics, dirs=Dirs}=Dir) ->
+    Ms0 = orddict:fold(fun(K, V, Ms) ->
+                               case V#metric_file.handler of
+                                   {remote, Remote, _Pid} -> Ms;
+                                   _Otherwise -> orddict:store(K, V, Ms)
+                               end
+                       end, orddict:new(), Metrics),
+
+    Ds0 = orddict:fold(fun(K, V, Ds) ->
+                               V0 = remove_remotes(Remote, V),
+                               case orddict:is_empty(V0#metric_dir.metrics) of
+                                   false -> orddict:store(K, V0, Ds);
+                                   true -> Ds
+                               end
+                       end, orddict:new(), Dirs),
+
+    Dir#metric_dir{metrics=Ms0, dirs=Ds0}.
+
+
 on_event({connected, Node}) ->
     ?MODULE:register_remote(Node);
 
 on_event({disconnected, Node}) ->
+    ?MODULE:unregister_remote(Node);
+
+on_event({down, Node}) ->
+    % the 'finder' does not distinguish between an unavailable node
+    % and a non-existing one (in contrast to the 'discoverer')
     ?MODULE:unregister_remote(Node);
 
 on_event(_Event) -> ok.
