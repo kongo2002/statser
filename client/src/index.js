@@ -190,7 +190,7 @@ var Live = {
 
   view: function() {
     // D3 is responsible to fill the SVG element
-    return m(`div${Live.LIVE_ID}.graph`);
+    return m('div' + Live.LIVE_ID + '.graph');
   }
 }
 
@@ -255,7 +255,7 @@ var Dashboard = {
           var type = metric.type == 'counter' ? '/sec' : 'average';
           return m('tr', [
             m('td', metric.name),
-            m('td', metric.value.toFixed(2), m('small', ` ${type}`))
+            m('td', metric.value.toFixed(2), m('small', ' ' + type))
           ]);
         }))
       ])
