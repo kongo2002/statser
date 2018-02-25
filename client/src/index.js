@@ -7,22 +7,56 @@ UIkit.use(Icons);
 var m = require('mithril')
 
 var Api = {
-  _stats: [],
-  _health: [],
+  MAX_HISTORY: 20,
+
+  _stats: {},
   _timestamp: 0,
+
+  getStats: function(type) {
+    var stats = this._stats[type];
+    if (!stats) {
+      var initial = this.__initStats();
+      this._stats[type] = initial;
+      return initial;
+    }
+
+    return stats;
+  },
 
   metrics: function() {
     return m.request({
       method: 'GET',
       url: '/.statser/metrics'
     }).then(function(res) {
-      Api._stats = res.stats;
-      Api._health = res.health;
-      Api._timestamp = res.timestamp;
+      var ts = res.timestamp;
+      var date = new Date(ts * 1000);
+
+      if (ts <= Api._timestamp) {
+        return res;
+      }
+
+      Api._timestamp = ts;
+
+      for (var type in res.stats) {
+        var stats = res.stats[type];
+        var existing = Api.getStats(stats.name);
+
+        existing.push({x: date, y: stats.value});
+        Api._stats[stats.name] = existing.slice(1);
+      }
 
       return res;
     });
   },
+
+  __initStats: function() {
+    var now = new Date();
+    var data = [];
+    for (var i=Api.MAX_HISTORY; i>0; i--) {
+      data.push({x: new Date(+now - i * 10000), y: 0});
+    }
+    return data;
+  }
 };
 
 var mkNav = function(name, link) {
@@ -50,7 +84,6 @@ var navigation = function() {
 
 var Live = {
   LIVE_ID: '#live',
-  MAX_TICKS: 20,
   GRAPH_NAME: 'committed-points',
 
   _update: function(vnode) {
@@ -59,29 +92,18 @@ var Live = {
     var y = state._y;
     var valueline = state._valueline;
 
-    // just pick the latest metric matching the `GRAPH_NAME`
-    var ts = Api._timestamp;
-    var liveMetric = Api._stats.find(function(s) { return s.name == Live.GRAPH_NAME; });
-
-    if (!liveMetric || ts <= state.__ts) {
-      Live.scheduleUpdate(vnode);
-      return;
-    }
-
-    state.__ts = ts;
-    state.__data.push({x: new Date(ts * 1000), y: liveMetric.value});
-    state.__data = state.__data.slice(1);
+    var stats = Api.getStats(Live.GRAPH_NAME);
 
     // scale the range of the data
-    x.domain(d3.extent(state.__data, function(d) { return d.x; }));
-    y.domain(d3.extent(state.__data, function(d) { return d.y; }));
+    x.domain(d3.extent(stats, function(d) { return d.x; }));
+    y.domain(d3.extent(stats, function(d) { return d.y; }));
 
     var svg = d3.select(Live.LIVE_ID).transition();
     var duration = 750;
 
     svg.select(".line")
       .duration(duration)
-      .attr("d", valueline(state.__data));
+      .attr("d", valueline(stats));
 
     svg.select(".xaxis")
       .duration(duration)
@@ -91,19 +113,11 @@ var Live = {
       .duration(duration)
       .call(d3.axisLeft(y).ticks(6));
 
-      Live.scheduleUpdate(vnode);
+    Live.scheduleUpdate(vnode);
   },
 
   oncreate: function(vnode) {
-    this.__data = [];
-    this.__ts = 0;
-
-    // initial data set
-    var now = new Date();
-    for (var i=Live.MAX_TICKS; i>0; i--) {
-      this.__data.push({x: new Date(+now - i * 10000), y: 0});
-    }
-
+    var data = Api.getStats(Live.GRAPH_NAME);
     var margin = {top: 50, right: 50, bottom: 50, left: 50},
       width = 560 - margin.left - margin.right,
       height = 240 - margin.top - margin.bottom;
@@ -138,14 +152,14 @@ var Live = {
       .text(Live.GRAPH_NAME);
 
     // Scale the range of the data
-    x.domain(d3.extent(this.__data, function(d) { return d.x; }));
-    y.domain(d3.extent(this.__data, function(d) { return d.y; }));
+    x.domain(d3.extent(data, function(d) { return d.x; }));
+    y.domain(d3.extent(data, function(d) { return d.y; }));
 
     // Add the paths with different curves.
     svg.append("path")
-      .datum(this.__data)
+      .datum(data)
       .attr("class", "line")
-      .attr("d", valueline(this.__data));
+      .attr("d", valueline(data));
 
     // x axis
     svg.append("g")
@@ -164,7 +178,7 @@ var Live = {
   scheduleUpdate: function(vnode) {
     vnode.state.__timer = window.setTimeout(function() {
       Live._update(vnode);
-    }, 1000);
+    }, 5000);
   },
 
   onremove: function(vnode) {
