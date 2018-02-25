@@ -23,6 +23,13 @@ var Api = {
     return stats;
   },
 
+  nodes: function() {
+    return m.request({
+      method: 'GET',
+      url: '/.statser/control/nodes'
+    });
+  },
+
   metrics: function() {
     return m.request({
       method: 'GET',
@@ -307,8 +314,54 @@ var Dashboard = {
 };
 
 var Control = {
-  view: function() {
-    return navigation();
+  oninit: function() {
+    this.__nodes = [];
+  },
+
+  oncreate: function(vnode) {
+    Api.nodes()
+      .then(function(nodes) {
+        vnode.state.__nodes = nodes;
+      });
+  },
+
+  view: function(vnode) {
+    return [
+      navigation(),
+      m('.uk-container', [
+        m('h2', 'Nodes'),
+        m('table.uk-table.uk-table-divider.uk-table-responsive', [
+          m('thead', m('tr', [
+            m('th', 'Node'),
+            m('th', 'Status'),
+            m('th', 'Actions')
+          ])),
+          m('tbody', vnode.state.__nodes.map(function(node) {
+            var name = node.self ? [node.node, m('small', ' (self)')] : node.node;
+            var state = node.state;
+            var actions = [];
+
+            if (node.state == 'connected') {
+              state = [m('span', {'uk-icon': 'happy'}), ' connected'];
+            }
+
+            if (!node.self) {
+              actions.push(m('a.uk-icon-button', {'uk-icon': 'ban'}));
+            }
+
+            return m('tr', [
+              m('td', name),
+              m('td', state),
+              m('td', actions)
+            ]);
+          }))
+        ]),
+        m('hr.uk-divider-icon'),
+        m('div', [
+          m('button.uk-button.uk-button-default.uk-align-right', 'add node')
+        ])
+      ])
+    ];
   }
 };
 
