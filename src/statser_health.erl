@@ -11,6 +11,7 @@
 %% API
 -export([start_link/0,
          alive/1,
+         metrics/0,
          subscribe/1]).
 
 %% gen_server callbacks
@@ -43,6 +44,10 @@ start_link() ->
 
 subscribe(Ref) ->
     gen_server:cast(?MODULE, {subscribe, Ref}).
+
+
+metrics() ->
+    gen_server:call(?MODULE, metrics).
 
 
 alive(Name) ->
@@ -95,9 +100,12 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(metrics, _From, State) ->
+    Json = prepare_metrics(State),
+    {reply, Json, State};
+
 handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    {reply, ok, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -185,7 +193,11 @@ schedule_refresh(#state{interval=Interval} = State) ->
     State#state{timer=Timer}.
 
 
-notify(Subs, Interval, Metrics, Services) ->
+prepare_metrics(#state{interval=Interval, metrics=Metrics, services=Services}) ->
+    prepare_metrics(Interval, Metrics, Services).
+
+
+prepare_metrics(Interval, Metrics, Services) ->
     Now = statser_util:seconds(),
     Stats = lists:map(fun({K, V}) when is_number(V) ->
                                PerSecond = V / Interval * ?MILLIS_PER_SEC,
@@ -203,10 +215,14 @@ notify(Subs, Interval, Metrics, Services) ->
     Health = [{[{name, <<"health">>}, {good, true}, {timestamp, Now}]},
               {[{name, <<"server">>}, {good, true}, {timestamp, Now}]}],
 
-    Json = jiffy:encode({[{stats, Stats},
+    jiffy:encode({[{stats, Stats},
                           {timestamp, Now},
                           {interval, Interval},
-                          {health, Health ++ SrvHealth}]}),
+                          {health, Health ++ SrvHealth}]}).
+
+
+notify(Subs, Interval, Metrics, Services) ->
+    Json = prepare_metrics(Interval, Metrics, Services),
     Chunk = iolist_to_binary(["data: ", Json, "\n\n"]),
 
     lists:flatmap(
@@ -217,4 +233,3 @@ notify(Subs, Interval, Metrics, Services) ->
                   {error, timeout} -> []
               end
       end, Subs).
-
