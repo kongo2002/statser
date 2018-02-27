@@ -3,8 +3,8 @@
 
 [![build status](https://api.travis-ci.org/kongo2002/statser.svg)][travis]
 
-This project is supposed to *become* a more-or-less drop-in replacement for
-[graphite][graphite].
+This project is a rework of the [graphite][graphite] stack in shape of an erlang
+application.
 
 > The project is still in beta state - work in progress but feel free to
 > give it a shot!
@@ -13,7 +13,7 @@ This project is supposed to *become* a more-or-less drop-in replacement for
 ## Motivation
 
 [Graphite][graphite] is a fantastic piece or rather collection of software(s)
-and I don't want to really replace any of it. Nonetheless there are a few points
+that's tough to 'replace' at all. Nonetheless there are a few points
 that motivate me to tackle some parts of [graphite][graphite]'s feature set to
 be solved in a distributed erlang-powered application.
 
@@ -96,6 +96,7 @@ Find a list of features that are either finished or on my roadmap below.
 * configurable blacklist/whitelist of metrics
 * basic [StatsD][statsd] interface (known to listen on UDP port `8125`)
     - support for counters, timers, gauges and sets
+* support for querying metrics of multiple connected statser instances
 * metrics API
 * render API (JSON output only!)
     - `absolute`
