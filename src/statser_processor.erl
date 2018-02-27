@@ -74,7 +74,7 @@ fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
 % this is a remote metrics but without an associated handler pid
 % so we just call the remote's dispatcher for now
 fetch_inner({Path, {remote, Node, _Pid}}, From, Until, Now) ->
-    lager:info("fetching metric for '~s' via remote dispatcher at ~p", [Path, Node]),
+    lager:debug("fetching from remote [~p] via dispatcher: '~s'", [Node, Path]),
 
     try
         gen_server:call({statser_dispatcher, Node}, {fetch, Path, From, Until, Now}, ?TIMEOUT)
