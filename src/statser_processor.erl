@@ -46,6 +46,7 @@ fetch_inner({Path, {local, Pid}}, From, Until, Now) when is_pid(Pid) ->
         _Error -> []
     end;
 
+% we do have a remote pid to call directly -> let's do that
 fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
     lager:debug("fetching from remote [~p] ~p: '~s'", [Node, Pid, Path]),
 
@@ -70,25 +71,32 @@ fetch_inner({Path, {remote, Node, Pid}}, From, Until, Now) when is_pid(Pid) ->
             []
     end;
 
+% this is a remote metrics but without an associated handler pid
+% so we just call the remote's dispatcher for now
+fetch_inner({Path, {remote, Node, _Pid}}, From, Until, Now) ->
+    lager:info("fetching metric for '~s' via remote dispatcher at ~p", [Path, Node]),
+
+    try
+        gen_server:call({statser_dispatcher, Node}, {fetch, Path, From, Until, Now}, ?TIMEOUT)
+    catch
+        exit:{{nodedown, Node}, _} ->
+            lager:warning("remote fetch call failed - node ~p is down", [Node]),
+
+            % 'nodedown' is a clear indication that the given node is not available
+            % anymore - but we did try to reach it just now
+            % that's why we publish a 'down' for that given node using the event bus
+            statser_event:notify({down, Node}),
+
+            [];
+        Class:Reason ->
+            lager:warning("remote fetch call failed with: ~p:~p", [Class, Reason]),
+            []
+    end;
+
 % otherwise we will request the metric_handler's pid from the
 % ETS table or even fetch the file directly from disk instead
 fetch_inner({Path, _Handler}, From, Until, Now) ->
-    fetch_inner(Path, From, Until, Now);
-
-fetch_inner(Path, From, Until, Now) ->
-    Result = case ets:lookup(metrics, Path) of
-                 [] ->
-                     % there is nothing cached to be merged
-                     % -> for now just read from fs directly
-                     File = statser_metric_handler:get_whisper_file(Path),
-                     statser_whisper:fetch(File, From, Until, Now);
-                 [{_Path, Pid}] ->
-                     gen_server:call(Pid, {fetch, From, Until, Now}, ?TIMEOUT)
-             end,
-    case Result of
-        #series{} -> [Result#series{target=Path}];
-        _Error -> []
-    end.
+    statser_dispatcher:fetch(Path, From, Until, Now).
 
 
 % absolute

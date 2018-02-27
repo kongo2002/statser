@@ -32,7 +32,7 @@
 
 -type local_handler() :: {local, pid()}.
 
--type remote_handler() :: {remote, node(), pid()}.
+-type remote_handler() :: {remote, node(), pid() | undefined}.
 
 -type handler() :: local_handler() | remote_handler() | undefined.
 
@@ -344,7 +344,12 @@ convert_to_remote(Node, #metric_file{handler={local, Pid}}=MF, Ms) ->
     Metric = MF#metric_file{handler=Handler},
     orddict:store(Node, Metric, Ms);
 
-convert_to_remote(_Node, _MetricFile, Metrics) ->
+convert_to_remote(Node, #metric_file{handler=undefined}=MF, Ms) ->
+    Handler = {remote, node(), undefined},
+    Metric = MF#metric_file{handler=Handler},
+    orddict:store(Node, Metric, Ms);
+
+convert_to_remote(_Node, _Metric, Metrics) ->
     Metrics.
 
 
@@ -809,8 +814,13 @@ prepare_metrics_for_remote_test_() ->
                                            #metric_file{name= <<"bar">>, handler={local, self()}},
                                            BaseMetrics),
 
-    [?_assertEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(BaseMetrics)),
-     ?_assertNotEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(WithLocalPid))
+    WithRemote = update_or_insert_metric([<<"foo">>, <<"bar">>],
+                                           #metric_file{name= <<"bar">>, handler={remote, node(), self()}},
+                                           ?EMPTY_METRIC_DIR),
+
+    [?_assertNotEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(BaseMetrics)),
+     ?_assertNotEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(WithLocalPid)),
+     ?_assertEqual(?EMPTY_METRIC_DIR, prepare_metrics_for_remote(WithRemote))
     ].
 
 -endif.
