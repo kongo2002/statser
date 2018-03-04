@@ -266,10 +266,22 @@ protobuf:
 * investigate into more elaborate archive write optimization
 
 
-[rebar3]: https://www.rebar3.org/
-[graphite]: https://graphiteapp.org/
-[grafana]: https://grafana.com/
-[travis]: https://travis-ci.org/kongo2002/statser/
-[statsd]: https://github.com/etsy/statsd/
+## License
+
+*statser* is licensed under the [Apache license][apache], Version 2.0
+
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+
+
+[apache]: http://www.apache.org/licenses/LICENSE-2.0
 [docker]: https://www.docker.com/
+[grafana]: https://grafana.com/
+[graphite]: https://graphiteapp.org/
 [openmetrics]: https://github.com/RichiH/OpenMetrics/blob/master/metric_exposition_format.md
+[rebar3]: https://www.rebar3.org/
+[statsd]: https://github.com/etsy/statsd/
+[travis]: https://travis-ci.org/kongo2002/statser/
