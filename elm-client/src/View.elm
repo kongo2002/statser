@@ -22,7 +22,7 @@ svgMargin = 50
 view : Model -> Html Msg
 view model =
   let body = div [ class "uk-container" ] <| content model
-  in  div [] [ viewNavigation, body ]
+  in  div [] [ viewNavigation model, body ]
 
 
 content : Model -> List (Html Msg)
@@ -119,11 +119,11 @@ viewControl model =
               False -> []
             state =
               case elem.state of
-                Connected -> [span [class "uk-icon", attribute "uk-icon" "happy"] [], text " connected"]
+                Connected -> [icon "happy", text " connected"]
                 Disconnected -> [text "disconnected"]
             actions =
               case elem.self of
-                False -> [ a [class "uk-icon-button", attribute "uk-icon" "ban"] [] ]
+                False -> [ a [ class "uk-icon-button", attribute "uk-icon" "ban" ] [] ]
                 True -> []
         in tr [] [ td [] self, td [] state, td [] actions ]
   in
@@ -137,7 +137,22 @@ viewControl model =
       [ thead [] [ header "Node", header "Status", header "Actions" ]
       , tbody [] (List.map node model.nodes)
       ]
+    , div [ class "uk-inline", class "uk-align-right" ]
+      [ input
+        [ class "uk-input"
+        , attribute "placeholder" "statser@node"
+        , onInput UpdateNode
+        ] []
+      , a [ class "uk-form-icon uk-form-icon-flip"
+          , attribute "uk-icon" "plus-circle"
+          , onClick AddNode
+          ] []
+      ]
     ]
+
+
+icon name =
+  span [ class "uk-icon", attribute "uk-icon" name ] []
 
 
 viewDashboard model =
@@ -152,24 +167,25 @@ viewMeta =
     ]
 
 
-viewNavigation =
+viewNavigation model =
   let
-    link name path active =
-      let ref = [ attribute "href" path ]
+    link name route =
+      let ref = [ attribute "href" (Routing.routeToPath route) ]
+          active = route == model.route
       in  li [ classList [ ( "uk-active", active ) ] ] [ a ref [ text name ] ]
   in
     node "nav"
     [ class "uk-navbar-container", class "uk-navbar", attribute "uk-navbar" "" ]
     [ div [ class "uk-navbar-left" ]
       [ ul [ class "uk-navbar-nav" ]
-        [ link "statser" Routing.dashboard True
-        , link "dashboard" Routing.dashboard True
-        , link "control" Routing.control False
+        [ link "statser" Dashboard
+        , link "dashboard" Dashboard
+        , link "control" Control
         ]
       ]
     , div [ class "uk-navbar-right" ]
       [ ul [ class "uk-navbar-nav" ]
-        [ link "login" Routing.login False ]
+        [ link "login" Login ]
       ]
     ]
 

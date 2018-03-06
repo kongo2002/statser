@@ -1,4 +1,4 @@
-module Routing exposing ( parse, dashboard, control, login )
+module Routing exposing ( parse, dashboard, control, login, routeToPath )
 
 import Navigation exposing ( Location )
 import UrlParser exposing (..)
@@ -16,6 +16,14 @@ control = "#control"
 
 login : String
 login = "#login"
+
+
+routeToPath : Types.Route -> String
+routeToPath route =
+  case route of
+    Types.Dashboard -> dashboard
+    Types.Control -> control
+    Types.Login -> login
 
 
 parse : Location -> Types.Route

@@ -63,6 +63,18 @@
           .duration(duration)
           .call(d3.axisLeft(y).ticks(6));
     });
+
+    app.ports.notification.subscribe(function(data) {
+        var message = data[0];
+        var status = data[1];
+
+        UIkit.notification({
+            message: message,
+            status: status,
+            pos: 'top-right',
+            timeout: 5000
+        });
+    });
     </script>
   </body>
 </html>

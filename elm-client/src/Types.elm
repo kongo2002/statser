@@ -12,11 +12,21 @@ import Time exposing ( Time )
 
 type Msg
   = NoOp
+  -- internals
   | NavigationChange Location
   | Tick Time
+  -- response types
   | StatsUpdate (Result Http.Error (Dict.Dict String Stat, List Health, Int))
   | NodesUpdate (Result Http.Error (List Node))
+  | BoolResult Command (Result Http.Error Bool)
+  -- commands
   | PickLiveMetric String
+  | UpdateNode String
+  | AddNode
+
+
+type Command
+  = AddNodeCommand
 
 
 type Route
@@ -32,6 +42,7 @@ type alias Model =
   , healths : List Health
   , liveMetric : String
   , nodes : List Node
+  , addNode : String
   }
 
 
@@ -73,6 +84,11 @@ type NodeState
 
 
 -- DECODERS
+
+mkSuccess : Decoder Bool
+mkSuccess =
+  (field "success" bool)
+
 
 mkStats : Decoder (Dict.Dict String Stat, List Health, Int)
 mkStats =

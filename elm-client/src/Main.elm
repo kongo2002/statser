@@ -23,7 +23,7 @@ historyEntries = 20
 emptyModel : Route -> Model
 emptyModel route =
   let history = StatHistory 0 Dict.empty
-  in  Model route history Dict.empty [] defaultLiveMetric []
+  in  Model route history Dict.empty [] defaultLiveMetric [] ""
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
@@ -65,10 +65,23 @@ update msg model =
     NodesUpdate _ ->
       model ! []
 
+    BoolResult AddNodeCommand (Ok True) ->
+      model ! [ Ports.notification ("successfully connected", "primary") ]
+
+    BoolResult AddNodeCommand res ->
+      model ! [ Ports.notification ("failed to connect to node", "danger") ]
+
     PickLiveMetric metric ->
       let newModel = { model | liveMetric = metric }
           update = getEntries newModel
       in  newModel ! [ update ]
+
+    UpdateNode node ->
+      let newModel = { model | addNode = node }
+      in  newModel ! []
+
+    AddNode ->
+      model ! [ Api.addNode model.addNode ]
 
 
 getEntries model =

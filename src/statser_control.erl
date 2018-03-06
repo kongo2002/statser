@@ -61,6 +61,9 @@ handle('POST', [<<"nodes">>], Req) ->
             bad_request(Error)
     end;
 
+handle('OPTIONS', _Path, _Req) ->
+    {200, ?DEFAULT_HEADERS_CORS, <<"">>};
+
 handle(_Method, _Path, _Req) ->
     {404, [], <<"not found">>}.
 
@@ -119,12 +122,12 @@ node_to_json(#node_info{node=Node, state=State}) ->
 bad_request(Error) ->
     ErrorData = {[{<<"success">>, false},
                   {<<"message">>, Error}]},
-    {400, ?DEFAULT_HEADERS, jiffy:encode(ErrorData)}.
+    {400, ?DEFAULT_HEADERS_CORS, jiffy:encode(ErrorData)}.
 
 
 json(Data) ->
     Json = jiffy:encode(Data),
-    {200, ?DEFAULT_HEADERS, Json}.
+    {200, ?DEFAULT_HEADERS_CORS, Json}.
 
 
 ok() ->
