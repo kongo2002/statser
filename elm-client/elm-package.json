@@ -2,7 +2,7 @@
     "version": "1.0.0",
     "summary": "statser web client implemented in elm",
     "repository": "https://github.com/kongo2002/statser.git",
-    "license": "BSD3",
+    "license": "Apache",
     "source-directories": [
         "src"
     ],

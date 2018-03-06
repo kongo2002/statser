@@ -1,7 +1,6 @@
 module Main exposing (..)
 
 import Dict
-import Html
 import Navigation
 import Time exposing ( second )
 
@@ -84,6 +83,7 @@ update msg model =
       model ! [ Api.addNode model.addNode ]
 
 
+getEntries : Model -> Cmd Msg
 getEntries model =
   let liveMetric = model.liveMetric
       entries = Maybe.withDefault [] (Dict.get liveMetric model.history.entries)
@@ -113,6 +113,7 @@ toHistory history ts stats =
   in  Dict.foldr update history stats
 
 
+subTicks : Model -> Sub Msg
 subTicks model =
   Time.every (10 * second) Tick
 
