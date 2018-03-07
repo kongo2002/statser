@@ -29,4 +29,5 @@ $ npm run build
 
 [elm]: http://elm-lang.org/
 [webpack]: https://webpack.js.org
-[npm]: https://yarnpkg.com/
+[yarn]: https://yarnpkg.com/
+[npm]: https://www.npmjs.com/
