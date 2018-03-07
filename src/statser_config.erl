@@ -23,6 +23,8 @@
 -export([load_config/0,
          load_config/1,
          get_metadata/1,
+         get_storages/0,
+         get_aggregations/0,
          get_udp_config/0,
          get_data_dir/0,
          get_metric_filters/0,
@@ -96,13 +98,23 @@ load_config(ConfigFile) ->
 
 
 get_metadata(Path) ->
-    Storages = application:get_env(statser, storages, []),
+    Storages = get_storages(),
     StorDefinition = first_storage(Path, Storages),
 
-    Aggregations = application:get_env(statser, aggregations, []),
+    Aggregations = get_aggregations(),
     AggDefinition = first_aggregation(Path, Aggregations),
 
     {StorDefinition, AggDefinition}.
+
+
+-spec get_storages() -> [storage_definition()].
+get_storages() ->
+    application:get_env(statser, storages, []).
+
+
+-spec get_aggregations() -> [aggregation_definition()].
+get_aggregations() ->
+    application:get_env(statser, aggregations, []).
 
 
 get_metric_filters() ->

@@ -28,6 +28,10 @@
 %%% API
 %%%===================================================================
 
+%---------------------------------------------------------------------
+% NODES API
+%---------------------------------------------------------------------
+
 handle('GET', [<<"nodes">>], _Req) ->
     Nodes = statser_discoverer:get_nodes(),
     Nodes0 = lists:map(fun node_to_json/1, Nodes),
@@ -60,6 +64,26 @@ handle('POST', [<<"nodes">>], Req) ->
         {error, Error} ->
             bad_request(Error)
     end;
+
+%---------------------------------------------------------------------
+% STORAGE API
+%---------------------------------------------------------------------
+
+handle('GET', [<<"storages">>], _Req) ->
+    Storages = statser_config:get_storages(),
+    json(lists:map(fun prepare_storage/1, Storages));
+
+%---------------------------------------------------------------------
+% AGGREGATION API
+%---------------------------------------------------------------------
+
+handle('GET', [<<"aggregations">>], _Req) ->
+    Aggregations = statser_config:get_aggregations(),
+    json(lists:map(fun prepare_aggregation/1, Aggregations));
+
+%---------------------------------------------------------------------
+% BASE API
+%---------------------------------------------------------------------
 
 handle('OPTIONS', _Path, _Req) ->
     {200, ?DEFAULT_HEADERS_CORS, <<"">>};
@@ -103,6 +127,22 @@ prepare_node(Node) ->
 
     % not too sure if I am happy with this `list_to_atom`
     list_to_atom(binary_to_list(Node0)).
+
+
+prepare_storage(#storage_definition{name=Name, retentions=Rs}) ->
+    Retentions = lists:map(fun(Ret) ->
+                                   list_to_binary(Ret#retention_definition.raw)
+                           end, Rs),
+    {[{<<"name">>, list_to_binary(Name)},
+      {<<"retentions">>, Retentions}
+     ]}.
+
+
+prepare_aggregation(#aggregation_definition{name=Name, aggregation=Agg, factor=Factor}) ->
+    {[{<<"name">>, list_to_binary(Name)},
+      {<<"aggregation">>, Agg},
+      {<<"factor">>, Factor}
+     ]}.
 
 
 -spec connection_state(node_status()) -> connected | disconnected.
