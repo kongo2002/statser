@@ -28,7 +28,7 @@
 
 % root request
 handle('GET', [], _Req) ->
-    file:read_file(filename:join([?DOCROOT, "index.html"]));
+    {301, [{<<"Location">>, <<"/.statser/index.html">>}], []};
 
 % request metrics snapshot - 'pull-style' API
 handle('GET', [<<"metrics">>], _Req) ->

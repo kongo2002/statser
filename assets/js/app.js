@@ -1,1 +1,0 @@
-../../client/bin/app.js
