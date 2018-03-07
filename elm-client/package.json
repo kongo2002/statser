@@ -12,6 +12,6 @@
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack --mode development",
-    "client": "webpack-dev-server --port 3000"
+    "client": "webpack-dev-server --port 3000 --mode development"
   }
 }
