@@ -65,7 +65,7 @@ update msg model =
       model ! []
 
     BoolResult AddNodeCommand (Ok True) ->
-      model ! [ Ports.notification ("successfully connected", "primary") ]
+      model ! [ Ports.notification ("successfully connected", "primary"), Api.fetchNodes ]
 
     BoolResult AddNodeCommand res ->
       model ! [ Ports.notification ("failed to connect to node", "danger") ]
