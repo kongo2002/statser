@@ -117,7 +117,7 @@ viewControl model =
         let self =
             case elem.self of
               True -> [ text elem.node, small [] [ text " (self)" ] ]
-              False -> []
+              False -> [ text elem.node ]
             state =
               case elem.state of
                 Connected -> [icon "happy", text " connected"]
