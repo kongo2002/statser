@@ -22,7 +22,8 @@ svgMargin = 50
 view : Model -> Html Msg
 view model =
   let body = div [ class "uk-container" ] <| content model
-  in  div [] [ viewNavigation model, body ]
+      section = div [ class "uk-section" ] [ body ]
+  in  div [] [ viewNavigation model, section ]
 
 
 content : Model -> List (Html Msg)

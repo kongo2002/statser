@@ -6,6 +6,7 @@ import Icons from 'uikit/dist/js/uikit-icons';
 // load uikit icons
 UIkit.use(Icons);
 
+require('./uikit.statser.min.css');
 require('./index.html');
 
 // load elm application
