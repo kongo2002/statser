@@ -23,10 +23,12 @@ type Msg
   | PickLiveMetric String
   | UpdateNode String
   | AddNode
+  | RemoveNode String
 
 
 type Command
   = AddNodeCommand
+  | RemoveNodeCommand
 
 
 type Route

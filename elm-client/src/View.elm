@@ -134,7 +134,7 @@ viewControl model =
                 Disconnected -> [text "disconnected"]
             actions =
               case elem.self of
-                False -> [ a [ class "uk-icon-button", attribute "uk-icon" "ban" ] [] ]
+                False -> [ a [ class "uk-icon-button", attribute "uk-icon" "ban", onClick (RemoveNode elem.node) ] [] ]
                 True -> []
         in tr [] [ td [] self, td [] state, td [] actions ]
   in

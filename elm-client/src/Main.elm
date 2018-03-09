@@ -70,6 +70,12 @@ update msg model =
     BoolResult AddNodeCommand res ->
       model ! [ Ports.notification ("failed to connect to node", "danger") ]
 
+    BoolResult RemoveNodeCommand (Ok True) ->
+      model ! [ Ports.notification ("successfully disconnected", "primary"), Api.fetchNodes ]
+
+    BoolResult RemoveNodeCommand res ->
+      model ! [ Ports.notification ("failed to disconnect from node", "danger") ]
+
     PickLiveMetric metric ->
       let newModel = { model | liveMetric = metric }
           update = getEntries newModel
@@ -81,6 +87,9 @@ update msg model =
 
     AddNode ->
       model ! [ Api.addNode model.addNode ]
+
+    RemoveNode node ->
+      model ! [ Api.removeNode node ]
 
 
 getEntries : Model -> Cmd Msg
