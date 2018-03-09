@@ -14,8 +14,13 @@ import Types exposing (..)
 
 -- SVG related constants
 
+svgHeight : Int
 svgHeight = 240
+
+svgWidth : Int
 svgWidth  = 560
+
+svgMargin : Int
 svgMargin = 50
 
 
@@ -38,11 +43,13 @@ content model =
       viewDashboard model
 
 
+viewLead : Html Msg
 viewLead =
   p [ class "uk-text-lead" ]
     [ text "Find the most important operation metrics, statistics and health checkpoints on statser below." ]
 
 
+viewMetrics : Model -> List (Html Msg)
 viewMetrics model =
   let stat x = tr []
         [ td [ onClick (PickLiveMetric x.name) ] [ text x.name ]
@@ -68,6 +75,7 @@ viewMetrics model =
     ]
 
 
+viewHealths : Model -> List (Html Msg)
 viewHealths model =
   let health x =
         [ dt [] [ text x.name ]
@@ -90,6 +98,7 @@ viewHealths model =
     ]
 
 
+viewLive : List (Html Msg)
 viewLive =
   let width = svgWidth - 2 * svgMargin
       height = svgHeight - 2 * svgMargin
@@ -111,6 +120,7 @@ viewLive =
     ]
 
 
+viewControl : Model -> List (Html Msg)
 viewControl model =
   let header name = th [] [ text name ]
       node elem =
@@ -152,14 +162,17 @@ viewControl model =
     ]
 
 
+icon : String -> Html Msg
 icon name =
   span [ class "uk-icon", attribute "uk-icon" name ] []
 
 
+viewDashboard : Model -> List (Html Msg)
 viewDashboard model =
   [ viewLead , viewMeta ] ++ viewHealths model ++ viewLive ++ viewMetrics model
 
 
+viewMeta : Html Msg
 viewMeta =
   div [ class "uk-text-meta" ]
     [ text "This page's content is updated every 10 seconds. If this does not work for you, please try the "
@@ -168,6 +181,7 @@ viewMeta =
     ]
 
 
+viewNavigation : Model -> Html Msg
 viewNavigation model =
   let
     link name route =
