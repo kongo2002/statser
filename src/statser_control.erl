@@ -81,6 +81,20 @@ handle('GET', [<<"aggregations">>], _Req) ->
     Aggregations = statser_config:get_aggregations(),
     json(lists:map(fun prepare_aggregation/1, Aggregations));
 
+handle('POST', [<<"aggregations">>], Req) ->
+    Body = elli_request:body(Req),
+    lager:debug("POST /control/aggregations: ~p", [Body]),
+
+    case parse_json_of(Body, fun aggregation_from_json/1) of
+        #aggregation_definition{}=Agg ->
+            statser_config:add_aggregation(Agg),
+            ok();
+        {error, Error} ->
+            bad_request(Error);
+        error ->
+            bad_request(<<"invalid aggregation definition given">>)
+    end;
+
 %---------------------------------------------------------------------
 % BASE API
 %---------------------------------------------------------------------
@@ -145,6 +159,66 @@ prepare_aggregation(#aggregation_definition{name=Name, raw=Raw, aggregation=Agg,
       {<<"aggregation">>, Agg},
       {<<"factor">>, Factor}
      ]}.
+
+
+parse_json_of(Body, Func) ->
+    try
+        Json = jiffy:decode(Body),
+        Func(Json)
+    catch
+        _Error -> {error, <<"malformed JSON">>}
+    end.
+
+
+aggregation_from_json({Json}) ->
+    Vs = [get_non_empty(<<"name">>, Json),
+          get_non_empty(<<"pattern">>, Json),
+          statser_config:parse_aggregation(get_non_empty(<<"aggregation">>, Json)),
+          get_number(<<"factor">>, Json, 0.5)
+         ],
+
+    case validate(Vs) of
+        [Name, Pattern, Agg, Factor] ->
+            case re:compile(Pattern, [no_auto_capture]) of
+                {ok, Regex} ->
+                    #aggregation_definition{
+                       name=Name,
+                       raw=Pattern,
+                       pattern=Regex,
+                       aggregation=Agg,
+                       factor=Factor};
+                _Error -> error
+            end;
+        _Error -> error
+    end;
+
+aggregation_from_json(_) -> error.
+
+
+validate([]) -> error;
+validate(Xs) ->
+    case lists:any(fun(error) -> true;
+                      (_Else) -> false
+                   end, Xs) of
+        true -> error;
+        _Else -> Xs
+    end.
+
+
+get_non_empty(Key, Input) ->
+    case proplists:get_value(Key, Input, error) of
+        [] -> error;
+        <<>> -> error;
+        Value when is_binary(Value) -> binary_to_list(Value);
+        _Otherwise -> error
+    end.
+
+
+get_number(Key, Input, Default) ->
+    case proplists:get_value(Key, Input, Default) of
+        Value when is_number(Value) -> Value;
+        _Otherwise -> error
+    end.
 
 
 -spec connection_state(node_status()) -> connected | disconnected.
