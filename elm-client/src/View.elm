@@ -122,7 +122,10 @@ viewLive =
 
 viewControl : Model -> List (Html Msg)
 viewControl model =
-  (viewNodes model) ++ (viewAggregations model)
+  let nodes = viewNodes model
+      aggregations = viewAggregations model
+      storages = viewStorages model
+  in  storages ++ aggregations ++ nodes
 
 
 header : String -> Html Msg
@@ -172,7 +175,7 @@ viewNodes model =
 
 viewAggregations : Model -> List (Html Msg)
 viewAggregations model =
-  let aggRow agg =
+  let row agg =
         tr []
           [ td [] [ text agg.name ]
           , td [] [ text agg.pattern ]
@@ -188,7 +191,29 @@ viewAggregations model =
       , class "uk-table-responsive"
       ]
       [ thead [] [ header "Name", header "Pattern", header "Aggregation", header "Factor" ]
-      , tbody [] (List.map aggRow model.aggregations)
+      , tbody [] (List.map row model.aggregations)
+      ]
+    ]
+
+
+viewStorages : Model -> List (Html Msg)
+viewStorages model =
+  let row storage =
+        tr []
+          [ td [] [ text storage.name ]
+          , td [] [ text storage.pattern ]
+          , td [] [ text (String.join ", " storage.retentions) ]
+          ]
+  in
+    [ h2 [] [ text "Storage rules" ]
+    , table
+      [ id "storages"
+      , class "uk-table"
+      , class "uk-table-divider"
+      , class "uk-table-responsive"
+      ]
+      [ thead [] [ header "Name", header "Pattern", header "Retentions" ]
+      , tbody [] (List.map row model.storages)
       ]
     ]
 

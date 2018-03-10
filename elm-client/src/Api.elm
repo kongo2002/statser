@@ -1,4 +1,4 @@
-module Api exposing ( addNode, removeNode, fetch, fetchMetrics, fetchNodes, fetchAggregations )
+module Api exposing ( addNode, removeNode, fetch, fetchMetrics, fetchNodes, fetchAggregations, fetchStorages )
 
 import Http
 import Json.Encode as Encode
@@ -34,7 +34,7 @@ removeNode node =
 fetch route =
   case route of
     Dashboard -> [ fetchMetrics ]
-    Control -> [ fetchNodes, fetchAggregations ]
+    Control -> [ fetchNodes, fetchAggregations, fetchStorages ]
     _ -> []
 
 
@@ -54,6 +54,12 @@ fetchAggregations =
   let url0 = url "/.statser/control/aggregations"
       request = Http.get url0 Types.mkAggregations
   in  Http.send AggregationsUpdate request
+
+
+fetchStorages =
+  let url0 = url "/.statser/control/storages"
+      request = Http.get url0 Types.mkStorages
+  in  Http.send StoragesUpdate request
 
 
 delete : String -> Http.Body -> Decode.Decoder a -> Http.Request a

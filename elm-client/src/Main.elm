@@ -22,7 +22,7 @@ historyEntries = 20
 emptyModel : Route -> Model
 emptyModel route =
   let history = StatHistory 0 Dict.empty
-  in  Model route history Dict.empty [] defaultLiveMetric [] "" []
+  in  Model route history Dict.empty [] defaultLiveMetric [] "" [] []
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
@@ -69,6 +69,13 @@ update msg model =
       in  newModel ! []
 
     AggregationsUpdate _ ->
+      model ! []
+
+    StoragesUpdate (Ok storages) ->
+      let newModel = { model | storages = storages }
+      in  newModel ! []
+
+    StoragesUpdate _ ->
       model ! []
 
     BoolResult AddNodeCommand (Ok True) ->

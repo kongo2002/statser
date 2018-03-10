@@ -19,6 +19,7 @@ type Msg
   | StatsUpdate (Result Http.Error (Dict.Dict String Stat, List Health, Int))
   | NodesUpdate (Result Http.Error (List Node))
   | AggregationsUpdate (Result Http.Error (List Aggregation))
+  | StoragesUpdate (Result Http.Error (List Storage))
   | BoolResult Command (Result Http.Error Bool)
   -- commands
   | PickLiveMetric String
@@ -47,6 +48,7 @@ type alias Model =
   , nodes : List Node
   , addNode : String
   , aggregations : List Aggregation
+  , storages : List Storage
   }
 
 
@@ -80,6 +82,14 @@ type alias Aggregation =
   , aggregation : String
   , pattern : String
   , factor : Float
+  }
+
+
+type alias Storage =
+  { name : String
+  , pattern : String
+  -- TODO: this might be an explicit type 'Retention'
+  , retentions : List String
   }
 
 
@@ -157,6 +167,19 @@ mkAggregation =
     (field "aggregation" string)
     (field "pattern" string)
     (field "factor" float)
+
+
+mkStorages : Decoder (List Storage)
+mkStorages =
+  list mkStorage
+
+
+mkStorage : Decoder Storage
+mkStorage =
+  map3 Storage
+    (field "name" string)
+    (field "pattern" string)
+    (field "retentions" (list string))
 
 
 mkNodes : Decoder (List Node)
