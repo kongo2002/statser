@@ -34,7 +34,9 @@
          get_api_config/0,
          metric_passes_filters/2,
          udp_is_enabled/1,
-         protobuf_is_enabled/1]).
+         protobuf_is_enabled/1,
+         add_aggregation/1,
+         add_storage/1]).
 
 
 -define(STATSER_DEFAULT_CONFIG, "statser.yaml").
@@ -105,6 +107,26 @@ get_metadata(Path) ->
     AggDefinition = first_aggregation(Path, Aggregations),
 
     {StorDefinition, AggDefinition}.
+
+
+-spec add_aggregation(aggregation_definition()) -> ok.
+add_aggregation(Aggregation) ->
+    % XXX: concurrent access...
+    Aggs = get_aggregations(),
+    update(aggregations, [Aggregation | Aggs]),
+
+    % TODO: some sort of notification to 'interested' components?
+    ok.
+
+
+-spec add_storage(storage_definition()) -> ok.
+add_storage(Storage) ->
+    % XXX: concurrent access...
+    Ss = get_storages(),
+    update(storages, [Storage | Ss]),
+
+    % TODO: some sort of notification to 'interested' components?
+    ok.
 
 
 -spec get_storages() -> [storage_definition()].
