@@ -389,7 +389,7 @@ load_storage([{Name, Elements} = Storage | Ss], Acc) ->
         {P, Rs} ->
             case re:compile(P, [no_auto_capture]) of
                 {ok, Regex} ->
-                    New = #storage_definition{name=Name, pattern=Regex, retentions=Rs},
+                    New = #storage_definition{name=Name, raw=P, pattern=Regex, retentions=Rs},
                     load_storage(Ss, [New | Acc]);
                 {error, Err} ->
                     lager:warning("skipping invalid storage definition '~w': ~p", [Name, Err]),
@@ -487,6 +487,7 @@ load_aggregation([{Name, Elements} = Aggregation| As], Acc) ->
                 {ok, Regex} ->
                     ParsedAgg = parse_aggregation(Agg),
                     New = #aggregation_definition{name=Name,
+                                                  raw=P,
                                                   pattern=Regex,
                                                   aggregation=ParsedAgg,
                                                   factor=Factor},

@@ -129,17 +129,19 @@ prepare_node(Node) ->
     list_to_atom(binary_to_list(Node0)).
 
 
-prepare_storage(#storage_definition{name=Name, retentions=Rs}) ->
+prepare_storage(#storage_definition{name=Name, raw=Raw, retentions=Rs}) ->
     Retentions = lists:map(fun(Ret) ->
                                    list_to_binary(Ret#retention_definition.raw)
                            end, Rs),
     {[{<<"name">>, list_to_binary(Name)},
+      {<<"pattern">>, list_to_binary(Raw)},
       {<<"retentions">>, Retentions}
      ]}.
 
 
-prepare_aggregation(#aggregation_definition{name=Name, aggregation=Agg, factor=Factor}) ->
+prepare_aggregation(#aggregation_definition{name=Name, raw=Raw, aggregation=Agg, factor=Factor}) ->
     {[{<<"name">>, list_to_binary(Name)},
+      {<<"pattern">>, list_to_binary(Raw)},
       {<<"aggregation">>, Agg},
       {<<"factor">>, Factor}
      ]}.

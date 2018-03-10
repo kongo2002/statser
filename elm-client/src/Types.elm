@@ -18,6 +18,7 @@ type Msg
   -- response types
   | StatsUpdate (Result Http.Error (Dict.Dict String Stat, List Health, Int))
   | NodesUpdate (Result Http.Error (List Node))
+  | AggregationsUpdate (Result Http.Error (List Aggregation))
   | BoolResult Command (Result Http.Error Bool)
   -- commands
   | PickLiveMetric String
@@ -45,6 +46,7 @@ type alias Model =
   , liveMetric : String
   , nodes : List Node
   , addNode : String
+  , aggregations : List Aggregation
   }
 
 
@@ -71,6 +73,14 @@ type alias Health =
 type StatType
   = Average
   | Counter
+
+
+type alias Aggregation =
+  { name : String
+  , aggregation : String
+  , pattern : String
+  , factor : Float
+  }
 
 
 type alias Node =
@@ -133,6 +143,20 @@ statType stat =
   case stat of
     "average" -> Average
     _ -> Counter
+
+
+mkAggregations : Decoder (List Aggregation)
+mkAggregations =
+  list mkAggregation
+
+
+mkAggregation : Decoder Aggregation
+mkAggregation =
+  map4 Aggregation
+    (field "name" string)
+    (field "aggregation" string)
+    (field "pattern" string)
+    (field "factor" float)
 
 
 mkNodes : Decoder (List Node)
