@@ -36,6 +36,7 @@
          udp_is_enabled/1,
          protobuf_is_enabled/1,
          parse_aggregation/1,
+         parse_retentions/1,
          add_aggregation/1,
          add_storage/1]).
 

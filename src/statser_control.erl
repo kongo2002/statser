@@ -41,7 +41,7 @@ handle('DELETE', [<<"nodes">>], Req) ->
     Body = elli_request:body(Req),
     lager:debug("DELETE /control/nodes: ~p", [Body]),
 
-    case parse_node_info(Body) of
+    case parse_json_of(Body, fun parse_node_info/1) of
         {ok, Node} ->
             case statser_discoverer:disconnect(Node) of
                 true -> ok();
@@ -55,7 +55,7 @@ handle('POST', [<<"nodes">>], Req) ->
     Body = elli_request:body(Req),
     lager:debug("POST /control/nodes: ~p", [Body]),
 
-    case parse_node_info(Body) of
+    case parse_json_of(Body, fun parse_node_info/1) of
         {ok, Node} ->
             case statser_discoverer:connect(Node) of
                 true -> ok();
@@ -72,6 +72,20 @@ handle('POST', [<<"nodes">>], Req) ->
 handle('GET', [<<"storages">>], _Req) ->
     Storages = statser_config:get_storages(),
     json(lists:map(fun prepare_storage/1, Storages));
+
+handle('POST', [<<"storages">>], Req) ->
+    Body = elli_request:body(Req),
+    lager:debug("POST /control/storages: ~p", [Body]),
+
+    case parse_json_of(Body, fun storage_from_json/1) of
+        #storage_definition{}=Storage ->
+            statser_config:add_storage(Storage),
+            ok();
+        {error, Error} ->
+            bad_request(Error);
+        error ->
+            bad_request(<<"invalid storage definition given">>)
+    end;
 
 %---------------------------------------------------------------------
 % AGGREGATION API
@@ -110,16 +124,7 @@ handle(_Method, _Path, _Req) ->
 %%% Internal functions
 %%%===================================================================
 
-parse_node_info(Binary) ->
-    try
-        Json = jiffy:decode(Binary),
-        parse_node_info0(Json)
-    catch
-        _Error -> {error, <<"malformed JSON">>}
-    end.
-
-
-parse_node_info0({Nodes}) when is_list(Nodes) ->
+parse_node_info({Nodes}) when is_list(Nodes) ->
     case proplists:get_value(<<"node">>, Nodes) of
         undefined ->
             {error, <<"missing 'node'">>};
@@ -129,7 +134,7 @@ parse_node_info0({Nodes}) when is_list(Nodes) ->
             {error, <<"invalid 'node' data">>}
     end;
 
-parse_node_info0(_Json) ->
+parse_node_info(_Json) ->
     {error, <<"invalid JSON">>}.
 
 
@@ -170,7 +175,34 @@ parse_json_of(Body, Func) ->
     end.
 
 
-aggregation_from_json({Json}) ->
+storage_from_json({Json}) when is_list(Json) ->
+    Vs = [get_non_empty(<<"name">>, Json),
+          get_non_empty(<<"pattern">>, Json),
+          get_string_list(<<"retentions">>, Json)
+         ],
+
+    case validate(Vs) of
+        [Name, Pattern, Retentions] ->
+            Rs0 = statser_config:parse_retentions(Retentions),
+            case {re:compile(Pattern, [no_auto_capture]), Rs0} of
+                {_, []} ->
+                    {error, <<"invalid retentions given">>};
+                {{ok, Regex}, Rs} ->
+                    #storage_definition{
+                       name=Name,
+                       raw=Pattern,
+                       pattern=Regex,
+                       retentions=Rs};
+                _Error -> error
+            end;
+        _Error -> error
+    end;
+
+storage_from_json(_Invalid) ->
+    {error, <<"invalid JSON">>}.
+
+
+aggregation_from_json({Json}) when is_list(Json) ->
     Vs = [get_non_empty(<<"name">>, Json),
           get_non_empty(<<"pattern">>, Json),
           statser_config:parse_aggregation(get_non_empty(<<"aggregation">>, Json)),
@@ -192,7 +224,8 @@ aggregation_from_json({Json}) ->
         _Error -> error
     end;
 
-aggregation_from_json(_) -> error.
+aggregation_from_json(_Invalid) ->
+    {error, <<"invalid JSON">>}.
 
 
 validate([]) -> error;
@@ -202,6 +235,18 @@ validate(Xs) ->
                    end, Xs) of
         true -> error;
         _Else -> Xs
+    end.
+
+
+get_string_list(Key, Input) ->
+    case proplists:get_value(Key, Input, error) of
+        error -> error;
+        [] -> error;
+        Vs ->
+            case lists:all(fun is_binary/1, Vs) of
+                true -> lists:map(fun binary_to_list/1, Vs);
+                false -> error
+            end
     end.
 
 
