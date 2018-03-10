@@ -147,7 +147,7 @@ viewNodes model =
               case elem.self of
                 False -> [ a [ class "uk-icon-button", attribute "uk-icon" "ban", onClick (RemoveNode elem.node) ] [] ]
                 True -> []
-        in tr [] [ td [] self, td [] state, td [] actions ]
+        in tr [] [ td [ class "uk-text-bold" ] self, td [] state, td [] actions ]
   in
     [ h2 [] [ text "Nodes" ]
     , table
@@ -177,7 +177,7 @@ viewAggregations : Model -> List (Html Msg)
 viewAggregations model =
   let row agg =
         tr []
-          [ td [] [ text agg.name ]
+          [ td [ class "uk-text-bold" ] [ text agg.name ]
           , td [] [ text agg.pattern ]
           , td [] [ text agg.aggregation ]
           , td [] [ text (toString agg.factor) ]
@@ -200,7 +200,7 @@ viewStorages : Model -> List (Html Msg)
 viewStorages model =
   let row storage =
         tr []
-          [ td [] [ text storage.name ]
+          [ td [ class "uk-text-bold" ] [ text storage.name ]
           , td [] [ text storage.pattern ]
           , td [] [ text (String.join ", " storage.retentions) ]
           ]
