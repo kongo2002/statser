@@ -127,6 +127,7 @@ update msg model =
       in  newModel ! []
 
 
+getAggregation : Model -> Aggregation
 getAggregation model =
   -- TODO: this feels pretty 'boiler-platey'...
   let name = getFieldEmpty AggregationNameKey model
