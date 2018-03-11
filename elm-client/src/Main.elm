@@ -90,6 +90,20 @@ update msg model =
     BoolResult RemoveNodeCommand res ->
       model ! [ Ports.notification ("failed to disconnect from node", "danger") ]
 
+    BoolResult AddAggregationCommand (Ok True) ->
+      model ! [ Ports.notification ("successfully added new aggregation rule", "primary")
+              , Api.fetchAggregations ]
+
+    BoolResult AddAggregationCommand res ->
+      model ! [ Ports.notification ("failed to add new aggregation rule", "danger") ]
+
+    BoolResult AddStorageCommand (Ok True) ->
+      model ! [ Ports.notification ("successfully added new storage rule", "primary")
+              , Api.fetchStorages ]
+
+    BoolResult AddStorageCommand res ->
+      model ! [ Ports.notification ("failed to add new storage rule", "danger") ]
+
     PickLiveMetric metric ->
       let newModel = { model | liveMetric = metric }
           update = getEntries newModel

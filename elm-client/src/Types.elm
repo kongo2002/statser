@@ -31,6 +31,8 @@ type Msg
 type Command
   = AddNodeCommand
   | RemoveNodeCommand
+  | AddAggregationCommand
+  | AddStorageCommand
 
 
 type Route
