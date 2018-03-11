@@ -293,3 +293,32 @@ json(Data) ->
 
 ok() ->
     json({[{<<"success">>, true}]}).
+
+
+%%
+%% TESTS
+%%
+
+-ifdef(TEST).
+
+storage_from_json_test_() ->
+    [?_assertEqual(error, storage_from_json({[{<<"name">>, <<"test">>}]})),
+     ?_assertEqual(error, storage_from_json({[{<<"name">>, <<"test">>},
+                                              {<<"pattern">>, <<"**">>},
+                                              {<<"retentions">>, [<<"60:7d">>]}
+                                             ]})),
+     ?_assertMatch(#storage_definition{}, storage_from_json({[{<<"name">>, <<"test">>},
+                                                              {<<"pattern">>, <<"abc">>},
+                                                              {<<"retentions">>, [<<"60:7d">>]}
+                                                             ]}))
+    ].
+
+aggregation_from_json_test_() ->
+    [?_assertEqual(error, aggregation_from_json({[{<<"name">>, <<"test">>}]})),
+     ?_assertEqual(error, aggregation_from_json({[{<<"name">>, <<"test">>},
+                                                  {<<"pattern">>, <<"**">>}]})),
+     ?_assertMatch(#aggregation_definition{}, aggregation_from_json({[{<<"name">>, <<"test">>},
+                                                                      {<<"pattern">>, <<"abc">>}]}))
+    ].
+
+-endif.
