@@ -22,7 +22,7 @@ historyEntries = 20
 emptyModel : Route -> Model
 emptyModel route =
   let history = StatHistory 0 Dict.empty
-  in  Model route history Dict.empty [] defaultLiveMetric [] "" [] []
+  in  Model route history Dict.empty [] defaultLiveMetric [] [] [] Dict.empty
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
@@ -111,15 +111,35 @@ update msg model =
           update = getEntries newModel
       in  newModel ! [ update ]
 
-    UpdateNode node ->
-      let newModel = { model | addNode = node }
-      in  newModel ! []
-
     AddNode ->
-      model ! [ Api.addNode model.addNode ]
+      let nodeName = getFieldEmpty NodeNameKey model
+      in  model ! [ Api.addNode nodeName ]
 
     RemoveNode node ->
       model ! [ Api.removeNode node ]
+
+    AddAggregation ->
+      let agg = getAggregation model
+      in  model ! [ Api.addAggregation agg ]
+
+    SetField key value ->
+      let newModel = setField key model value
+      in  newModel ! []
+
+
+getAggregation model =
+  -- TODO: this feels pretty 'boiler-platey'...
+  let name = getFieldEmpty AggregationNameKey model
+      pattern = getFieldEmpty AggregationPatternKey model
+      agg = getFieldEmpty AggregationAggregationKey model
+      factor = getField AggregationFactorKey model |> Maybe.andThen tryFloat |> Maybe.withDefault 0.5
+  in  Aggregation name pattern agg factor
+
+
+tryFloat : String -> Maybe Float
+tryFloat input =
+  String.toFloat input
+  |> Result.toMaybe
 
 
 getEntries : Model -> Cmd Msg
@@ -127,6 +147,25 @@ getEntries model =
   let liveMetric = model.liveMetric
       entries = Maybe.withDefault [] (Dict.get liveMetric model.history.entries)
   in  Ports.liveUpdate (liveMetric, entries)
+
+
+setField : FieldKey -> Model -> String -> Model
+setField key model value =
+  let comp = fieldKey key
+      fields = Dict.insert comp value model.fields
+  in  { model | fields = fields }
+
+
+getField : FieldKey -> Model -> Maybe String
+getField key model =
+  let comp = fieldKey key
+  in  Dict.get comp model.fields
+
+
+getFieldEmpty : FieldKey -> Model -> String
+getFieldEmpty key model =
+  getField key model
+  |> Maybe.withDefault ""
 
 
 toHistory : StatHistory -> Int -> (Dict.Dict String Stat) -> StatHistory

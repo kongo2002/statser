@@ -163,7 +163,7 @@ viewNodes model =
       [ input
         [ class "uk-input"
         , attribute "placeholder" "statser@node"
-        , onInput UpdateNode
+        , onInput (SetField NodeNameKey)
         ] []
       , a [ class "uk-form-icon uk-form-icon-flip"
           , attribute "uk-icon" "plus-circle"
@@ -171,6 +171,15 @@ viewNodes model =
           ] []
       ]
     ]
+
+
+setFieldInput : FieldKey -> String -> (Html Msg)
+setFieldInput key placeholder =
+  input
+    [ class "uk-input"
+    , attribute "placeholder" placeholder
+    , onInput (SetField key)
+    ] []
 
 
 viewAggregations : Model -> List (Html Msg)
@@ -184,17 +193,15 @@ viewAggregations model =
           ]
       inputRow =
         tr []
-          [ td [ class "uk-text-bold" ] [ input [ class "uk-input", attribute "placeholder" "name" ] [] ]
-          , td [] [ input [ class "uk-input", attribute "placeholder" "pattern" ] [] ]
-          , td [] [ input [ class "uk-input", attribute "placeholder" "average" ] [] ]
+          [ td [ class "uk-text-bold" ] [ setFieldInput AggregationNameKey "name" ]
+          , td [] [ setFieldInput AggregationPatternKey "pattern" ]
+          , td [] [ setFieldInput AggregationAggregationKey "average" ]
           , td []
             [  div [ class "uk-inline" ]
-              [ input
-                [ class "uk-input"
-                , attribute "placeholder" "0.5"
-                ] []
+              [ setFieldInput AggregationFactorKey "0.5"
               , a [ class "uk-form-icon uk-form-icon-flip"
                   , attribute "uk-icon" "plus-circle"
+                  , onClick AddAggregation
                   ] []
               ]
             ]
@@ -225,14 +232,11 @@ viewStorages model =
           ]
       inputRow =
         tr []
-          [ td [ class "uk-text-bold" ] [ input [ class "uk-input", attribute "placeholder" "name" ] [] ]
-          , td [] [ input [ class "uk-input", attribute "placeholder" "pattern" ] [] ]
+          [ td [ class "uk-text-bold" ] [ setFieldInput StorageNameKey "name" ]
+          , td [] [ setFieldInput StoragePatternKey "pattern" ]
           , td []
             [  div [ class "uk-inline" ]
-              [ input
-                [ class "uk-input"
-                , attribute "placeholder" "60:1d"
-                ] []
+              [ setFieldInput StorageRetentionsKey "60:1d"
               , a [ class "uk-form-icon uk-form-icon-flip"
                   , attribute "uk-icon" "plus-circle"
                   ] []

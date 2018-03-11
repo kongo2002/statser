@@ -1,6 +1,5 @@
 module Types exposing (..)
 
-import Array
 import Date
 import Dict
 import Http
@@ -23,9 +22,11 @@ type Msg
   | BoolResult Command (Result Http.Error Bool)
   -- commands
   | PickLiveMetric String
-  | UpdateNode String
   | AddNode
   | RemoveNode String
+  | AddAggregation
+  -- fields
+  | SetField FieldKey String
 
 
 type Command
@@ -41,6 +42,20 @@ type Route
   | Login
 
 
+type FieldKey
+  -- add node form
+  = NodeNameKey
+  -- add aggregation form
+  | AggregationNameKey
+  | AggregationPatternKey
+  | AggregationAggregationKey
+  | AggregationFactorKey
+  -- add storage form
+  | StorageNameKey
+  | StoragePatternKey
+  | StorageRetentionsKey
+
+
 type alias Model =
   { route : Route
   , history : StatHistory
@@ -48,9 +63,9 @@ type alias Model =
   , healths : List Health
   , liveMetric : String
   , nodes : List Node
-  , addNode : String
   , aggregations : List Aggregation
   , storages : List Storage
+  , fields : Dict.Dict Int String
   }
 
 
@@ -105,6 +120,22 @@ type alias Node =
 type NodeState
   = Connected
   | Disconnected
+
+
+-- FIELDS
+
+fieldKey : FieldKey -> Int
+fieldKey key =
+  -- I would love to use the FieldKey as Dict key but it's not comparable...
+  case key of
+    NodeNameKey               -> 1
+    AggregationNameKey        -> 2
+    AggregationPatternKey     -> 3
+    AggregationAggregationKey -> 4
+    AggregationFactorKey      -> 5
+    StorageNameKey            -> 6
+    StoragePatternKey         -> 7
+    StorageRetentionsKey      -> 8
 
 
 -- DECODERS
