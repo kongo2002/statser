@@ -232,7 +232,7 @@ aggregation_from_json(_Invalid) ->
 
 validate(Values) ->
     % we are searching for any errors while simply
-    % keeping the first one found so far
+    % keeping the first one found if any
     lists:foldr(fun(_, error) -> error;
                    (_, {error, _Reason}=E) -> E;
                    (error, _) -> error;
