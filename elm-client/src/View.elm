@@ -182,6 +182,25 @@ viewAggregations model =
           , td [] [ text agg.aggregation ]
           , td [] [ text (toString agg.factor) ]
           ]
+      inputRow =
+        tr []
+          [ td [ class "uk-text-bold" ] [ input [ class "uk-input", attribute "placeholder" "name" ] [] ]
+          , td [] [ input [ class "uk-input", attribute "placeholder" "pattern" ] [] ]
+          , td [] [ input [ class "uk-input", attribute "placeholder" "average" ] [] ]
+          , td []
+            [  div [ class "uk-inline" ]
+              [ input
+                [ class "uk-input"
+                , attribute "placeholder" "0.5"
+                ] []
+              , a [ class "uk-form-icon uk-form-icon-flip"
+                  , attribute "uk-icon" "plus-circle"
+                  ] []
+              ]
+            ]
+          ]
+      aggregations = List.map row model.aggregations
+      rows = aggregations ++ [inputRow]
   in
     [ h2 [] [ text "Aggregation rules" ]
     , table
@@ -191,7 +210,7 @@ viewAggregations model =
       , class "uk-table-responsive"
       ]
       [ thead [] [ header "Name", header "Pattern", header "Aggregation", header "Factor" ]
-      , tbody [] (List.map row model.aggregations)
+      , tbody [] rows
       ]
     ]
 
@@ -204,6 +223,24 @@ viewStorages model =
           , td [] [ text storage.pattern ]
           , td [] [ text (String.join ", " storage.retentions) ]
           ]
+      inputRow =
+        tr []
+          [ td [ class "uk-text-bold" ] [ input [ class "uk-input", attribute "placeholder" "name" ] [] ]
+          , td [] [ input [ class "uk-input", attribute "placeholder" "pattern" ] [] ]
+          , td []
+            [  div [ class "uk-inline" ]
+              [ input
+                [ class "uk-input"
+                , attribute "placeholder" "60:1d"
+                ] []
+              , a [ class "uk-form-icon uk-form-icon-flip"
+                  , attribute "uk-icon" "plus-circle"
+                  ] []
+              ]
+            ]
+          ]
+      storages = List.map row model.storages
+      rows = storages ++ [inputRow]
   in
     [ h2 [] [ text "Storage rules" ]
     , table
@@ -213,7 +250,7 @@ viewStorages model =
       , class "uk-table-responsive"
       ]
       [ thead [] [ header "Name", header "Pattern", header "Retentions" ]
-      , tbody [] (List.map row model.storages)
+      , tbody [] rows
       ]
     ]
 
