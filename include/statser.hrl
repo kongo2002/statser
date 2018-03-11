@@ -107,7 +107,7 @@
 
 -record(storage_definition, {
           name :: nonempty_string(),
-          raw :: nonempty_string(),
+          raw :: nonempty_string() | undefined,
           pattern :: tuple() | undefined,
           retentions :: [retention_definition(),...]
          }).
@@ -116,7 +116,7 @@
 
 -record(aggregation_definition, {
           name :: nonempty_string(),
-          raw :: nonempty_string(),
+          raw :: nonempty_string() | undefined,
           pattern :: tuple() | undefined,
           aggregation :: aggregation(),
           factor :: float()
