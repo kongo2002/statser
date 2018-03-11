@@ -78,6 +78,8 @@ update msg model =
     StoragesUpdate _ ->
       model ! []
 
+    -- TODO: this 'BoolResult' pattern is an abstraction candidate for sure
+
     BoolResult AddNodeCommand (Ok True) ->
       model ! [ Ports.notification ("successfully connected", "primary"), Api.fetchNodes ]
 
