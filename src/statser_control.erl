@@ -193,9 +193,10 @@ storage_from_json({Json}) when is_list(Json) ->
                        raw=Pattern,
                        pattern=Regex,
                        retentions=Rs};
-                _Error -> error
+                _Error -> {error, <<"invalid pattern expression">>}
             end;
-        _Error -> error
+        [] -> error;
+        Error -> Error
     end;
 
 storage_from_json(_Invalid) ->
@@ -219,23 +220,25 @@ aggregation_from_json({Json}) when is_list(Json) ->
                        pattern=Regex,
                        aggregation=Agg,
                        factor=Factor};
-                _Error -> error
+                _Error -> {error, <<"invalid pattern expression">>}
             end;
-        _Error -> error
+        [] -> error;
+        Error -> Error
     end;
 
 aggregation_from_json(_Invalid) ->
     {error, <<"invalid JSON">>}.
 
 
-validate([]) -> error;
-validate(Xs) ->
-    case lists:any(fun(error) -> true;
-                      (_Else) -> false
-                   end, Xs) of
-        true -> error;
-        _Else -> Xs
-    end.
+validate(Values) ->
+    % we are searching for any errors while simply
+    % keeping the first one found so far
+    lists:foldr(fun(_, error) -> error;
+                   (_, {error, _Reason}=E) -> E;
+                   (error, _) -> error;
+                   ({error, _Reason}=E, _) -> E;
+                   (Result, Rs) -> [Result | Rs]
+                end, [], Values).
 
 
 get_string_list(Key, Input) ->
@@ -303,7 +306,7 @@ ok() ->
 
 storage_from_json_test_() ->
     [?_assertEqual(error, storage_from_json({[{<<"name">>, <<"test">>}]})),
-     ?_assertEqual(error, storage_from_json({[{<<"name">>, <<"test">>},
+     ?_assertEqual({error, <<"invalid pattern expression">>}, storage_from_json({[{<<"name">>, <<"test">>},
                                               {<<"pattern">>, <<"**">>},
                                               {<<"retentions">>, [<<"60:7d">>]}
                                              ]})),
@@ -315,7 +318,7 @@ storage_from_json_test_() ->
 
 aggregation_from_json_test_() ->
     [?_assertEqual(error, aggregation_from_json({[{<<"name">>, <<"test">>}]})),
-     ?_assertEqual(error, aggregation_from_json({[{<<"name">>, <<"test">>},
+     ?_assertEqual({error, <<"invalid pattern expression">>}, aggregation_from_json({[{<<"name">>, <<"test">>},
                                                   {<<"pattern">>, <<"**">>}]})),
      ?_assertMatch(#aggregation_definition{}, aggregation_from_json({[{<<"name">>, <<"test">>},
                                                                       {<<"pattern">>, <<"abc">>}]}))
