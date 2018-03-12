@@ -18,7 +18,7 @@ splitByCommas : String -> List String
 splitByCommas input =
   let rgx = Regex.regex "[ \\t,]+"
       parts = Regex.split Regex.All rgx input
-  in  List.filter (\part -> not <| String.isEmpty part) parts
+  in  List.filter (String.isEmpty >> not) parts
 
 
 -- vim: et sw=2 sts=2
