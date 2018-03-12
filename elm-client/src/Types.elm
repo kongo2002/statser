@@ -25,6 +25,7 @@ type Msg
   | AddNode
   | RemoveNode String
   | AddAggregation
+  | AddStorage
   -- fields
   | SetField FieldKey String
 
