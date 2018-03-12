@@ -239,6 +239,7 @@ viewStorages model =
               [ setFieldInput StorageRetentionsKey "60:1d"
               , a [ class "uk-form-icon uk-form-icon-flip"
                   , attribute "uk-icon" "plus-circle"
+                  , onClick AddStorage
                   ] []
               ]
             ]

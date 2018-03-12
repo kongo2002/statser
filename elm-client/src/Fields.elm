@@ -31,7 +31,7 @@ getStorage model =
   let name = getFieldEmpty StorageNameKey model
       pattern = getFieldEmpty StoragePatternKey model
       rets = getFieldEmpty StorageRetentionsKey model
-      retentions = String.split "," rets
+      retentions = Utils.splitByCommas rets
   in  Storage name pattern retentions
 
 
