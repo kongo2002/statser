@@ -9,7 +9,6 @@ import Fields
 import Ports
 import Routing
 import Types exposing (..)
-import Utils
 import View
 
 
