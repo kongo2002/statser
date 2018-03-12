@@ -17,7 +17,8 @@ tryFloatDefault default =
 splitByCommas : String -> List String
 splitByCommas input =
   let rgx = Regex.regex "[ \\t,]+"
-  in  Regex.split Regex.All rgx input
+      parts = Regex.split Regex.All rgx input
+  in  List.filter (\part -> not <| String.isEmpty part) parts
 
 
 -- vim: et sw=2 sts=2
