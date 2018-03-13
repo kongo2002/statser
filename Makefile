@@ -1,7 +1,7 @@
 SRCS     := $(wildcard src/*)
 INCLUDES := $(wildcard includes/*)
 
-.PHONY:	all server client clean release test rebuild
+.PHONY:	all server client clean release start test rebuild
 
 all: server client
 
@@ -13,6 +13,9 @@ server: $(SRCS) $(INCLUDES)
 
 release: all
 	rebar3 release
+
+start: all
+	@./start.sh
 
 test:
 	rebar3 eunit
