@@ -44,12 +44,22 @@ be solved in a distributed erlang-powered application.
 ### Requirements
 
 * erlang OTP >= 19
+* node-js *(for client only)*
 
 
 ### Compile
 
-The project is powered by [rebar3][rebar3], so expect the common commands to
-work as expected:
+You can build the project's components by using the `Makefile`:
+
+    $ make
+
+The server and client parts can also be built separately:
+
+    $ make server
+    $ make client
+
+However since the project is powered by [rebar3][rebar3], you may also directly
+invoke all common commands directly:
 
     $ rebar3 compile
 
@@ -58,14 +68,39 @@ work as expected:
 
 After successful compilation you can quickly start a development *statser*
 instance with the sample `start.sh` script. The script uses default options that
-spawn port `2003` (carbon plain text interface) and `8080` (metrics API):
+spawn port `2003` (carbon plain text interface), port `8080` (metrics API) and
+`8125/udp` (StatsD interface):
 
-    $ rebar3 compile && ./start.sh
+    $ ./start.sh
+
+Now you can already ingest metrics, e.g. by using `netcat`:
+
+```
+# push some test metrics
+$ echo "test.foo 100.1" | nc --send-only localhost 2003
+$ echo "test.bar 200.2" | nc --send-only localhost 2003
+
+# fetch metrics
+$ curl localhost:8080 -XPOST -d 'target=test.*' -d 'maxDataPoints=5'
+[{"target":"test.bar",
+  "datapoints":[[null,1520891400],[null,1520908680],[null,1520925960],[null,1520943240],[200.2,1520960520]]},
+ {"target":"test.foo",
+  "datapoints":[[null,1520891400],[null,1520908680],[null,1520925960],[null,1520943240],[100.1,1520960520]]}]
+```
+
+
+#### Web dashboard
+
+Moreover you can browse to the web dashboard that displays some of statser's
+health endpoints, internal metrics and serves a basic administration UI:
+
+    $ xdg-open http://localhost:8080/.statser/
 
 
 ### Tests
 
-    $ rebar3 eunit
+    # basically the same as `rebar3 eunit`
+    $ make test
 
 
 ## Status
