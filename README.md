@@ -75,7 +75,7 @@ spawn port `2003` (carbon plain text interface), port `8080` (metrics API) and
 
 Now you can already ingest metrics, e.g. by using `netcat`:
 
-```
+```bash
 # push some test metrics
 $ echo "test.foo 100.1" | nc --send-only localhost 2003
 $ echo "test.bar 200.2" | nc --send-only localhost 2003
