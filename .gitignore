@@ -15,7 +15,9 @@
 _*
 _build
 ebin
+elm-stuff
 erl_crash.dump
 log
 logs
+node_modules
 rebar3.crashdump
