@@ -1,0 +1,91 @@
+# storage directory of the whisper files
+# defaults to the current working directory
+data_dir: metrics
+
+# IO consuming operations like updates and archive creations
+# are by default (and should be) rate limited to some extent:
+rate_limits:
+
+  # max. archive creations per second (default: 25)
+  creates: 25
+
+  # max. archive updates per second (default: 500)
+  updates: 500
+
+# configuration of storage rules and archive retentions
+#
+# this contains basically what you might know of `storage-schemas.conf`
+# from the 'carbon-cache' configuration
+storage:
+
+  stats:
+    pattern: ^stats\.
+    retentions:
+      - 10:1m
+      - 60:7d
+
+  carbon:
+    pattern: ^carbon\.
+    retentions:
+      - 60:30d
+
+# storage aggregation rules
+#
+# may look familiar to `storage-aggregation.conf` of carbon-cache
+aggregation:
+
+  min:
+    pattern: \.min$
+    aggregation: min
+    factor: 0.1
+
+  max:
+    pattern: \.max$
+    aggregation: max
+    factor: 0.1
+
+  count:
+    pattern: \.count$
+    aggregation: sum
+    factor: 0
+
+# you may configure a blacklist and/or whitelist to configure
+# what metrics you really care about
+# every metric that enters the system will be checked against
+# the regexes you defined
+blacklist:
+
+whitelist:
+
+# metrics and render API
+api:
+  port: 8080
+
+# TCP listener
+# this listener is basically equivalent to the carbon
+# plaintext listener you might know from graphite
+tcp:
+  port: 2003
+
+# StatsD compatible adapter
+udp:
+  # UDP port to listen on
+  # set this to something =< 0 to disable
+  port: 8125
+
+  # metrics flush interval (in seconds)
+  interval: 10
+
+  # prune inactive metrics keys after x seconds
+  # 0 to never prune metrics at all
+  prune_after: 300
+
+# protobuf listener (disabled by default)
+#
+# the protobuf interface was introduced in graphite 1.x
+# you can enable this by using the following options
+protobuf:
+  port: 2005
+
+
+# vim:set et sw=2 sts=2:
