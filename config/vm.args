@@ -1,3 +1,11 @@
--name ${NODE_NAME}
+# all nodes have to use the same magic cookie
 -setcookie statser
+
+# use kernel poll if available
 +K true
+
+# some async io threads
++A 16
+
+# no interactive shell
++Bd -noinput
