@@ -1,6 +1,6 @@
 # storage directory of the whisper files
 # defaults to the current working directory
-data_dir: metrics
+data_dir: /data/metrics
 
 # IO consuming operations like updates and archive creations
 # are by default (and should be) rate limited to some extent:
