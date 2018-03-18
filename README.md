@@ -64,6 +64,14 @@ invoke all common commands directly:
     $ rebar3 compile
 
 
+### Docker
+
+You may also use the pre-built docker image in order to quickly get up and
+running:
+
+    $ docker pull kongo2002/statser
+
+
 ### Quickstart
 
 After successful compilation you can quickly start a development *statser*
@@ -296,7 +304,6 @@ protobuf:
 * graphite 1.1 features
   - tag support
   - [open metrics format][openmetrics]
-* [docker][docker] image
 * support even more functions of `graphite-web` render API
 * investigate into more elaborate archive write optimization
 
