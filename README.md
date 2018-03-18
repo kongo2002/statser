@@ -66,10 +66,16 @@ invoke all common commands directly:
 
 ### Docker
 
-You may also use the pre-built docker image in order to quickly get up and
-running:
+You can also use the pre-built [docker
+image](https://hub.docker.com/r/kongo2002/statser/) in order to quickly get up
+and running:
 
     $ docker pull kongo2002/statser
+
+On your local machine you may want to start the container with `-P` or expose
+the container's ports on your host machine:
+
+    $ docker run -d -p 8080:8080 -p 2003:2003 -p 8125:8125/udp kongo2002/statser
 
 
 ### Quickstart
