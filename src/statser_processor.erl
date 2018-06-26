@@ -216,6 +216,18 @@ evaluate_call(<<"changed">>, [Series], _From, _Until, _Now) ->
                       with_function_name(S0, "changed")
               end, Series);
 
+% constantLine
+evaluate_call(<<"constantLine">>, [Const], From, Until, _Now) when is_number(Const) ->
+    % the 'step' will be adjusted via the 'consolidate' call right before
+    % the response building anyways
+    DefaultStep = 10,
+    Values = generate_series(From, Until, DefaultStep, fun(_) -> Const end),
+    [#series{values=Values,
+             step=DefaultStep,
+             start=From,
+             aggregation=average,
+             until=Until}];
+
 % currentAbove
 evaluate_call(<<"currentAbove">>, [Series, Threshold], _From, _Until, _Now) when is_number(Threshold) ->
     filter_named(fun(#series{values=Values}) ->
@@ -967,6 +979,14 @@ with_function_name(#series{target=Target} = Series, Name, Args) ->
     Series#series{target=NewTarget}.
 
 
+generate_series(From, To, Step, Generator) ->
+    Init = lists:seq(To, From, -Step),
+    lists:foldl(fun(TS, Vs) ->
+                        V = Generator(TS),
+                        [{TS, V} | Vs]
+                end, [], Init).
+
+
 format_args([]) -> [];
 format_args(Args) ->
     % 44 = character code of ','
@@ -1529,6 +1549,13 @@ moving_average_test_() ->
      ?_assertEqual([5/2,9/3,10/3,9/3,6/3,4/3,2/2], moving_average([null,2,3,4,3,2,1,1,null], 3)),
      ?_assertEqual([{120,6/3},{130,9/3},{140,10/3},{150,9/3},{160,6/3},{170,4/3},{180,3/3}],
                    moving_average(pseudo_values([1,2,3,4,3,2,1,1,1]), 3))
+    ].
+
+generate_series_test_() ->
+    Id = fun(X) -> X end,
+    [?_assertEqual(pseudo_values([100]), generate_series(99, 100, 10, Id)),
+     ?_assertEqual(pseudo_values([100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]), generate_series(100, 200, 10, Id)),
+     ?_assertEqual(pseudo_values([-100, -110, -120]), generate_series(100, 120, 10, fun(X) -> -X end))
     ].
 
 -endif.

@@ -159,6 +159,7 @@ Find a list of features that are either finished or on my roadmap below.
     - `averageOutsidePercentile`
     - `averageSeries` (short alias: `avg`)
     - `changed`
+    - `constantLine`
     - `currentAbove`
     - `currentBelow`
     - `derivative`
