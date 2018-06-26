@@ -150,6 +150,7 @@ viewNodes model =
         in tr [] [ td [ class "uk-text-bold" ] self, td [] state, td [] actions ]
   in
     [ h2 [] [ text "Nodes" ]
+    , p [] [ text "Find all currently connected and known, formerly connected statser nodes below." ]
     , table
       [ id "nodes"
       , class "uk-table"
@@ -210,6 +211,7 @@ viewAggregations model =
       rows = aggregations ++ [inputRow]
   in
     [ h2 [] [ text "Aggregation rules" ]
+    , p [] [ text "Please note that changes to these aggregation rules don't change the persisted configuration in your statser.yaml and therefore won't survive a server restart. Moreover configuration changes usually won't affect any already existing archives' aggregation rules."]
     , table
       [ id "aggregations"
       , class "uk-table"
@@ -248,6 +250,7 @@ viewStorages model =
       rows = storages ++ [inputRow]
   in
     [ h2 [] [ text "Storage rules" ]
+    , p [] [ text "Please note that changes to these storage rules don't change the persisted configuration in your statser.yaml and therefore won't survive a server restart. Moreover configuration changes usually won't affect any already existing archives' storage rules."]
     , table
       [ id "storages"
       , class "uk-table"
