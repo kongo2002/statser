@@ -591,14 +591,20 @@ alias_target(S, []) -> S;
 alias_target(S, Aliases) ->
     Parts = statser_util:split_metric(S#series.target),
     NumParts = length(Parts),
-    Target = to_target(lists:map(fun(Idx) -> get_part(Parts, NumParts, Idx) end, Aliases)),
+    Target = to_target(lists:flatmap(fun(Idx) -> get_part(Parts, NumParts, Idx) end, Aliases)),
     S#series{target=Target}.
 
 
-get_part(Parts, _Length, Idx) when Idx >= 0 ->
-    lists:nth(Idx + 1, Parts);
+get_part(Parts, Length, Idx) when Idx >= 0 ->
+    get_part0(Parts, Length, Idx + 1);
 get_part(Parts, Length, Idx) ->
-    lists:nth(Length + Idx + 1, Parts).
+    get_part0(Parts, Length, Length + Idx + 1).
+
+
+get_part0(Parts, Length, Idx) when Idx >= 1 andalso Idx =< Length ->
+    [lists:nth(Idx, Parts)];
+get_part0(_Parts, _Length, _Idx) ->
+    [].
 
 
 to_target(Parts) ->
