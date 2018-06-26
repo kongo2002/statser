@@ -222,7 +222,10 @@ evaluate_call(<<"constantLine">>, [Const], From, Until, _Now) when is_number(Con
     % the response building anyways
     DefaultStep = 10,
     Values = generate_series(From, Until, DefaultStep, fun(_) -> Const end),
+    ConstBin = statser_util:number_to_bin(Const),
+    Target = <<"constantLine(", ConstBin/binary, ")">>,
     [#series{values=Values,
+             target=Target,
              step=DefaultStep,
              start=From,
              aggregation=average,

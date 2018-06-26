@@ -25,11 +25,19 @@
 -export([ceiling/1,
          floor/1,
          to_number/1,
+         number_to_bin/1,
          parse_unit/1,
          parse_unit/2,
          seconds/0,
          epoch_seconds_to_datetime/1,
          split_metric/1]).
+
+
+-spec number_to_bin(number()) -> binary().
+number_to_bin(Num) when is_integer(Num) ->
+    list_to_binary(integer_to_list(Num));
+number_to_bin(Num) ->
+    list_to_binary(io_lib:format("~.2f", [Num])).
 
 
 -spec to_number(binary()) -> {ok, number()} | error.
@@ -112,6 +120,11 @@ split_metric(Metric) ->
 %%
 
 -ifdef(TEST).
+
+number_to_bin_test_() ->
+    [?_assertEqual(<<"325">>, number_to_bin(325)),
+     ?_assertEqual(<<"-35.21">>, number_to_bin(-35.21))
+    ].
 
 parse_unit_test_() ->
     [?_assertEqual(error, parse_unit(100, "")),
