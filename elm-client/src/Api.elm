@@ -22,45 +22,35 @@ import Json.Decode as Decode
 import Types exposing (..)
 
 
--- TODO: configurable base url
-baseUrl : String
-baseUrl = "http://localhost:8080"
-
-
-url : String -> String
-url path =
-  baseUrl ++ path
-
-
 addNode : String -> Cmd Msg
 addNode node =
-  let url0 = url "/.statser/control/nodes"
+  let url = "/.statser/control/nodes"
       body = Http.jsonBody <| Encode.object [("node", Encode.string node)]
-      request = Http.post url0 body Types.mkSuccess
+      request = Http.post url body Types.mkSuccess
   in  Http.send (BoolResult AddNodeCommand) request
 
 
 removeNode : String -> Cmd Msg
 removeNode node =
-  let url0 = url "/.statser/control/nodes"
+  let url = "/.statser/control/nodes"
       body = Http.jsonBody <| Encode.object [("node", Encode.string node)]
-      request = delete url0 body Types.mkSuccess
+      request = delete url body Types.mkSuccess
   in  Http.send (BoolResult RemoveNodeCommand) request
 
 
 addAggregation : Aggregation -> Cmd Msg
 addAggregation aggregation =
-  let url0 = url "/.statser/control/aggregations"
+  let url = "/.statser/control/aggregations"
       body = Http.jsonBody <| encodeAggregation aggregation
-      request = Http.post url0 body Types.mkSuccess
+      request = Http.post url body Types.mkSuccess
   in  Http.send (BoolResult AddAggregationCommand) request
 
 
 addStorage : Storage -> Cmd Msg
 addStorage storage =
-  let url0 = url "/.statser/control/storages"
+  let url = "/.statser/control/storages"
       body = Http.jsonBody <| encodeStorage storage
-      request = Http.post url0 body Types.mkSuccess
+      request = Http.post url body Types.mkSuccess
   in  Http.send (BoolResult AddStorageCommand) request
 
 
@@ -94,29 +84,29 @@ fetch route =
 
 fetchMetrics : Cmd Msg
 fetchMetrics =
-  let url0 = url "/.statser/metrics"
-      request = Http.get url0 Types.mkStats
+  let url = "/.statser/metrics"
+      request = Http.get url Types.mkStats
   in  Http.send StatsUpdate request
 
 
 fetchNodes : Cmd Msg
 fetchNodes =
-  let url0 = url "/.statser/control/nodes"
-      request = Http.get url0 Types.mkNodes
+  let url = "/.statser/control/nodes"
+      request = Http.get url Types.mkNodes
   in  Http.send NodesUpdate request
 
 
 fetchAggregations : Cmd Msg
 fetchAggregations =
-  let url0 = url "/.statser/control/aggregations"
-      request = Http.get url0 Types.mkAggregations
+  let url = "/.statser/control/aggregations"
+      request = Http.get url Types.mkAggregations
   in  Http.send AggregationsUpdate request
 
 
 fetchStorages : Cmd Msg
 fetchStorages =
-  let url0 = url "/.statser/control/storages"
-      request = Http.get url0 Types.mkStorages
+  let url = "/.statser/control/storages"
+      request = Http.get url Types.mkStorages
   in  Http.send StoragesUpdate request
 
 
