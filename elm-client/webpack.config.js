@@ -1,8 +1,5 @@
 var path = require('path');
 
-// we may change the included webpack version until this one is solved:
-// <https://github.com/elm-community/elm-webpack-loader/issues/134>
-
 module.exports = {
   entry: {
     app: [
