@@ -19,6 +19,7 @@ type Msg
   | NodesUpdate (Result Http.Error (List Node))
   | AggregationsUpdate (Result Http.Error (List Aggregation))
   | StoragesUpdate (Result Http.Error (List Storage))
+  | RateLimitsUpdate (Result Http.Error (List RateLimit))
   | BoolResult Command (Result Http.Error Bool)
   -- commands
   | PickLiveMetric String
@@ -26,6 +27,7 @@ type Msg
   | RemoveNode String
   | AddAggregation
   | AddStorage
+  | UpdateRateLimits
   -- fields
   | SetField FieldKey String
 
@@ -40,6 +42,7 @@ type Command
 type Route
   = Dashboard
   | Control
+  | Settings
   | Login
 
 
@@ -55,6 +58,8 @@ type FieldKey
   | StorageNameKey
   | StoragePatternKey
   | StorageRetentionsKey
+  -- update rate limits form
+  | RateLimitsKey String
 
 
 type alias Model =
@@ -66,6 +71,7 @@ type alias Model =
   , nodes : List Node
   , aggregations : List Aggregation
   , storages : List Storage
+  , rateLimits : List RateLimit
   , fields : Dict.Dict Int String
   }
 
@@ -73,6 +79,12 @@ type alias Model =
 type alias StatHistory =
   { lastTimestamp : Int
   , entries : Dict.Dict String (List ( Int, Float ))
+  }
+
+
+type alias RateLimit =
+  { typ : String
+  , limit : Int
   }
 
 
@@ -137,6 +149,8 @@ fieldKey key =
     StorageNameKey            -> 6
     StoragePatternKey         -> 7
     StorageRetentionsKey      -> 8
+    RateLimitsKey "create"    -> 9
+    RateLimitsKey _    -> 10
 
 
 -- DECODERS
@@ -214,6 +228,18 @@ mkStorage =
     (field "name" string)
     (field "pattern" string)
     (field "retentions" (list string))
+
+
+mkRateLimits : Decoder (List RateLimit)
+mkRateLimits =
+  list mkRateLimit
+
+
+mkRateLimit : Decoder RateLimit
+mkRateLimit =
+  map2 RateLimit
+    (field "type" string)
+    (field "limit" int)
 
 
 mkNodes : Decoder (List Node)

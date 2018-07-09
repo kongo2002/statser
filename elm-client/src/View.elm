@@ -38,8 +38,10 @@ content model =
       viewDashboard model
     Control ->
       viewControl model
+    Settings ->
+      viewSettings model
     Login ->
-      -- TODO
+      -- TODO: implement login view
       viewDashboard model
 
 
@@ -126,6 +128,42 @@ viewControl model =
       aggregations = viewAggregations model
       storages = viewStorages model
   in  storages ++ aggregations ++ nodes
+
+
+viewSettings : Model -> List (Html Msg)
+viewSettings model =
+  let rateLimits = viewRateLimits model
+  in  rateLimits
+
+
+viewRateLimits : Model -> List (Html Msg)
+viewRateLimits model =
+  let node rlimit =
+      tr []
+        [ td [ class "uk-text-bold" ] [ text rlimit.typ ]
+        , td [] [ text  (toString rlimit.limit) ]
+        , td [] [ setFieldInput (RateLimitsKey rlimit.typ) (toString rlimit.limit) ]
+        ]
+  in
+    [ h2 [] [ text "Rate limits" ]
+    , p [] [ text "The rate limits for archive creation and updating of metrics is the main configuration unit to control your server's IO usage and therefore the overall performance. It's usually safe to lower the rate limit as long as you have enough memory to be used for caching of metrics." ]
+    , p [] [ text "On shutdown of single metrics units or the whole server the service attempts to write all pending caches to disk anyways." ]
+    , table
+      [ id "rate-limits"
+      , class "uk-table"
+      , class "uk-table-divider"
+      , class "uk-table-responsive"
+      ]
+      [ thead [] [ header "Type", header "Limit per sec", header "Update" ]
+      , tbody [] (List.map node model.rateLimits)
+      ]
+    , div [ class "uk-inline", class "uk-align-right" ]
+      [ button
+        [ class "uk-button uk-button-primary"
+        , onClick UpdateRateLimits
+        ] [ text "update" ]
+      ]
+    ]
 
 
 header : String -> Html Msg
@@ -297,6 +335,7 @@ viewNavigation model =
         [ link "statser" Dashboard
         , link "dashboard" Dashboard
         , link "control" Control
+        , link "settings" Settings
         ]
       ]
     , div [ class "uk-navbar-right" ]

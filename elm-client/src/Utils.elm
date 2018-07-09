@@ -3,6 +3,12 @@ module Utils exposing (..)
 import Regex
 
 
+tryInt : String -> Maybe Int
+tryInt input =
+  String.toInt input
+  |> Result.toMaybe
+
+
 tryFloat : String -> Maybe Float
 tryFloat input =
   String.toFloat input

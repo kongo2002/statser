@@ -8,10 +8,13 @@ module Api exposing
   , fetchNodes
   , fetchAggregations
   , fetchStorages
+  , fetchRateLimits
   -- aggregation API
   , addAggregation
   -- storage API
   , addStorage
+  -- rate limits API
+  , updateRateLimits
   )
 
 
@@ -54,6 +57,24 @@ addStorage storage =
   in  Http.send (BoolResult AddStorageCommand) request
 
 
+updateRateLimits : List RateLimit -> Cmd Msg
+updateRateLimits rateLimits =
+  let url = "/.statser/control/settings/ratelimits"
+      body = Http.jsonBody <| encodeRateLimits rateLimits
+      request = Http.post url body Types.mkRateLimits
+  in  Http.send RateLimitsUpdate request
+
+
+encodeRateLimits : List RateLimit -> Encode.Value
+encodeRateLimits limits =
+  let limit l =
+      Encode.object
+        [ ("type", Encode.string l.typ)
+        , ("limit", Encode.int l.limit)
+        ]
+  in  Encode.list (List.map limit limits)
+
+
 encodeAggregation : Aggregation -> Encode.Value
 encodeAggregation aggregation =
   Encode.object
@@ -79,6 +100,7 @@ fetch route =
   case route of
     Dashboard -> [ fetchMetrics ]
     Control -> [ fetchNodes, fetchAggregations, fetchStorages ]
+    Settings -> [ fetchRateLimits ]
     _ -> []
 
 
@@ -108,6 +130,13 @@ fetchStorages =
   let url = "/.statser/control/storages"
       request = Http.get url Types.mkStorages
   in  Http.send StoragesUpdate request
+
+
+fetchRateLimits : Cmd Msg
+fetchRateLimits =
+  let url = "/.statser/control/settings/ratelimits"
+      request = Http.get url Types.mkRateLimits
+  in  Http.send RateLimitsUpdate request
 
 
 delete : String -> Http.Body -> Decode.Decoder a -> Http.Request a

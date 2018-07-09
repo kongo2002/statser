@@ -4,6 +4,7 @@ module Fields exposing
   , setField
   , getAggregation
   , getStorage
+  , getRateLimits
   )
 
 import Dict
@@ -33,6 +34,18 @@ getStorage model =
       rets = getFieldEmpty StorageRetentionsKey model
       retentions = Utils.splitByCommas rets
   in  Storage name pattern retentions
+
+
+getRateLimits : Model -> List RateLimit
+getRateLimits model =
+  let getLimit name =
+        getField (RateLimitsKey name) model
+        |> Maybe.andThen Utils.tryInt
+        |> Maybe.map (\l -> RateLimit name l)
+      limits =
+        ["create", "update"]
+        |> List.filterMap getLimit
+  in  limits
 
 
 setField : FieldKey -> Model -> String -> Model

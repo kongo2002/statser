@@ -18,12 +18,17 @@ login : String
 login = "#login"
 
 
+settings : String
+settings = "#settings"
+
+
 routeToPath : Types.Route -> String
 routeToPath route =
   case route of
     Types.Dashboard -> dashboard
     Types.Control -> control
     Types.Login -> login
+    Types.Settings -> settings
 
 
 parse : Location -> Types.Route
@@ -38,6 +43,7 @@ matchers =
   oneOf
     [ map Types.Dashboard top
     , map Types.Control (s "control")
+    , map Types.Settings (s "settings")
     ]
 
 -- vim: et sw=2 sts=2

@@ -23,7 +23,7 @@ historyEntries = 20
 emptyModel : Route -> Model
 emptyModel route =
   let history = StatHistory 0 Dict.empty
-  in  Model route history Dict.empty [] defaultLiveMetric [] [] [] Dict.empty
+  in  Model route history Dict.empty [] defaultLiveMetric [] [] [] [] Dict.empty
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
@@ -79,6 +79,13 @@ update msg model =
     StoragesUpdate _ ->
       model ! []
 
+    RateLimitsUpdate (Ok rateLimits) ->
+      let newModel = { model | rateLimits = rateLimits }
+      in  newModel ! []
+
+    RateLimitsUpdate _ ->
+      model ! []
+
     -- TODO: this 'BoolResult' pattern is an abstraction candidate for sure
 
     BoolResult AddNodeCommand (Ok True) ->
@@ -126,6 +133,10 @@ update msg model =
     AddStorage ->
       let storage = Fields.getStorage model
       in  model ! [ Api.addStorage storage ]
+
+    UpdateRateLimits ->
+      let rateLimits = Fields.getRateLimits model
+      in  model ! [ Api.updateRateLimits rateLimits ]
 
     SetField key value ->
       let newModel = Fields.setField key model value
