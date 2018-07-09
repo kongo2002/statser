@@ -110,6 +110,37 @@ handle('POST', [<<"aggregations">>], Req) ->
     end;
 
 %---------------------------------------------------------------------
+% SETTINGS API
+%---------------------------------------------------------------------
+
+handle('GET', [<<"settings">>, <<"ratelimits">>], _Req) ->
+    #rate_limit_config{creates_per_sec=Creates,
+                       updates_per_sec=Updates} = statser_config:get_rate_limits(),
+
+    Limits = [{[{<<"type">>, <<"create">>},
+                {<<"limit">>, Creates}
+               ]},
+              {[{<<"type">>, <<"update">>},
+                {<<"limit">>, Updates}
+               ]}
+             ],
+    json(Limits);
+
+handle('POST', [<<"settings">>, <<"ratelimits">>], Req) ->
+    Body = elli_request:body(Req),
+    lager:debug("POST /control/settings/ratelimits: ~p", [Body]),
+
+    case parse_json_of(Body, fun parse_rate_limits/1) of
+        #rate_limit_config{}=Limits ->
+            lager:info("~p", [Limits]),
+            ok();
+        {error, Error} ->
+            bad_request(Error);
+        _Error ->
+            bad_request(<<"failed to parse rate limits">>)
+    end;
+
+%---------------------------------------------------------------------
 % BASE API
 %---------------------------------------------------------------------
 
@@ -123,6 +154,44 @@ handle(_Method, _Path, _Req) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+parse_rate_limits(Limits) when is_list(Limits) ->
+    CurrentLimits = statser_config:get_rate_limits(),
+    Parsed = lists:map(fun parse_rate_limit/1, Limits),
+
+    lists:foldr(fun(_, error) -> error;
+                   (_, {error, _}=E) -> E;
+                   (error, _) -> error;
+                   ({error, _}=E, _) -> E;
+                   ({create, L}, Ls) ->
+                        Ls#rate_limit_config{creates_per_sec=L};
+                   ({update, L}, Ls) ->
+                        Ls#rate_limit_config{updates_per_sec=L};
+                   (_, _) -> error
+                end, CurrentLimits, Parsed);
+
+parse_rate_limits(_Limits) ->
+    {error, <<"expecting list of rate limits">>}.
+
+
+parse_rate_limit({Limit}) when is_list(Limit) ->
+    Vs = [get_non_empty(<<"type">>, Limit),
+          get_number(<<"limit">>, Limit, error)
+         ],
+    case validate(Vs) of
+        [_, L] when L =< 0 ->
+            {error, <<"expecting positive rate limit">>};
+        ["create", L] -> {create, L};
+        ["update", L] -> {update, L};
+        [Unknown, _Limit] ->
+            {error, <<"unknown rate limit type">>};
+        [] -> error;
+        Error -> Error
+    end;
+
+parse_rate_limit(_Limit) ->
+    {error, <<"invalid rate limit given">>}.
+
 
 parse_node_info({Nodes}) when is_list(Nodes) ->
     case proplists:get_value(<<"node">>, Nodes) of
