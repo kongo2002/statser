@@ -57,11 +57,11 @@ send_metric(Metric, Value, TS) ->
 
 
 tempfile() ->
-    lib:nonl(os:cmd("mktemp")).
+    string:trim(os:cmd("mktemp"), trailing, "\r\n").
 
 
 tempdir() ->
-    lib:nonl(os:cmd("mktemp -d")).
+    string:trim(os:cmd("mktemp -d"), trailing, "\r\n").
 
 
 with_tempfile(Fun) ->

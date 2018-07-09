@@ -179,8 +179,8 @@ parse_rate_limit({Limit}) when is_list(Limit) ->
           get_number(<<"limit">>, Limit, error)
          ],
     case validate(Vs) of
-        [_, L] when L =< 0 ->
-            {error, <<"expecting positive rate limit">>};
+        [_, L] when L =< 0 orelse not is_integer(L) ->
+            {error, <<"expecting positive integer">>};
         ["create", L] -> {create, L};
         ["update", L] -> {update, L};
         [Unknown, _Limit] ->
@@ -391,6 +391,17 @@ aggregation_from_json_test_() ->
                                                   {<<"pattern">>, <<"**">>}]})),
      ?_assertMatch(#aggregation_definition{}, aggregation_from_json({[{<<"name">>, <<"test">>},
                                                                       {<<"pattern">>, <<"abc">>}]}))
+    ].
+
+parse_rate_limit_test_() ->
+    [?_assertEqual({error, <<"invalid rate limit given">>}, parse_rate_limit([])),
+     ?_assertEqual(error, parse_rate_limit({[]})),
+     ?_assertEqual(error, parse_rate_limit({[{<<"type">>,<<"smth">>}]})),
+     ?_assertEqual(error, parse_rate_limit({[{<<"type">>,<<"create">>}]})),
+     ?_assertEqual({create, 1}, parse_rate_limit({[{<<"type">>,<<"create">>}, {<<"limit">>, 1}]})),
+     ?_assertEqual({update, 24}, parse_rate_limit({[{<<"type">>,<<"update">>}, {<<"limit">>, 24}]})),
+     ?_assertEqual({error, <<"expecting positive integer">>}, parse_rate_limit({[{<<"type">>,<<"update">>}, {<<"limit">>, -4}]})),
+     ?_assertEqual({error, <<"expecting positive integer">>}, parse_rate_limit({[{<<"type">>,<<"update">>}, {<<"limit">>, 21.22}]}))
     ].
 
 -endif.
