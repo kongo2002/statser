@@ -38,12 +38,12 @@ getStorage model =
 
 getRateLimits : Model -> List RateLimit
 getRateLimits model =
-  let getLimit name =
-        getField (RateLimitsKey name) model
+  let getLimit limit =
+        getField (RateLimitsKey limit.typ) model
         |> Maybe.andThen Utils.tryInt
-        |> Maybe.map (\l -> RateLimit name l)
+        |> Maybe.map (\l -> RateLimit limit.typ l)
       limits =
-        ["create", "update"]
+        model.rateLimits
         |> List.filterMap getLimit
   in  limits
 
