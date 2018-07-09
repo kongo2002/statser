@@ -11,6 +11,17 @@ The project is a usual npm package built via [webpack][webpack] and can be
 produced with [yarn][yarn] (my personal favorite) or vanilla [npm][npm].
 
 
+### make
+
+Just invoke `make` in the current (`elm-client`) directory to install all
+required JavaScript dependencies and build the project. The `Makefile` uses
+either `yarn` or `npm` depending on their existence in `$PATH`:
+
+```
+$ make
+```
+
+
 ### using yarn
 
 ```
