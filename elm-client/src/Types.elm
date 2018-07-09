@@ -150,7 +150,7 @@ fieldKey key =
     StoragePatternKey         -> 7
     StorageRetentionsKey      -> 8
     RateLimitsKey "create"    -> 9
-    RateLimitsKey _    -> 10
+    RateLimitsKey _           -> 10
 
 
 -- DECODERS
