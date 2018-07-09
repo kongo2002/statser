@@ -132,7 +132,7 @@ handle('POST', [<<"settings">>, <<"ratelimits">>], Req) ->
 
     case parse_json_of(Body, fun parse_rate_limits/1) of
         #rate_limit_config{}=Limits ->
-            lager:info("~p", [Limits]),
+            % TODO: actually update the limits
             ok();
         {error, Error} ->
             bad_request(Error);
