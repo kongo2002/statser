@@ -56,12 +56,22 @@ send_metric(Metric, Value, TS) ->
     ok = gen_tcp:close(Sock).
 
 
+% OTP_RELEASE is defined since OTP 21
+-ifdef(OTP_RELEASE).
+nonl(String) ->
+    string:trim(String, trailing, "\r\n").
+-else.
+nonl(String) ->
+    lib:nonl(String).
+-endif.
+
+
 tempfile() ->
-    string:trim(os:cmd("mktemp"), trailing, "\r\n").
+    nonl(os:cmd("mktemp")).
 
 
 tempdir() ->
-    string:trim(os:cmd("mktemp -d"), trailing, "\r\n").
+    nonl(os:cmd("mktemp -d")).
 
 
 with_tempfile(Fun) ->
