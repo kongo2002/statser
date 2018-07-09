@@ -108,7 +108,7 @@ $ curl localhost:8080 -XPOST -d 'target=test.*' -d 'maxDataPoints=5'
 Moreover you can browse to the web dashboard that displays some of statser's
 health endpoints, internal metrics and serves a basic administration UI:
 
-    $ xdg-open http://localhost:8080/.statser/
+    $ firefox http://localhost:8080/.statser/
 
 
 ### Tests
