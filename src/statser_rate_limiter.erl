@@ -23,7 +23,8 @@
 -include("statser.hrl").
 
 %% API
--export([start_link/3]).
+-export([start_link/3,
+         change_limit/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -50,6 +51,11 @@
 start_link(Type, Name, Limit) ->
     gen_server:start_link({local, Type}, ?MODULE, [Type, Name, Limit], []).
 
+
+change_limit(Type, Limit) ->
+    gen_server:cast(Type, {change_limit, Limit}).
+
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -70,8 +76,7 @@ init([Type, Name, LimitPerSec]) ->
 
     % we want to distribute the `refill` as evenly as possible
     % that's why we calculate the rate limit to a minimum interval of 100 ms
-    IntervalInMillis = max(?MILLIS_PER_SEC div LimitPerSec, 100),
-    LimitPerInterval = LimitPerSec div (?MILLIS_PER_SEC div IntervalInMillis),
+    {IntervalInMillis, LimitPerInterval} = to_millis_interval(LimitPerSec),
 
     State = #state{limit=LimitPerInterval,
                    remaining=LimitPerInterval,
@@ -123,6 +128,16 @@ handle_call(_Request, _From, State) ->
 handle_cast({drain, Reply, To}, State) ->
     NewState = drain(State, Reply, To),
     {noreply, NewState};
+
+handle_cast({change_limit, LimitRequest}, #state{interval=Interval, limit=Limit} = State) ->
+    case to_millis_interval(LimitRequest) of
+        {Interval, Limit} ->
+            lager:debug("rate-limiter [~s]: limit change request to ~p/sec does not change", [State#state.name, LimitRequest]),
+            {noreply, State};
+        {ChangedInterval, ChangedLimit} ->
+            lager:info("rate-limiter [~s]: limit change request to ~p/sec", [State#state.name, LimitRequest]),
+            {noreply, State#state{interval=ChangedInterval, limit=ChangedLimit}}
+    end;
 
 handle_cast(_Cast, State) ->
     {noreply, State}.
@@ -201,6 +216,12 @@ alive(Name) ->
 schedule_refill(#state{interval=Interval} = State) ->
     Timer = erlang:send_after(Interval, self(), refill),
     State#state{timer=Timer}.
+
+
+to_millis_interval(LimitPerSec) ->
+    IntervalInMillis = max(?MILLIS_PER_SEC div LimitPerSec, 100),
+    LimitPerInterval = LimitPerSec div (?MILLIS_PER_SEC div IntervalInMillis),
+    {IntervalInMillis, LimitPerInterval}.
 
 
 drain(#state{remaining=Rem} = State) when Rem > 0 ->

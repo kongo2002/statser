@@ -37,6 +37,7 @@
          protobuf_is_enabled/1,
          parse_aggregation/1,
          parse_retentions/1,
+         set_rate_limits/1,
          add_aggregation/1,
          add_storage/1]).
 
@@ -109,6 +110,12 @@ get_metadata(Path) ->
     AggDefinition = first_aggregation(Path, Aggregations),
 
     {StorDefinition, AggDefinition}.
+
+
+-spec set_rate_limits(rate_limit_config()) -> ok.
+set_rate_limits(#rate_limit_config{} = Limits) ->
+    update(rate_limits, Limits),
+    ok.
 
 
 -spec add_aggregation(aggregation_definition()) -> ok.

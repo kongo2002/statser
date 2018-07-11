@@ -131,8 +131,13 @@ handle('POST', [<<"settings">>, <<"ratelimits">>], Req) ->
     lager:debug("POST /control/settings/ratelimits: ~p", [Body]),
 
     case parse_json_of(Body, fun parse_rate_limits/1) of
-        #rate_limit_config{}=Limits ->
-            % TODO: actually update the limits
+        #rate_limit_config{creates_per_sec=Creates, updates_per_sec=Updates}=Ls ->
+            % update config
+            statser_config:set_rate_limits(Ls),
+
+            % notify rate limiters
+            statser_rate_limiter:change_limit(create_limiter, Creates),
+            statser_rate_limiter:change_limit(update_limiter, Updates),
             ok();
         {error, Error} ->
             bad_request(Error);
