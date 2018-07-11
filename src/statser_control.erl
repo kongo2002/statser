@@ -114,17 +114,9 @@ handle('POST', [<<"aggregations">>], Req) ->
 %---------------------------------------------------------------------
 
 handle('GET', [<<"settings">>, <<"ratelimits">>], _Req) ->
-    #rate_limit_config{creates_per_sec=Creates,
-                       updates_per_sec=Updates} = statser_config:get_rate_limits(),
+    RateLimits = statser_config:get_rate_limits(),
+    rate_limits_to_json(RateLimits);
 
-    Limits = [{[{<<"type">>, <<"create">>},
-                {<<"limit">>, Creates}
-               ]},
-              {[{<<"type">>, <<"update">>},
-                {<<"limit">>, Updates}
-               ]}
-             ],
-    json(Limits);
 
 handle('POST', [<<"settings">>, <<"ratelimits">>], Req) ->
     Body = elli_request:body(Req),
@@ -138,7 +130,8 @@ handle('POST', [<<"settings">>, <<"ratelimits">>], Req) ->
             % notify rate limiters
             statser_rate_limiter:change_limit(create_limiter, Creates),
             statser_rate_limiter:change_limit(update_limiter, Updates),
-            ok();
+
+            rate_limits_to_json(Ls);
         {error, Error} ->
             bad_request(Error);
         _Error ->
@@ -196,6 +189,17 @@ parse_rate_limit({Limit}) when is_list(Limit) ->
 
 parse_rate_limit(_Limit) ->
     {error, <<"invalid rate limit given">>}.
+
+
+rate_limits_to_json(#rate_limit_config{creates_per_sec=Creates, updates_per_sec=Updates}) ->
+    Limits = [{[{<<"type">>, <<"create">>},
+                {<<"limit">>, Creates}
+               ]},
+              {[{<<"type">>, <<"update">>},
+                {<<"limit">>, Updates}
+               ]}
+             ],
+    json(Limits).
 
 
 parse_node_info({Nodes}) when is_list(Nodes) ->
