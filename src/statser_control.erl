@@ -181,7 +181,7 @@ parse_rate_limit({Limit}) when is_list(Limit) ->
             {error, <<"expecting positive integer">>};
         ["create", L] -> {create, L};
         ["update", L] -> {update, L};
-        [Unknown, _Limit] ->
+        [_Unknown, _Limit] ->
             {error, <<"unknown rate limit type">>};
         [] -> error;
         Error -> Error
