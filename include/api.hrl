@@ -23,5 +23,5 @@
         [{<<"Pragma">>, ?NO_CACHE},
          {<<"Cache-Control">>, ?NO_CACHE},
          {<<"Content-Type">>, <<"application/json; charset=utf-8">>},
-         {<<"Access-Control-Allow-Headers">>, <<"content-type">>},
+         {<<"Access-Control-Allow-Headers">>, <<"*">>},
          {<<"Access-Control-Allow-Origin">>, <<"*">>}]).
