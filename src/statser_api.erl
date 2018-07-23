@@ -31,6 +31,9 @@
 handle(Req, _Args) ->
     handle(Req#req.method, elli_request:path(Req), Req).
 
+handle('OPTIONS', _Path, _Req) ->
+    {200, ?DEFAULT_HEADERS_CORS, <<"">>};
+
 % metrics API
 handle('GET', [<<"metrics">>], Req) ->
     handle_metrics(Req);
