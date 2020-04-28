@@ -36,10 +36,16 @@ handle('OPTIONS', _Path, _Req) ->
 
 % metrics API
 handle('GET', [<<"metrics">>], Req) ->
-    handle_metrics(Req);
+    handle_get_metrics(Req);
 
 handle('GET', [<<"metrics">>, <<"find">>], Req) ->
-    handle_metrics(Req);
+    handle_get_metrics(Req);
+
+handle('POST', [<<"metrics">>], Req) ->
+    handle_post_metrics(Req);
+
+handle('POST', [<<"metrics">>, <<"find">>], Req) ->
+    handle_post_metrics(Req);
 
 % render API
 handle('POST', [<<"render">>], Req) ->
@@ -90,8 +96,17 @@ handle_event(_Event, _Data, _Args) ->
     ok.
 
 
-handle_metrics(Request) ->
+handle_get_metrics(Request) ->
     Query = elli_request:get_arg_decoded(<<"query">>, Request, <<"*">>),
+    handle_metrics(Query).
+
+
+handle_post_metrics(Request) ->
+    Query = elli_request:post_arg_decoded(<<"query">>, Request, <<"*">>),
+    handle_metrics(Query).
+
+
+handle_metrics(Query) ->
     case statser_parser:parse(Query) of
         {paths, Path} ->
             lager:debug("handle metrics query: ~p", [Query]),
