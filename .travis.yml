@@ -5,12 +5,9 @@ install:
 
 otp_release:
   - 21.0
-  - 20.2
   - 20.1
   - 20.0
   - 19.3
-  - 19.2
-  - 19.1
 
 script:
   - ./rebar3 compile
