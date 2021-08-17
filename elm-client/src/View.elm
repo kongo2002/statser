@@ -1,4 +1,4 @@
-module View exposing ( view )
+module View exposing ( document )
 
 import Dict
 import Html exposing (..)
@@ -7,6 +7,7 @@ import Html.Events exposing (..)
 import List
 import Svg
 import Svg.Attributes
+import Time
 
 import Routing
 import Types exposing (..)
@@ -22,6 +23,11 @@ svgWidth  = 560
 
 svgMargin : Int
 svgMargin = 50
+
+
+document model =
+  let v = view model
+  in { title = "statser", body = [v] }
 
 
 view : Model -> Html Msg
@@ -55,7 +61,7 @@ viewMetrics : Model -> List (Html Msg)
 viewMetrics model =
   let stat x = tr []
         [ td [ onClick (PickLiveMetric x.name) ] [ text x.name ]
-        , td [] [ text (toString x.value), val x ]
+        , td [] [ text (String.fromFloat x.value), val x ]
         ]
       val x =
         case x.typ of
@@ -82,11 +88,11 @@ viewHealths model =
   let health x =
         [ dt [] [ text x.name ]
         , dd []
-          [ icon x
-          , small [] [ text " last seen at ", text (toString x.timestamp) ]
+          [ icon0 x
+          , small [] [ text " last seen at ", text (String.fromInt (Time.posixToMillis x.timestamp)) ]
           ]
         ]
-      icon x =
+      icon0 x =
         case x.good of
           True -> span [ class "uk-label", class "uk-label-success", class "uk-icon", attribute "uk-icon" "icon: check" ] []
           False -> span [ class "uk-label", class "uk-label-danger", class "uk-icon", attribute "uk-icon" "icon: close" ] []
@@ -104,17 +110,17 @@ viewLive : List (Html Msg)
 viewLive =
   let width = svgWidth - 2 * svgMargin
       height = svgHeight - 2 * svgMargin
-      translate = "translate(" ++ toString svgMargin ++ "," ++ toString svgMargin ++ ")"
+      translate = "translate(" ++ String.fromInt svgMargin ++ "," ++ String.fromInt svgMargin ++ ")"
   in
     [ h2 [] [ text "Live" ]
     , div [ id "live", class "graph" ]
       [Svg.svg
-        [ Svg.Attributes.width (toString svgWidth)
-        , Svg.Attributes.height (toString svgHeight) ]
+        [ Svg.Attributes.width (String.fromInt svgWidth)
+        , Svg.Attributes.height (String.fromInt svgHeight) ]
         [ Svg.g [ attribute "transform" translate ]
           [ Svg.path [ Svg.Attributes.class "line" ] []
           , Svg.text_ [ Svg.Attributes.class "legend", Svg.Attributes.x "10", Svg.Attributes.y "20" ] []
-          , Svg.g [ Svg.Attributes.class "xaxis", attribute "transform" ("translate(0," ++ toString height ++ ")") ] []
+          , Svg.g [ Svg.Attributes.class "xaxis", attribute "transform" ("translate(0," ++ String.fromInt height ++ ")") ] []
           , Svg.g [ Svg.Attributes.class "yaxis" ] []
           ]
         ]
@@ -139,11 +145,11 @@ viewSettings model =
 viewRateLimits : Model -> List (Html Msg)
 viewRateLimits model =
   let node rlimit =
-      tr []
-        [ td [ class "uk-text-bold" ] [ text rlimit.typ ]
-        , td [] [ text  (toString rlimit.limit) ]
-        , td [] [ setFieldInput (RateLimitsKey rlimit.typ) (toString rlimit.limit) ]
-        ]
+          tr []
+            [ td [ class "uk-text-bold" ] [ text rlimit.typ ]
+            , td [] [ text  (String.fromInt rlimit.limit) ]
+            , td [] [ setFieldInput (RateLimitsKey rlimit.typ) (String.fromInt rlimit.limit) ]
+            ]
   in
     [ h2 [] [ text "Rate limits" ]
     , p [] [ text "The rate limits for archive creation and updating of metrics is the main configuration unit to control your server's IO usage and therefore the overall performance. It's usually safe to lower the rate limit as long as you have enough memory to be used for caching of metrics." ]
@@ -174,9 +180,9 @@ viewNodes : Model -> List (Html Msg)
 viewNodes model =
   let node elem =
         let self =
-            case elem.self of
-              True -> [ text elem.node, small [] [ text " (self)" ] ]
-              False -> [ text elem.node ]
+                case elem.self of
+                  True -> [ text elem.node, small [] [ text " (self)" ] ]
+                  False -> [ text elem.node ]
             state =
               case elem.state of
                 Connected -> [icon "happy", text " connected"]
@@ -228,7 +234,7 @@ viewAggregations model =
           [ td [ class "uk-text-bold" ] [ text agg.name ]
           , td [] [ text agg.pattern ]
           , td [] [ text agg.aggregation ]
-          , td [] [ text (toString agg.factor) ]
+          , td [] [ text (String.fromFloat agg.factor) ]
           ]
       inputRow =
         tr []

@@ -6,12 +6,12 @@ import Icons from 'uikit/dist/js/uikit-icons';
 // load uikit icons
 UIkit.use(Icons);
 
-require('./uikit.statser.min.css');
-require('./index.html');
-
 // load elm application
-var Elm = require('./Main.elm');
-var app = Elm.Main.fullscreen();
+import { Elm } from './Main.elm';
+var app = Elm.Main.init({
+  node: document.querySelector('main'),
+  flags: {}
+});
 
 // SVG's dimensions
 var width = 560 - 2 * 50;

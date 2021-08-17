@@ -29,50 +29,45 @@ addNode : String -> Cmd Msg
 addNode node =
   let url = "/.statser/control/nodes"
       body = Http.jsonBody <| Encode.object [("node", Encode.string node)]
-      request = Http.post url body Types.mkSuccess
-  in  Http.send (BoolResult AddNodeCommand) request
+  in Http.post { url = url, body = body, expect = Http.expectJson (BoolResult AddNodeCommand) Types.mkSuccess }
 
 
 removeNode : String -> Cmd Msg
 removeNode node =
   let url = "/.statser/control/nodes"
       body = Http.jsonBody <| Encode.object [("node", Encode.string node)]
-      request = delete url body Types.mkSuccess
-  in  Http.send (BoolResult RemoveNodeCommand) request
+  in delete url body (BoolResult RemoveNodeCommand) Types.mkSuccess
 
 
 addAggregation : Aggregation -> Cmd Msg
 addAggregation aggregation =
   let url = "/.statser/control/aggregations"
       body = Http.jsonBody <| encodeAggregation aggregation
-      request = Http.post url body Types.mkSuccess
-  in  Http.send (BoolResult AddAggregationCommand) request
+  in Http.post { url = url, body = body, expect = Http.expectJson (BoolResult AddAggregationCommand) Types.mkSuccess }
 
 
 addStorage : Storage -> Cmd Msg
 addStorage storage =
   let url = "/.statser/control/storages"
       body = Http.jsonBody <| encodeStorage storage
-      request = Http.post url body Types.mkSuccess
-  in  Http.send (BoolResult AddStorageCommand) request
+  in Http.post { url = url, body = body, expect = Http.expectJson (BoolResult AddStorageCommand) Types.mkSuccess }
 
 
 updateRateLimits : List RateLimit -> Cmd Msg
 updateRateLimits rateLimits =
   let url = "/.statser/control/settings/ratelimits"
       body = Http.jsonBody <| encodeRateLimits rateLimits
-      request = Http.post url body Types.mkRateLimits
-  in  Http.send RateLimitsUpdate request
+  in Http.post { url = url, body = body, expect = Http.expectJson RateLimitsUpdate Types.mkRateLimits }
 
 
 encodeRateLimits : List RateLimit -> Encode.Value
 encodeRateLimits limits =
   let limit l =
-      Encode.object
-        [ ("type", Encode.string l.typ)
-        , ("limit", Encode.int l.limit)
-        ]
-  in  Encode.list (List.map limit limits)
+          Encode.object
+            [ ("type", Encode.string l.typ)
+            , ("limit", Encode.int l.limit)
+            ]
+  in  Encode.list limit limits
 
 
 encodeAggregation : Aggregation -> Encode.Value
@@ -87,11 +82,10 @@ encodeAggregation aggregation =
 
 encodeStorage : Storage -> Encode.Value
 encodeStorage storage =
-  let rets = List.map Encode.string storage.retentions
-  in  Encode.object
+  Encode.object
     [ ("name", Encode.string storage.name)
     , ("pattern", Encode.string storage.pattern)
-    , ("retentions", Encode.list rets)
+    , ("retentions", Encode.list Encode.string storage.retentions)
     ]
 
 
@@ -107,48 +101,43 @@ fetch route =
 fetchMetrics : Cmd Msg
 fetchMetrics =
   let url = "/.statser/metrics"
-      request = Http.get url Types.mkStats
-  in  Http.send StatsUpdate request
+  in Http.get { url = url, expect = Http.expectJson StatsUpdate Types.mkStats }
 
 
 fetchNodes : Cmd Msg
 fetchNodes =
   let url = "/.statser/control/nodes"
-      request = Http.get url Types.mkNodes
-  in  Http.send NodesUpdate request
+  in Http.get { url = url, expect = Http.expectJson NodesUpdate Types.mkNodes }
 
 
 fetchAggregations : Cmd Msg
 fetchAggregations =
   let url = "/.statser/control/aggregations"
-      request = Http.get url Types.mkAggregations
-  in  Http.send AggregationsUpdate request
+  in Http.get { url = url, expect = Http.expectJson AggregationsUpdate Types.mkAggregations }
 
 
 fetchStorages : Cmd Msg
 fetchStorages =
   let url = "/.statser/control/storages"
-      request = Http.get url Types.mkStorages
-  in  Http.send StoragesUpdate request
+  in Http.get { url = url, expect = Http.expectJson StoragesUpdate Types.mkStorages }
 
 
 fetchRateLimits : Cmd Msg
 fetchRateLimits =
   let url = "/.statser/control/settings/ratelimits"
-      request = Http.get url Types.mkRateLimits
-  in  Http.send RateLimitsUpdate request
+  in Http.get { url = url, expect = Http.expectJson RateLimitsUpdate Types.mkRateLimits }
 
 
-delete : String -> Http.Body -> Decode.Decoder a -> Http.Request a
-delete url body decoder =
+--delete : String -> Http.Body -> Decode.Decoder a -> Http.Request a
+delete url body msg decoder =
   Http.request
     { method = "DELETE"
     , headers = []
     , url = url
     , body = body
-    , expect = Http.expectJson decoder
+    , expect = Http.expectJson msg decoder
     , timeout = Nothing
-    , withCredentials = False
+    , tracker = Nothing
     }
 
 

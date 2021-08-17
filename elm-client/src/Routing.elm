@@ -1,7 +1,7 @@
 module Routing exposing ( parse, dashboard, control, login, routeToPath )
 
-import Navigation exposing ( Location )
-import UrlParser exposing (..)
+import Url
+import Url.Parser exposing (..)
 
 import Types
 
@@ -31,19 +31,23 @@ routeToPath route =
     Types.Settings -> settings
 
 
-parse : Location -> Types.Route
+parse : Url.Url -> Types.Route
 parse location =
-  case parseHash matchers location of
+  case Url.Parser.parse matchers location of
     Just route -> route
     Nothing    -> Types.Dashboard
 
 
 matchers : Parser (Types.Route -> a) a
 matchers =
-  oneOf
-    [ map Types.Dashboard top
-    , map Types.Control (s "control")
-    , map Types.Settings (s "settings")
-    ]
+  let frag = string </> string </> fragment identity
+      toRoute _ _ arg =
+        case arg of
+          Just "" -> Types.Dashboard
+          Just "control" -> Types.Control
+          Just "settings" -> Types.Settings
+          Just "login" -> Types.Login
+          _ -> Types.Dashboard
+  in map toRoute frag
 
 -- vim: et sw=2 sts=2
