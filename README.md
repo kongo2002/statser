@@ -43,7 +43,8 @@ be solved in a distributed erlang-powered application.
 
 ### Requirements
 
-* erlang OTP >= 19
+* erlang OTP >= 20
+  * xmerl
 * node-js *(for client only)*
 
 
