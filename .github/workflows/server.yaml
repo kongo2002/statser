@@ -1,0 +1,34 @@
+name: server
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    paths:
+      - 'config/**'
+      - 'include/**'
+      - 'rebar.config'
+      - 'src/**'
+      - 'test/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    name: OTP ${{matrix.otp}}
+    strategy:
+      matrix:
+        otp: ["23.1", "23.2"]
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: gleam-lang/setup-erlang@v1.1.2
+      with:
+        otp-version: ${{matrix.otp}}
+    - name: Compile
+      run: rebar3 compile
+    - name: Tests
+      run: rebar3 eunit
+
+# vim: set et sw=2 sts=2:
