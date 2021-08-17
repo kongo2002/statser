@@ -16,17 +16,26 @@ module.exports = {
     rules: [
       {
         test: /\.(css|scss)$/,
-        loader:  'file-loader?name=[name].[ext]',
+        use: {
+          loader:  'file-loader?name=[name].[ext]',
+          options: {}
+        }
       },
       {
         test:    /\.html$/,
         exclude: /node_modules/,
-        loader:  'file-loader?name=[name].[ext]',
+        use: {
+          loader:  'file-loader?name=[name].[ext]',
+          options: {}
+        }
       },
       {
         test:    /\.elm$/,
         exclude: [/elm-stuff/, /node_modules/],
-        loader:  'elm-webpack-loader?verbose=true&warn=true',
+        use: {
+          loader:  'elm-webpack-loader?verbose=true&warn=true',
+          options: {}
+        }
       },
     ],
 

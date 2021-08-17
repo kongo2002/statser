@@ -1,19 +1,21 @@
 module Types exposing (..)
 
-import Date
+import Browser
+import Browser.Navigation
 import Dict
 import Http
-import Navigation exposing ( Location )
 import Json.Decode exposing (..)
-import Time exposing ( Time )
+import Time exposing ( Posix )
+import Url exposing ( Url )
 
 -- TYPES
 
 type Msg
   = NoOp
   -- internals
-  | NavigationChange Location
-  | Tick Time
+  | NavigationChange Url
+  | NavigationRequest Browser.UrlRequest
+  | Tick Posix
   -- response types
   | StatsUpdate (Result Http.Error (Dict.Dict String Stat, List Health, Int))
   | NodesUpdate (Result Http.Error (List Node))
@@ -62,8 +64,12 @@ type FieldKey
   | RateLimitsKey String
 
 
+type alias Flags = {}
+
+
 type alias Model =
   { route : Route
+  , key : Browser.Navigation.Key
   , history : StatHistory
   , stats : Dict.Dict String Stat
   , healths : List Health
@@ -98,7 +104,7 @@ type alias Stat =
 type alias Health =
   { name : String
   , good : Bool
-  , timestamp : Date.Date
+  , timestamp : Posix
   }
 
 
@@ -166,7 +172,8 @@ mkStats =
       keyed vs = Dict.fromList (List.map (\x -> (x.name, x)) vs)
       healths  = field "health" (list mkHealth)
       ts       = field "timestamp" int
-  in  map3 (,,) (map keyed stats) healths ts
+      toTuple a b c = (a, b, c)
+  in  map3 toTuple (map keyed stats) healths ts
 
 
 mkHealth : Decoder Health
@@ -177,10 +184,10 @@ mkHealth =
     (field "timestamp" decodeDate)
 
 
-decodeDate : Decoder Date.Date
+decodeDate : Decoder Posix
 decodeDate =
-  let toDate epoch = Date.fromTime (epoch * 1000)
-  in  map toDate float
+  let toDate epoch = Time.millisToPosix (epoch * 1000)
+  in  map toDate int
 
 
 mkStat : Decoder Stat

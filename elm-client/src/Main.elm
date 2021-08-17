@@ -1,8 +1,10 @@
 module Main exposing (..)
 
 import Dict
-import Navigation
-import Time exposing ( second )
+import Browser
+import Browser.Navigation
+import Time
+import Url
 
 import Api
 import Fields
@@ -20,31 +22,40 @@ historyEntries : Int
 historyEntries = 20
 
 
-emptyModel : Route -> Model
-emptyModel route =
+emptyModel : Browser.Navigation.Key -> Route -> Model
+emptyModel key route =
   let history = StatHistory 0 Dict.empty
-  in  Model route history Dict.empty [] defaultLiveMetric [] [] [] [] Dict.empty
+  in  Model route key history Dict.empty [] defaultLiveMetric [] [] [] [] Dict.empty
 
 
-init : Navigation.Location -> ( Model, Cmd Msg )
-init location =
+init : Flags -> Url.Url -> Browser.Navigation.Key -> ( Model, Cmd Msg )
+init flags location key =
   let route = Routing.parse location
-  in  (emptyModel route ! Api.fetch route)
+  in  (emptyModel key route, Cmd.batch (Api.fetch route))
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
   case msg of
     NoOp ->
-      model ! []
+      (model , Cmd.none)
 
     Tick time ->
-      model ! [ Api.fetchMetrics ]
+      (model , Cmd.batch [ Api.fetchMetrics ])
 
     NavigationChange location ->
       let newRoute = Routing.parse location
           newModel = { model | route = newRoute }
-      in  newModel ! Api.fetch newRoute
+      in  (newModel , Cmd.batch (Api.fetch newRoute))
+
+    NavigationRequest request ->
+      case request of
+        Browser.Internal url ->
+          ( model
+          , Browser.Navigation.pushUrl model.key (Url.toString url)
+          )
+        Browser.External url ->
+          ( model, Browser.Navigation.load url )
 
     StatsUpdate (Ok (newStats, newHealths, ts)) ->
       let newModel = { model |
@@ -52,95 +63,95 @@ update msg model =
               healths = newHealths,
               history = toHistory model.history ts newStats }
 
-          update = getEntries newModel
-      in  newModel ! [ update ]
+          update0 = getEntries newModel
+      in  (newModel , Cmd.batch [ update0 ])
 
     StatsUpdate _ ->
-      model ! []
+      (model , Cmd.none)
 
     NodesUpdate (Ok nodes) ->
       let newModel = { model | nodes = nodes }
-      in  newModel ! []
+      in  (newModel , Cmd.none)
 
     NodesUpdate _ ->
-      model ! []
+      (model , Cmd.none)
 
     AggregationsUpdate (Ok aggregations) ->
       let newModel = { model | aggregations = aggregations }
-      in  newModel ! []
+      in  (newModel , Cmd.none)
 
     AggregationsUpdate _ ->
-      model ! []
+      (model , Cmd.none)
 
     StoragesUpdate (Ok storages) ->
       let newModel = { model | storages = storages }
-      in  newModel ! []
+      in  (newModel , Cmd.none)
 
     StoragesUpdate _ ->
-      model ! []
+      (model , Cmd.none)
 
     RateLimitsUpdate (Ok rateLimits) ->
       let newModel = { model | rateLimits = rateLimits }
-      in  newModel ! []
+      in  (newModel , Cmd.none)
 
     RateLimitsUpdate _ ->
-      model ! []
+      (model , Cmd.none)
 
     -- TODO: this 'BoolResult' pattern is an abstraction candidate for sure
 
     BoolResult AddNodeCommand (Ok True) ->
-      model ! [ Ports.notification ("successfully connected", "primary"), Api.fetchNodes ]
+      (model , Cmd.batch [ Ports.notification ("successfully connected", "primary"), Api.fetchNodes ])
 
     BoolResult AddNodeCommand res ->
-      model ! [ Ports.notification ("failed to connect to node", "danger") ]
+      (model , Cmd.batch [ Ports.notification ("failed to connect to node", "danger") ])
 
     BoolResult RemoveNodeCommand (Ok True) ->
-      model ! [ Ports.notification ("successfully disconnected", "primary"), Api.fetchNodes ]
+      (model , Cmd.batch [ Ports.notification ("successfully disconnected", "primary"), Api.fetchNodes ])
 
     BoolResult RemoveNodeCommand res ->
-      model ! [ Ports.notification ("failed to disconnect from node", "danger") ]
+      (model , Cmd.batch [ Ports.notification ("failed to disconnect from node", "danger") ])
 
     BoolResult AddAggregationCommand (Ok True) ->
-      model ! [ Ports.notification ("successfully added new aggregation rule", "primary")
-              , Api.fetchAggregations ]
+      (model , Cmd.batch [ Ports.notification ("successfully added new aggregation rule", "primary")
+      , Api.fetchAggregations ])
 
     BoolResult AddAggregationCommand res ->
-      model ! [ Ports.notification ("failed to add new aggregation rule", "danger") ]
+      (model , Cmd.batch [ Ports.notification ("failed to add new aggregation rule", "danger") ])
 
     BoolResult AddStorageCommand (Ok True) ->
-      model ! [ Ports.notification ("successfully added new storage rule", "primary")
-              , Api.fetchStorages ]
+      (model , Cmd.batch [ Ports.notification ("successfully added new storage rule", "primary")
+      , Api.fetchStorages ])
 
     BoolResult AddStorageCommand res ->
-      model ! [ Ports.notification ("failed to add new storage rule", "danger") ]
+      (model , Cmd.batch [ Ports.notification ("failed to add new storage rule", "danger") ])
 
     PickLiveMetric metric ->
       let newModel = { model | liveMetric = metric }
-          update = getEntries newModel
-      in  newModel ! [ update ]
+          update0 = getEntries newModel
+      in  (newModel , Cmd.batch [ update0 ])
 
     AddNode ->
       let nodeName = Fields.getFieldEmpty NodeNameKey model
-      in  model ! [ Api.addNode nodeName ]
+      in  (model , Cmd.batch [ Api.addNode nodeName ])
 
     RemoveNode node ->
-      model ! [ Api.removeNode node ]
+      (model , Cmd.batch [ Api.removeNode node ])
 
     AddAggregation ->
       let agg = Fields.getAggregation model
-      in  model ! [ Api.addAggregation agg ]
+      in  (model , Cmd.batch [ Api.addAggregation agg ])
 
     AddStorage ->
       let storage = Fields.getStorage model
-      in  model ! [ Api.addStorage storage ]
+      in  (model , Cmd.batch [ Api.addStorage storage ])
 
     UpdateRateLimits ->
       let rateLimits = Fields.getRateLimits model
-      in  model ! [ Api.updateRateLimits rateLimits ]
+      in  (model , Cmd.batch [ Api.updateRateLimits rateLimits ])
 
     SetField key value ->
       let newModel = Fields.setField key model value
-      in  newModel ! []
+      in  (newModel , Cmd.none)
 
 
 getEntries : Model -> Cmd Msg
@@ -158,32 +169,33 @@ toHistory history ts stats =
         |> Tuple.second
         |> List.reverse
 
-      update k stat hist =
+      update0 k stat hist =
         case Dict.get k hist.entries of
-          Just stats ->
-            let stats0 = (ts, stat.value) :: stats
+          Just stats_ ->
+            let stats0 = (ts, stat.value) :: stats_
                 stats1 = List.take historyEntries stats0
                 es = Dict.insert k stats1 hist.entries
             in  { hist | entries = es }
           Nothing ->
-            let stats = (ts, stat.value) :: empties
-                es    = Dict.insert k stats hist.entries
+            let stats_ = (ts, stat.value) :: empties
+                es    = Dict.insert k stats_ hist.entries
             in  { hist | entries = es }
 
-  in  Dict.foldr update history stats
+  in  Dict.foldr update0 history stats
 
 
 subTicks : Model -> Sub Msg
 subTicks model =
-  Time.every (10 * second) Tick
+  Time.every 10000.0 Tick
 
 
-main : Program Never Model Msg
 main =
-  Navigation.program NavigationChange
+  Browser.application
     { init = init
-    , view = View.view
+    , view = View.document
     , update = update
+    , onUrlChange = NavigationChange
+    , onUrlRequest = NavigationRequest
     , subscriptions = subTicks
     }
 
