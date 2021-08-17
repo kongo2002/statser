@@ -11,7 +11,7 @@
          send_metric/3,
          with_tempfile/1]).
 
--define(DEFAULT_APPS, [compiler, syntax_tools, goldrush, yamerl, jiffy, elli]).
+-define(DEFAULT_APPS, [compiler, syntax_tools, goldrush, xmerl, yamerl, jiffy, elli]).
 
 -record(test_ctx, {
           tempdir :: nonempty_string()
