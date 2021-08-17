@@ -1,6 +1,6 @@
 YARN    := $(shell command -v yarn 2> /dev/null)
 SRCS    := $(wildcard src/*)
-TARGETS := dist/app.js dist/index.html dist/uikit.statser.min.css
+TARGETS := dist/app.js
 
 .PHONY:	all build clean rebuild
 
