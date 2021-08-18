@@ -435,7 +435,7 @@ evaluate_call(<<"movingAverage">>, [Series, Window], From, Until, Now) ->
                                    true -> Window
                                end,
                       % fetch additional past data
-                      [S] = fetch_data([S0#series.target], From-(Points * Step), Until, Now),
+                      [S] = fetch_data([{S0#series.target, undefined}], From-(Points * Step), Until, Now),
                       Values = moving_average(S#series.values, Points),
                       with_function_name(S0#series{values=Values}, "movingAverage")
               end, Series);
