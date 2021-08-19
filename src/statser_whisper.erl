@@ -65,7 +65,7 @@ read_metadata(File) ->
     end.
 
 
--spec read_metadata_inner(file:io_device()) -> {ok, whisper_metadata()} | {error, _}.
+-spec read_metadata_inner(file:io_device()) -> {ok, whisper_metadata()} | error.
 read_metadata_inner(IO) ->
     Read = file:read(IO, ?METADATA_HEADER_SIZE),
     case read_header(Read) of
@@ -124,7 +124,7 @@ fetch(File, From, Until, Now) ->
     end.
 
 
--spec fetch_inner(file:io_device(), integer(), integer(), integer()) -> {ok, whisper_metadata()} | {error, _}.
+-spec fetch_inner(file:io_device(), integer(), integer(), integer()) -> series() | {error, _}.
 fetch_inner(IO, From, Until, Now) ->
     case read_metadata_inner(IO) of
         {ok, Metadata} ->

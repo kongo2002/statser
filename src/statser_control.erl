@@ -183,7 +183,6 @@ parse_rate_limit({Limit}) when is_list(Limit) ->
         ["update", L] -> {update, L};
         [_Unknown, _Limit] ->
             {error, <<"unknown rate limit type">>};
-        [] -> error;
         Error -> Error
     end;
 
@@ -273,7 +272,6 @@ storage_from_json({Json}) when is_list(Json) ->
                        retentions=Rs};
                 _Error -> {error, <<"invalid pattern expression">>}
             end;
-        [] -> error;
         Error -> Error
     end;
 
@@ -300,7 +298,6 @@ aggregation_from_json({Json}) when is_list(Json) ->
                        factor=Factor};
                 _Error -> {error, <<"invalid pattern expression">>}
             end;
-        [] -> error;
         Error -> Error
     end;
 

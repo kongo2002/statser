@@ -50,6 +50,10 @@
 
 -type handler() :: local_handler() | remote_handler() | undefined.
 
+-type metric_path() :: {binary(), handler()}.
+
+-export_type([metric_path/0]).
+
 -record(metric_file, {
           name :: binary(),
           file :: nonempty_string() | undefined,
@@ -84,7 +88,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
--spec find_metrics([binary()]) -> [{binary(), pid() | undefined}].
+-spec find_metrics([binary()]) -> [metric_path()].
 find_metrics(Path) ->
     PreparedPath = prepare_path_components(Path),
 
@@ -473,10 +477,7 @@ merge_metric_file(#metric_file{}=A, #metric_file{}=B) ->
               {PidA, undefined} -> PidA;
               {_, PidB} -> PidB
           end,
-    Name = case {A#metric_file.name, B#metric_file.name} of
-               {NameA, undefined} -> NameA;
-               {_, NameB} -> NameB
-           end,
+    Name = A#metric_file.name,
     File = case {A#metric_file.file, B#metric_file.file} of
                {FileA, undefined} -> FileA;
                {_, FileB} -> FileB

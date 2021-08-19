@@ -49,6 +49,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
+-spec fetch(binary(), integer(), integer(), integer()) -> [series()].
 fetch(Path, From, Until, Now) ->
     Result = case ets:lookup(metrics, Path) of
                  [] ->

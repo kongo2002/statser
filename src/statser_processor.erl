@@ -25,10 +25,18 @@
          evaluate_call/5,
          fetch_data/4]).
 
+-dialyzer([{[no_match],
+            [format_args/1,
+             safe_minimum/2,
+             with_current_value/1,
+             with_last_value/1,
+             zip_lists/2
+            ]}]).
+
 -define(TIMEOUT, 2000).
 -define(FETCHER_TIMEOUT, 2500).
 
--spec fetch_data([binary()], integer(), integer(), integer()) -> [#series{}].
+-spec fetch_data([statser_finder:metric_path()], integer(), integer(), integer()) -> [series()].
 fetch_data([], _From, _Until, _Now) -> [];
 
 fetch_data([Path], From, Until, Now) ->
@@ -693,7 +701,7 @@ select_low_n(Series, N, Name, Func) ->
     end.
 
 
--spec consolidate(#series{}, integer()) -> #series{}.
+-spec consolidate(series(), integer()) -> series().
 consolidate(Series, ValuesPP) when ValuesPP =< 1 -> Series;
 consolidate(Series, ValuesPP) ->
     Aggregate = Series#series.aggregation,
@@ -727,6 +735,9 @@ consolidate_values([{TS0, Val0} | Tl], ValuesPP, Aggregate) ->
     end.
 
 
+-spec normalize(SeriesLst) -> Result when
+      SeriesLst :: [series() | SeriesLst],
+      Result :: {[series()], integer(), integer(), integer()}.
 normalize(SeriesLst) ->
     case lists:flatten(SeriesLst) of
         [] ->
@@ -742,6 +753,7 @@ normalize(SeriesLst) ->
     end.
 
 
+-spec normalize_stats([series()]) -> {integer(), integer(), integer()}.
 normalize_stats([Hd | Tl]) ->
     Acc = {Hd#series.start, Hd#series.until, Hd#series.step},
     {S, End0, Step} = lists:foldr(fun(S, {Start0, End0, Step0}) ->
@@ -754,6 +766,7 @@ normalize_stats([Hd | Tl]) ->
     {S, End, Step}.
 
 
+-spec zip_lists(list(), fun((list()) -> any())) -> list().
 zip_lists([], _WithFunc) -> [];
 zip_lists(Lists, WithFunc) ->
     zip_lists(Lists, WithFunc, []).
@@ -784,6 +797,7 @@ zip_heads(Lists, Func) ->
     end.
 
 
+-spec zip_series([series()], fun((list()) -> any()), string()) -> [series()].
 zip_series([], _Func, _Name) -> [];
 zip_series([Hd | _] = Series, Func, Name) ->
     Values = lists:map(fun(#series{values=Vs}) -> Vs end, Series),
@@ -819,12 +833,8 @@ safe_minimum(Values) ->
     safe_minimum(Values, null).
 
 safe_minimum([], Min) -> Min;
-safe_minimum([{_TS, null} | Vs], Min) ->
-    safe_minimum(Vs, Min);
 safe_minimum([{_TS, Value} | Vs], Min) ->
     safe_minimum(Vs, safe_minimum0(Min, Value));
-safe_minimum([null | Vs], Min) ->
-    safe_minimum(Vs, Min);
 safe_minimum([Value | Vs], Min) ->
     safe_minimum(Vs, safe_minimum0(Min, Value)).
 
@@ -976,15 +986,17 @@ filter_named(Func, Series, Name, Args) ->
                 end, [], Series).
 
 
+-spec with_function_name(series(), string()) -> series().
 with_function_name(Series, Name) ->
     with_function_name(Series, Name, []).
 
+-spec with_function_name(series(), string(), [string()]) -> series().
 with_function_name(#series{target=Target} = Series, Name, Args) ->
     FormattedArgs = format_args(Args),
     TargetStr = binary_to_list(Target),
     % 40 = character code of '('
     % 41 = character code of ')'
-    NewTarget = binary:list_to_bin(lists:flatten([Name, 40 , TargetStr] ++ FormattedArgs ++ [41])),
+    NewTarget = binary:list_to_bin(lists:flatten([Name, 40, TargetStr] ++ FormattedArgs ++ [41])),
     Series#series{target=NewTarget}.
 
 
@@ -996,10 +1008,11 @@ generate_series(From, To, Step, Generator) ->
                 end, [], Init).
 
 
+-spec format_args([string()]) -> [string()].
 format_args([]) -> [];
 format_args(Args) ->
     % 44 = character code of ','
-    [44 | lists:join(44, Args)].
+    [[44] | lists:join([44], Args)].
 
 %%
 %% TESTS
@@ -1565,6 +1578,11 @@ generate_series_test_() ->
     [?_assertEqual(pseudo_values([100]), generate_series(99, 100, 10, Id)),
      ?_assertEqual(pseudo_values([100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]), generate_series(100, 200, 10, Id)),
      ?_assertEqual(pseudo_values([-100, -110, -120]), generate_series(100, 120, 10, fun(X) -> -X end))
+    ].
+
+format_args_test_() ->
+    [?_assertEqual("", format_args([])),
+     ?_assertEqual([",", "foo", ",", "bar"], format_args(["foo", "bar"]))
     ].
 
 -endif.

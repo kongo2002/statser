@@ -21,8 +21,9 @@ storage:
   stats:
     pattern: ^stats\.
     retentions:
-      - 10:1h
+      - 10:6h
       - 60:7d
+      - 600:1y
 
   instrumentation:
     pattern: ^statser\.instrumentation\.
