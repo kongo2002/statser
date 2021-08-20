@@ -187,24 +187,21 @@ decode_msg(Bin, MsgName, Opts) when is_binary(Bin) ->
     case MsgName of
       'Point' ->
 	  try d_msg_Point(Bin, TrUserData) catch
-	    Class:Reason ->
-		StackTrace = erlang:get_stacktrace(),
+	    Class:Reason:StackTrace ->
 		error({gpb_error,
 		       {decoding_failure,
 			{Bin, 'Point', {Class, Reason, StackTrace}}}})
 	  end;
       'Metric' ->
 	  try d_msg_Metric(Bin, TrUserData) catch
-	    Class:Reason ->
-		StackTrace = erlang:get_stacktrace(),
+	    Class:Reason:StackTrace ->
 		error({gpb_error,
 		       {decoding_failure,
 			{Bin, 'Metric', {Class, Reason, StackTrace}}}})
 	  end;
       'Payload' ->
 	  try d_msg_Payload(Bin, TrUserData) catch
-	    Class:Reason ->
-		StackTrace = erlang:get_stacktrace(),
+	    Class:Reason:StackTrace ->
 		error({gpb_error,
 		       {decoding_failure,
 			{Bin, 'Payload', {Class, Reason, StackTrace}}}})
